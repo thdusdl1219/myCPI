@@ -1,0 +1,25 @@
+What do all these scripts do?  Here's some pseudocode.  Names in brackets are script names.
+
+[nightly_test.pl]
+  svn update
+  make
+  spawn [watchdog]
+    currently very basic, will kill any benchmark that runs over an hour.
+  for each benchmark,
+    [compile_llvm]
+      generate bitcode from .c code based on compile_info
+    [test.py] single-threaded run
+    [test.py] mtcg run
+      [gen_profile.py]
+        run opt to instrument code
+        llc, gcc, and [run] the resulting bitcode
+      run opt (here is the actual invocation of DSWP and MTCG)
+      [link_llvm_smtx]
+        run llvm-ld to generate native executable based on compile_info
+      [run_bench.sh]
+        runs benchmark according to exec_info_xxx
+    check success
+  kill watchdog
+  generate text report
+  [htmlize.pl]
+    convert text report to prettier html version, diffing with previous text report to generate colors

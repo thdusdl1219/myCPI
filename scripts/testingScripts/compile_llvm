@@ -1,0 +1,163 @@
+#!/bin/sh
+# Jack Hung
+# 2008/11/26 (one day before Thanksgiving)
+# Input: Benchmark source code
+# Output: LLVM bitcode
+# Usage: compile_llvm hello -O0
+
+
+# Set up environment with default values
+READ_PATHS="";
+CLEAN=1;
+
+# Assume arguments valid
+VALID_ARGS=1;
+
+# Jack: Add one more argument (OPTI_LEVEL)
+# Get fixed argument(s)
+if [ $# -ge 1 ]; then
+    BENCHMARK="$1";
+    shift;
+    OPTIONS="$@";
+else
+    VALID_ARGS=0;
+fi
+
+
+if [ $VALID_ARGS -eq 0 ]; then
+    echo '> Usage: compile_llvm benchmark [options to clang]';
+    echo '> Example: compile_llvm wc -O2';
+    exit 1;
+fi;
+
+
+############################################################################
+#       Find the benchmark info
+############################################################################
+
+    echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
+    echo "> Finding the info for ${BENCHMARK} using find_bench_dir";
+    echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
+    echo " ";
+    BENCH_DIR=`find_bench_dir ${BENCHMARK}`
+    if test "$?" != 0; then
+      echo " "
+      echo "> Exiting: Could not find '${BENCHMARK}' using find_bench_dir!"
+      echo "> Error message returned by find_bench_dir:"
+      echo "$BENCH_DIR";
+      exit 1;
+    fi
+    # Explicitly specify bench dir
+    READ_PATHS="-bench_dir ${BENCH_DIR} $READ_PATHS";
+
+  echo "> Testing the info for ${BENCHMARK} in:"
+  echo ">   $BENCH_DIR"
+
+
+############################################################################
+#       Create impactbenchsrc directory and copy benchmark source there
+############################################################################
+    echo " "
+    echo "> Making directory 'impactbenchsrc'";
+    rm -rf impactbenchsrc
+    mkdir impactbenchsrc
+
+    echo " "
+    echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
+    echo "> Copying source for ${BENCHMARK} into 'impactbenchsrc' using copy_bench_src";
+    echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
+    echo " ";
+    copy_bench_src ${BENCHMARK} $READ_PATHS -dest impactbenchsrc
+    if test "$?" != 0; then echo "Exiting: non-zero exit code";exit 1;fi
+
+    echo "> Changing directory to 'impactbenchsrc'";
+    cd impactbenchsrc
+    # Set path offset for compilation command
+    PATH_OFFSET="../"
+
+############################################################################
+#       Read the compile info
+############################################################################
+  echo " "
+  echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
+  echo "> Reading compile_info for ${BENCHMARK} using read_compile_info";
+  echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
+  echo " ";
+  read_compile_info ${BENCHMARK} $READ_PATHS -all
+  if test "$?" != 0; then echo "Exiting: non-zero exit code";exit 1;fi
+
+  PREPROCESSING_OPTIONS=`read_compile_info ${BENCHMARK} $READ_PATHS -preprocessing_options`;
+  if test "$?" != 0; then 
+     echo " "
+     echo "> Exiting: Could not read preprocessing options using read_compile_info!"
+     echo "> Error message returned by read_compile_info:"
+     echo "$PREPROCESSING_OPTIONS";
+     exit 1;
+  fi
+
+############################################################################
+#       Read the platform info
+############################################################################
+
+#COMPILER_INVOCATION=`read_platform_info -compiler_invocation`
+# Jack's cheating
+COMPILER_INVOCATION=clang
+
+COMPILER_INVOCATION="$COMPILER_INVOCATION $OPTIONS"
+
+echo "> The following platform information will be used:"
+echo ">"
+echo ">            Compiler Command: '$COMPILER_INVOCATION'"
+echo ">"
+
+
+############################################################################
+#       Compiling source using HOST_COMPILER and the compile info read
+############################################################################
+  echo " "
+  echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
+  echo "> Compiling ${BENCHMARK} source using the platform/compile info read";
+  echo "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%";
+  echo " ";
+
+  SOURCES=`read_compile_info $BENCHMARK $READ_PATHS -sources`;
+  #Check "$?"
+  
+  # Jack (2008/11/26): Get all the source files
+  if [ "$SOURCES" = "" ]; then
+    SOURCES="*.c";
+  fi;
+  
+  # Jack (2008/11/26): Find a place to hold all the bitcode files
+  rm -rf ../${BENCHMARK}
+  mkdir ../${BENCHMARK}
+
+  # Jack (2008/11/26): Compile each .c file to .bc file
+  FILE_LIST=$SOURCES;
+  for FILE_NAME in $FILE_LIST
+  do
+     echo "Compiling $FILE_NAME"
+     BASE_NAME=`echo ${FILE_NAME} | awk -F. '{ORS="."; for (i=1; i<NF-1; i++) print $i; ORS=""; print $(NF-1)}'`
+     echo "> $COMPILER_INVOCATION -emit-llvm -c $PREPROCESSING_OPTIONS ${BASE_NAME}.c -o ../${BENCHMARK}/${BASE_NAME}.bc"
+             $COMPILER_INVOCATION -emit-llvm -c $PREPROCESSING_OPTIONS ${BASE_NAME}.c -o ../${BENCHMARK}/${BASE_NAME}.bc
+     if test "$?" != 0; then echo "Exiting: non-zero exit code"; exit 1;fi
+  done
+  
+  cd ..
+
+  # Jack (2008/11/26): Link all .bc files to a single .lbc file
+  echo "Linking all the bitcode files"
+  echo "> llvm-link ${BENCHMARK}/*.bc > ${BENCHMARK}/${BENCHMARK}.linked.bc"
+          llvm-link ${BENCHMARK}/*.bc > ${BENCHMARK}/${BENCHMARK}.linked.bc
+  if test "$?" != 0; then echo "Exiting: non-zero exit code"; exit 1;fi
+  
+  # If copied source, remove impactbenchsrc to clean up
+    if [ $CLEAN -eq 1 ];then
+      echo " "
+      echo "> Removing impactbenchsrc"
+      rm -rf impactbenchsrc
+    fi
+  
+  echo " "
+  echo "> LLVM bitcode for ${BENCHMARK} sucessfully created in ${BENCHMARK}/${BENCHMARK}.linked.bc"
+  

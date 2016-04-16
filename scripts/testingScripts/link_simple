@@ -1,0 +1,12 @@
+#!/bin/bash
+if [ $# -lt 1 ]; then
+  echo "Usage: `basename $0` file.bc [flags to gcc]"
+  exit
+fi
+BASENAME=`basename $1 .bc`
+CMD="llc $1 -f -o $BASENAME.s"
+echo $CMD
+$CMD
+CMD="gcc $2 $BASENAME.s $CORELAB_LIB_DIR/sw_queue.o $CORELAB_LIB_DIR/libtpool.so -lpthread -o $BASENAME.exe"
+echo $CMD
+$CMD
