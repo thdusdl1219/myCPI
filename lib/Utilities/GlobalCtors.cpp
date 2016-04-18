@@ -18,7 +18,7 @@ namespace corelab {
   // then append it to those lists
   static void appendToConstructorArray( Function *f, const std::string &name, const unsigned int priority = 65535, const bool ascending = true) {
 
-    LLVMContext &Context = getGlobalContext();
+    LLVMContext &Context = f->getParent()->getContext();
 
     assert( f->arg_size() == 0 && "Cannot pass arguments to a function ``before main''");
 
