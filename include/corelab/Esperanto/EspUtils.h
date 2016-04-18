@@ -16,8 +16,8 @@ namespace corelab{
 
 	class EspUtils{
 		public:
-			static Value* insertCastingBefore(LLVMContext& context, Value* from, Value* to, const DataLayout* dl, Instruction* before){
-				LLVMContext &Context = context;
+			static Value* insertCastingBefore(Value* from, Value* to, const DataLayout* dl, Instruction* before){
+				LLVMContext &Context = getGlobalContext();
 				const size_t fromSize = dl->getTypeSizeInBits( from->getType() );
 				const size_t toSize = dl->getTypeSizeInBits( to->getType() );
 
