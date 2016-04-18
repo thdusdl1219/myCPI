@@ -1,0 +1,30 @@
+#ifndef LLVM_CORELAB_FIXED_GLOBAL_H
+#define LLVM_CORELAB_FIXED_GLOBAL_H
+
+#include "llvm/Pass.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Constants.h"
+
+using namespace llvm;
+using namespace std;
+
+namespace corelab {
+	class FixedGlobal : public ModulePass {
+		public:
+			static char ID;
+
+			FixedGlobal () : ModulePass (ID) {}
+
+			bool runOnModule (Module& M);
+			void getAnalysisUsage (AnalysisUsage &AU) const;
+			const char* getPassName () const { return "FIXED_GLOBAL"; }
+
+		private:
+			Module *pM;
+
+			size_t convertToFixedGlobals (set<GlobalVariable *> setGvars, void *base);
+			bool hasFunction (Constant *cnst);
+	};
+}
+
+#endif

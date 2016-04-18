@@ -1,0 +1,353 @@
+/***
+ * EndianConvert.cpp : endianness converter installer
+ *
+ * installs endianness converter to load/store instructions
+ * XXX ONLY SIMULATING OVERHEAD. NO ACTUAL OPERATION XXX
+ * XXX ASSUMES 64-BIT MACHINE XXX
+ * written by : gwangmu 
+ *
+ * **/
+
+#include "llvm/IR/TypeFinder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+
+#include "corelab/Utilities/GlobalCtors.h"
+#include "corelab/UVA/EndianConvert.h"
+#include "corelab/Utilities/Debug.h"
+
+#include <vector>
+#include <inttypes.h>
+
+using namespace llvm;
+using namespace corelab;
+using namespace std;
+
+static RegisterPass<EndianConvert> X("cvrt-endian", "installs endianness converter", false, false);
+
+char EndianConvert::ID = 0;
+
+void EndianConvert::getAnalysisUsage (AnalysisUsage &AU) const {
+	AU.setPreservesAll ();
+}
+
+bool EndianConvert::runOnModule (Module& M) {
+	this->pM = &M;
+	this->pC = &M.getContext ();
+
+	initialize ();
+	installEndiannessConverter ();
+
+	return false;
+}
+
+void EndianConvert::initialize () {
+	Constant *cnstShuffleMask16;
+	Constant *cnstShuffleMask32;
+	Constant *cnstShuffleMask64;
+	Constant *cnstShuffleMask80;
+	Constant *cnstShuffleMask128;
+
+	cnstShuffleMask16 = ConstantVector::get (getShuffleMaskIndices (2, true));
+	cnstShuffleMask32 = ConstantVector::get (getShuffleMaskIndices (4, true));
+	cnstShuffleMask64 = ConstantVector::get (getShuffleMaskIndices (8, true));
+	cnstShuffleMask80 = ConstantVector::get (getShuffleMaskIndices (10, true));
+	cnstShuffleMask128 = ConstantVector::get (getShuffleMaskIndices (16, true));
+
+	mapTyToShMap[Type::getHalfTy (*pC)] = cnstShuffleMask16;
+	mapTyToShMap[Type::getFloatTy (*pC)] = cnstShuffleMask32;
+	mapTyToShMap[Type::getDoubleTy (*pC)] = cnstShuffleMask64;
+	mapTyToShMap[Type::getX86_FP80Ty (*pC)] = cnstShuffleMask80;
+	mapTyToShMap[Type::getFP128Ty (*pC)] = cnstShuffleMask128;
+	mapTyToShMap[Type::getPPC_FP128Ty (*pC)] = cnstShuffleMask128;
+	mapTyToShMap[Type::getX86_MMXTy (*pC)] = cnstShuffleMask64;
+
+	mapTyToShMap[Type::getInt16Ty (*pC)] = cnstShuffleMask16;
+	mapTyToShMap[Type::getInt32Ty (*pC)] = cnstShuffleMask32;
+	mapTyToShMap[Type::getInt64Ty (*pC)] = cnstShuffleMask64;
+
+	mapTyToShMap[Type::getInt8PtrTy (*pC)] = cnstShuffleMask64;
+
+
+	Constant *cnstIdShuffleMask16;
+	Constant *cnstIdShuffleMask32;
+	Constant *cnstIdShuffleMask64;
+	Constant *cnstIdShuffleMask80;
+	Constant *cnstIdShuffleMask128;
+
+
+	cnstIdShuffleMask16 = ConstantVector::get (getShuffleMaskIndices (2, false));
+	cnstIdShuffleMask32 = ConstantVector::get (getShuffleMaskIndices (4, false));
+	cnstIdShuffleMask64 = ConstantVector::get (getShuffleMaskIndices (8, false));
+	cnstIdShuffleMask80 = ConstantVector::get (getShuffleMaskIndices (10, false));
+	cnstIdShuffleMask128 = ConstantVector::get (getShuffleMaskIndices (16, false));
+
+	mapTyToIdShMap[Type::getHalfTy (*pC)] = cnstIdShuffleMask16;
+	mapTyToIdShMap[Type::getFloatTy (*pC)] = cnstIdShuffleMask32;
+	mapTyToIdShMap[Type::getDoubleTy (*pC)] = cnstIdShuffleMask64;
+	mapTyToIdShMap[Type::getX86_FP80Ty (*pC)] = cnstIdShuffleMask80;
+	mapTyToIdShMap[Type::getFP128Ty (*pC)] = cnstIdShuffleMask128;
+	mapTyToIdShMap[Type::getPPC_FP128Ty (*pC)] = cnstIdShuffleMask128;
+	mapTyToIdShMap[Type::getX86_MMXTy (*pC)] = cnstIdShuffleMask64;
+
+	mapTyToIdShMap[Type::getInt16Ty (*pC)] = cnstIdShuffleMask16;
+	mapTyToIdShMap[Type::getInt32Ty (*pC)] = cnstIdShuffleMask32;
+	mapTyToIdShMap[Type::getInt64Ty (*pC)] = cnstIdShuffleMask64;
+
+	mapTyToIdShMap[Type::getInt8PtrTy (*pC)] = cnstIdShuffleMask64;
+
+
+	VectorType *tyVec16 = VectorType::get (Type::getInt8Ty (*pC), 2);
+	VectorType *tyVec32 = VectorType::get (Type::getInt8Ty (*pC), 4);
+	VectorType *tyVec64 = VectorType::get (Type::getInt8Ty (*pC), 8);
+	VectorType *tyVec80 = VectorType::get (Type::getInt8Ty (*pC), 10);
+	VectorType *tyVec128 = VectorType::get (Type::getInt8Ty (*pC), 16);
+
+	mapTyToVecTy[Type::getHalfTy (*pC)] = tyVec16;
+	mapTyToVecTy[Type::getFloatTy (*pC)] = tyVec32;
+	mapTyToVecTy[Type::getDoubleTy (*pC)] = tyVec64;
+	mapTyToVecTy[Type::getX86_FP80Ty (*pC)] = tyVec80;
+	mapTyToVecTy[Type::getFP128Ty (*pC)] = tyVec128;
+	mapTyToVecTy[Type::getPPC_FP128Ty (*pC)] = tyVec128;
+	mapTyToVecTy[Type::getX86_MMXTy (*pC)] = tyVec64;
+
+	mapTyToVecTy[Type::getInt16Ty (*pC)] = tyVec16;
+	mapTyToVecTy[Type::getInt32Ty (*pC)] = tyVec32;
+	mapTyToVecTy[Type::getInt64Ty (*pC)] = tyVec64;
+
+	mapTyToVecTy[Type::getInt8PtrTy (*pC)] = tyVec64;
+
+
+	IntegerType *tyInt16 = Type::getInt16Ty (*pC);
+	IntegerType *tyInt32 = Type::getInt32Ty (*pC);
+	IntegerType *tyInt64 = Type::getInt64Ty (*pC);
+	//IntegerType *tyInt80 = Type::getIntNTy (*pC, 80);
+	IntegerType *tyInt128 = Type::getIntNTy (*pC, 128);
+
+	mapTyToIntTy[Type::getHalfTy (*pC)] = tyInt16;
+	mapTyToIntTy[Type::getFloatTy (*pC)] = tyInt32;
+	mapTyToIntTy[Type::getDoubleTy (*pC)] = tyInt64;
+	//mapTyToIntTy[Type::getX86_FP80Ty (*pC)] = tyInt80; 	/* NOPE. x86 long double not supported. */
+	mapTyToIntTy[Type::getFP128Ty (*pC)] = tyInt128;
+	mapTyToIntTy[Type::getPPC_FP128Ty (*pC)] = tyInt128;
+	mapTyToIntTy[Type::getX86_MMXTy (*pC)] = tyInt64;
+
+	mapTyToIntTy[Type::getInt16Ty (*pC)] = tyInt16;
+	mapTyToIntTy[Type::getInt32Ty (*pC)] = tyInt32;
+	mapTyToIntTy[Type::getInt64Ty (*pC)] = tyInt64;
+
+	mapTyToIntTy[Type::getInt8PtrTy (*pC)] = tyInt64;
+}
+
+
+vector<Constant *> EndianConvert::getShuffleMaskIndices (unsigned n, bool reverse) {
+	vector<Constant *> vecIndices;
+
+	if (reverse) {
+		for (int i = n - 1; i >= 0; i--)
+			vecIndices.push_back (ConstantInt::get (Type::getInt32Ty (*pC), i));
+	}
+	else {
+		for (int i = 0; i < n; i++)
+			vecIndices.push_back (ConstantInt::get (Type::getInt32Ty (*pC), i));
+	}
+
+	return vecIndices;
+}
+
+
+void EndianConvert::installEndiannessConverter () {
+	for (Module::iterator ifn = pM->begin (); ifn != pM->end(); ifn++) {
+		for (Function::iterator iblk = ifn->begin (); iblk != ifn->end (); iblk++) {
+			for (BasicBlock::iterator iinst = iblk->begin (); iinst != iblk->end (); iinst++) {
+				Instruction *inst = &*iinst;
+
+				if (LoadInst *instLoad = dyn_cast<LoadInst> (inst)) {
+					if (!isRequireConverting (instLoad->getType ())) continue;
+
+          // BONGJUN: XXX wrong conversion LoadInst* to iterator type
+					BasicBlock::iterator iafterload = instLoad;
+					iafterload++;
+					Instruction *instAfterLoad = &*iafterload;
+
+					Instruction *instPlaceHolder = new LoadInst (UndefValue::get (
+						instLoad->getType()->getPointerTo ()), "ec.placehold", instAfterLoad);
+
+					vector<Instruction *> insts = getVectorShuffleInsts (instPlaceHolder);
+					for (unsigned i = 0; i < insts.size (); i++)
+						insts[i]->insertBefore (instAfterLoad);
+
+					instLoad->replaceAllUsesWith (insts[insts.size() - 1]);
+					instPlaceHolder->replaceAllUsesWith (instLoad);
+					instPlaceHolder->eraseFromParent ();
+				}
+
+				if (StoreInst *instStore = dyn_cast<StoreInst> (inst)) {
+					Value *valVal = instStore->getValueOperand ();
+					if (!isRequireConverting (valVal->getType ())) continue;
+
+					vector<Instruction *> insts = getVectorShuffleInsts (valVal);
+					for (unsigned i = 0; i < insts.size (); i++)
+						insts[i]->insertBefore (instStore);
+
+					instStore->setOperand (0, insts[insts.size() - 1]);
+				}
+
+			}
+		}
+	}
+
+	return;
+}
+
+
+vector<Instruction *> EndianConvert::getVectorShuffleInsts (Value *valTarget) {
+	vector<Instruction *> insts;
+
+	PointerType *tyPtrLoad = dyn_cast<PointerType> (valTarget->getType ());
+	Type *tyScl = valTarget->getType ();
+
+	Value *valToShuffle = valTarget;
+	if (tyPtrLoad) {
+		tyScl = Type::getInt64Ty (*pC);
+		CastInst *instToInt = CastInst::CreateBitOrPointerCast (valTarget, tyScl, "ec.toint");
+		insts.push_back (instToInt);
+		valToShuffle = instToInt;
+	}
+	CastInst *instToVec = new BitCastInst (valToShuffle, 
+		getProperVectorType (tyScl), "ec.tovec");
+	insts.push_back (instToVec);
+	
+	ShuffleVectorInst *instShuffle = new ShuffleVectorInst (instToVec, 
+		UndefValue::get (instToVec->getType ()), getShuffleMask (tyScl), "ec.shv");
+	CastInst *instToScl = new BitCastInst (instShuffle, tyScl, "ec.toscl");
+	//ShuffleVectorInst *instShuffleBack = new ShuffleVectorInst (instShuffle, 
+	//	UndefValue::get (instToVec->getType ()), getShuffleMask (tyScl), "ec.shbackv");
+	//CastInst *instToScl = new BitCastInst (instShuffleBack, tyScl, "ec.toscl");
+	insts.push_back (instShuffle);
+	//insts.push_back (instShuffleBack);
+	insts.push_back (instToScl);
+
+	if (tyPtrLoad) {
+		CastInst *instToPtr = CastInst::CreateBitOrPointerCast (instToScl,
+			tyPtrLoad, "ec.toptr");
+		insts.push_back (instToPtr);
+	}
+
+	return insts;
+}
+
+vector<Instruction *> EndianConvert::getScalarShuffleInsts (Value *valTarget) {
+	vector<Instruction *> insts;
+
+	PointerType *tyPtrTarget = dyn_cast<PointerType> (valTarget->getType ());
+	Type *tyScl = valTarget->getType ();
+
+	Value *valToShuffle = valTarget;
+	if (tyPtrTarget) {
+		tyScl = Type::getInt64Ty (*pC);
+		CastInst *instToPrim = CastInst::CreateBitOrPointerCast (valTarget, 
+			tyScl, "ec.toprim");
+		insts.push_back (instToPrim);
+		valToShuffle = instToPrim;
+	}
+
+	IntegerType *tyIntScl = getProperIntegerType (valTarget->getType ());
+	if (tyIntScl != tyScl) {
+		CastInst *instToInt = new FPToUIInst (valToShuffle, tyIntScl, "ec.toint");
+		insts.push_back (instToInt);
+		valToShuffle = instToInt;
+	}
+	
+	unsigned nbytes = tyScl->getPrimitiveSizeInBits () >> 3;
+	Value *valRes = ConstantInt::get (tyIntScl, 0);
+	for (unsigned i = 0; i < nbytes; i++) {
+		APInt bitmask = getBitMaskOfNthByte (i, nbytes);
+		Constant *cnstBitMask = ConstantInt::get (tyIntScl, bitmask);
+		Instruction *instByte = BinaryOperator::Create (Instruction::And, valToShuffle,
+			cnstBitMask, "ec.extbyte");
+		insts.push_back (instByte);
+
+		int nshift = 0;			/* reverse: nbytes - 2 * i - 1; */
+		Instruction::BinaryOps op = (nshift > 0) ? Instruction::Shl : Instruction::AShr;
+		ConstantInt *cnstShift = ConstantInt::get (tyIntScl, abs (nshift));
+		Instruction *instShifted = BinaryOperator::Create (op, instByte, 
+			cnstShift, "ec.shifted");
+		insts.push_back (instShifted);
+
+		Instruction *instComped = BinaryOperator::Create (Instruction::Or, valRes,
+			instShifted, "ec.comped");
+		insts.push_back (instComped);
+		
+		valRes = instComped;
+	}
+
+	if (tyIntScl != tyScl) {
+		CastInst *instToPrim = new UIToFPInst (valRes, tyScl, "ec.toprim");
+		insts.push_back (instToPrim);
+		valRes = instToPrim;
+	}
+	
+	if (tyPtrTarget) {
+		CastInst *instToPtr = CastInst::CreateBitOrPointerCast (valRes,
+			tyPtrTarget, "ec.toptr");
+		insts.push_back (instToPtr);
+	}
+
+	return insts;
+}
+
+bool EndianConvert::isRequireConverting (Type *type) {
+	unsigned size = type->getScalarSizeInBits ();
+
+	return (dyn_cast<PointerType> (type) || size > 8);
+}
+
+Constant* EndianConvert::getIdentityShuffleMask (Type *type) {
+	if (dyn_cast<PointerType> (type))
+		return mapTyToIdShMap[Type::getInt8PtrTy (*pC)];
+
+	Constant *cnst = mapTyToIdShMap[type];
+	if (!cnst) type->dump ();
+	assert (cnst && "type other than primitive not supported");
+	return cnst;
+}
+
+Constant* EndianConvert::getShuffleMask (Type *type) {
+	if (dyn_cast<PointerType> (type))
+		return mapTyToShMap[Type::getInt8PtrTy (*pC)];
+
+	Constant *cnst = mapTyToShMap[type];
+	if (!cnst) type->dump ();
+	assert (cnst && "type other than primitive not supported");
+	return cnst;
+}
+
+APInt EndianConvert::getBitMaskOfNthByte (unsigned n, unsigned len) {
+	APInt iret (len << 3, 0xFF);
+	iret <<= (n << 3);
+
+	return iret;
+}
+
+VectorType* EndianConvert::getProperVectorType (Type *type) {
+	if (dyn_cast<PointerType> (type))
+		return mapTyToVecTy[Type::getInt8PtrTy (*pC)];
+
+	VectorType *tyVec = mapTyToVecTy[type];
+	if (!tyVec) type->dump ();
+	assert (tyVec && "type other than primitive not supported");
+	return tyVec;
+}
+
+IntegerType* EndianConvert::getProperIntegerType (Type *type) {
+	if (dyn_cast<PointerType> (type))
+		return mapTyToIntTy[Type::getInt8PtrTy (*pC)];
+
+	IntegerType *tyInt = mapTyToIntTy[type];
+	if (!tyInt) type->dump ();
+	assert (tyInt && "type other than primitive not supported");
+	return tyInt;
+}

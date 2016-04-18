@@ -1,0 +1,303 @@
+/***
+ * Tracer.cpp : Stack tracer installer
+ *
+ * Install stack tracer
+ * written by: gwangmu
+ *
+ * **/
+
+#include "llvm/IR/TypeFinder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+
+#include "corelab/UVA/ObjTracer.h"
+#include "corelab/Metadata/LoadNamer.h"
+#include "corelab/Metadata/Metadata.h"
+#include "corelab/Utilities/Debug.h"
+#include "corelab/Utilities/GlobalCtors.h"
+
+#include <iostream>
+#include <cstdlib>
+#include <cassert>
+#include <cstdio>
+#include <string>
+
+using namespace llvm;
+using namespace std;
+
+namespace corelab {
+	static RegisterPass<TracerInstaller> X("inst-tracer", "install stack tracer", false, false);
+
+	char TracerInstaller::ID = 0;
+
+	void TracerInstaller::getAnalysisUsage (AnalysisUsage &AU) const {
+		AU.addRequired< Namer > ();
+		AU.addRequired< LoadNamer > ();
+		AU.setPreservesAll ();
+	}
+
+	bool TracerInstaller::runOnModule (Module& M) {
+		this->pM = &M;
+		this->pC = &pM->getContext ();
+
+		// prepare frequently used types
+		tyVoid = Type::getVoidTy (*pC);
+		tyInt8p = PointerType::get (Type::getInt8Ty (*pC), 0);
+		tyInt16 = Type::getInt16Ty (*pC);
+		tySizeT = Type::getInt32Ty (*pC);
+
+		// prepare install
+		vector<int> vecOffFnIDs;		
+
+		FILE* fileOffFn;
+		int id;
+		
+		fileOffFn = fopen ("offloadFunction.profile", "r");
+		assert (fileOffFn && "profile 'offloadFunction.profile' not found");
+		while (fscanf (fileOffFn, "%d : %*d\n", &id) != EOF)
+			vecOffFnIDs.push_back (id);
+		fclose (fileOffFn);
+
+		// install interfaces
+		installInitFinal ();
+		installContextEventHandler (vecOffFnIDs);
+		//installMemoryEventHandler ();			// FIXME: NO NEED TO INSTALL HANDLER FOR ALL LOADS
+		installTracer ();
+
+		return false;
+	}
+
+
+	// installer
+	void TracerInstaller::installInitFinal () {
+		// prepare frequently used type
+		FunctionType *tyFnVoidVoid = FunctionType::get (tyVoid, false);
+
+		// prepare init/final function
+		Constant *cnstInit = pM->getOrInsertFunction ("objtrInitialize", tyVoid, NULL);
+		Constant *cnstFinal = pM->getOrInsertFunction ("objtrFinalize", tyVoid, NULL);
+		
+		// contruct constructor function
+		Function *fnCtor = Function::Create (tyFnVoidVoid, GlobalValue::PrivateLinkage, "__constructor__", pM);
+
+		BasicBlock *blkInit = BasicBlock::Create (*pC, "init", fnCtor);
+		CallInst::Create (cnstInit, "", blkInit);
+		ReturnInst::Create (*pC, blkInit);
+
+		callBeforeMain (fnCtor);
+		
+		// contruct finalizer function
+		Function *fnDtor = Function::Create (tyFnVoidVoid, GlobalValue::PrivateLinkage, "__destructor__", pM);
+
+		BasicBlock *blkFinal = BasicBlock::Create (*pC, "final", fnDtor);
+		CallInst::Create (cnstFinal, "", blkFinal);
+		ReturnInst::Create (*pC, blkFinal);
+
+		callAfterMain (fnDtor);
+	}
+
+	void TracerInstaller::installContextEventHandler (vector<int> vecOffFnIDs) {
+		LoadNamer &loadNamer = getAnalysis< LoadNamer > ();
+
+		// prepare context event handler
+		Constant *cnstBegin = pM->getOrInsertFunction ("objtrFunctionBegin", tyVoid, tyInt16, NULL);
+		Constant *cnstEnd = pM->getOrInsertFunction ("objtrFunctionEnd", tyVoid, tyInt16, NULL);
+
+		// for each offloading target fns..
+		for (vector<int>::iterator it = vecOffFnIDs.begin ();
+				 it != vecOffFnIDs.end (); ++it) {
+			Function *fnTarget = loadNamer.getFunction (*pM, *it);
+			assert (fnTarget && "target function id is corrupted");
+
+			// install context begin event handler
+			vector<Value *> vecArgs;
+			vecArgs.push_back (getConstantInt (16, *it));
+
+			Instruction *instFirst = &*fnTarget->begin()->begin();
+			CallInst::Create (cnstBegin, vecArgs, "", instFirst);
+
+			// install context end event handler
+			for (Function::iterator iblk = fnTarget->begin ();
+					 iblk != fnTarget->end (); ++iblk) {
+				for (BasicBlock::iterator iinst = iblk->begin ();
+						 iinst != iblk->end (); ++iinst) {
+					Instruction *inst = &*iinst;
+			
+					if (dyn_cast<ReturnInst> (inst))
+						CallInst::Create (cnstEnd, vecArgs, "", inst);
+				}
+			}
+		}
+	}
+
+	void TracerInstaller::installMemoryEventHandler () {
+		// prepare memory event handler
+		Constant *cnstLoad = pM->getOrInsertFunction ("objtrLoadInstr", tyVoid, tyInt16, tyInt8p, NULL);
+		Constant *cnstStore = pM->getOrInsertFunction ("objtrStoreInstr", tyVoid, tyInt16, tyInt8p, NULL);
+
+		for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ++ifn) {
+			for (Function::iterator iblk = ifn->begin (); iblk != ifn->end (); ++iblk) {
+				for (BasicBlock::iterator iinst = iblk->begin (); iinst != iblk->end (); ++iinst) {
+					Instruction *inst = &*iinst;
+					
+					if (LoadInst *instLoad = dyn_cast<LoadInst> (inst)) {
+						// bitcast (? pt) to (void pt)
+						BitCastInst *instCast = new BitCastInst (instLoad->getPointerOperand (), 
+							tyInt8p, "cast", inst);
+
+						// install load event handler
+						vector<Value *> vecArgs;
+						vecArgs.push_back (getConstantInt (16, Namer::getInstrId (instLoad)));
+						vecArgs.push_back (instCast);
+
+						CallInst::Create (cnstLoad, vecArgs, "", inst);
+					}
+					else if (StoreInst *instStore = dyn_cast<StoreInst> (inst)) {
+						// bitcast (? pt) to (void pt)
+						BitCastInst *instCast = new BitCastInst (instStore->getPointerOperand (),
+							tyInt8p, "cast", inst);
+
+						// install load event handler
+						vector<Value *> vecArgs;
+						vecArgs.push_back (getConstantInt (16, Namer::getInstrId (instStore)));
+						vecArgs.push_back (instCast);
+
+						CallInst::Create (cnstStore, vecArgs, "", inst);
+					}
+				}
+			}
+		}
+	}
+
+	void TracerInstaller::installTracer () {
+		vector<Instruction *> vecDisposed;
+
+		// prepare tracer
+		Constant *cnstMalloc = pM->getOrInsertFunction ("objtrMalloc", tyInt8p, 
+			tyInt16, tySizeT, NULL);
+		Constant *cnstCalloc = pM->getOrInsertFunction ("objtrCalloc", tyInt8p,
+			tyInt16, tySizeT, tySizeT, NULL);
+		Constant *cnstRealloc = pM->getOrInsertFunction ("objtrRealloc", tyInt8p,
+			tyInt8p, tySizeT, NULL);
+		Constant *cnstFree = pM->getOrInsertFunction ("objtrFree", tyVoid, 
+			tyInt8p, NULL);
+
+		for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ++ifn) {
+			for (Function::iterator iblk = ifn->begin (); iblk != ifn->end (); ++iblk) {
+				for (BasicBlock::iterator iinst = iblk->begin (); iinst != iblk->end (); ++iinst) {
+					CallInst *instCall = dyn_cast<CallInst> (&*iinst);
+					if (!instCall) continue;
+					vector<Value *> vecOpers = getOperands (instCall);
+					Function *fnCalled = instCall->getCalledFunction ();
+
+					if (!fnCalled) {
+						// check the case where called value is ConstantExpr
+						ConstantExpr *cexpCalled = dyn_cast<ConstantExpr> (instCall->getCalledValue());
+						if (cexpCalled && cexpCalled->getOpcode () == Instruction::BitCast) {
+							vector<Value *> vecOpers = getOperands (cexpCalled);
+							Function *fnCasted = dyn_cast<Function> (vecOpers[0]);
+							assert (fnCasted);
+							fnCalled = fnCasted;
+						}
+						else
+							continue;
+					}
+
+					string fnname = fnCalled->getName().str();
+					if (fnname == "offload_malloc") {
+						// install malloc tracer
+						vector<Value *> vecArgs;
+						vecArgs.push_back (getConstantInt (16, Namer::getInstrId (instCall)));
+						vecArgs.push_back (vecOpers[0]);
+
+						CallInst *instNMalloc = CallInst::Create (cnstMalloc, vecArgs, "", instCall);
+						instCall->replaceAllUsesWith (instNMalloc);
+						vecDisposed.push_back (instCall);
+					}
+					else if (fnname == "offload_calloc") {
+						// install calloc tracer
+						vector<Value *> vecArgs;
+						vecArgs.push_back (getConstantInt (16, Namer::getInstrId (instCall)));
+						vecArgs.push_back (vecOpers[0]);
+						vecArgs.push_back (vecOpers[1]);
+
+						CallInst *instNCalloc = CallInst::Create (cnstCalloc, vecArgs, "", instCall);
+						instCall->replaceAllUsesWith (instNCalloc);
+						vecDisposed.push_back (instCall);
+					}
+					else if (fnname == "offload_realloc") {
+						// install realloc tracer
+						vector<Value *> vecArgs;
+						vecArgs.push_back (vecOpers[0]);
+						vecArgs.push_back (vecOpers[1]);
+
+						CallInst *instNRealloc = CallInst::Create (cnstRealloc, vecArgs, "", instCall);
+						instCall->replaceAllUsesWith (instNRealloc);
+						vecDisposed.push_back (instCall);
+					}
+					else if (fnname == "offload_free") {
+						// install free tracer
+						Value *valAddr = vecOpers[0];
+		
+						Type *tyArg0 = ((Function *)cnstFree)->getFunctionType()->getParamType (0);	
+						if (valAddr->getType () != tyArg0) {
+							valAddr = new BitCastInst (valAddr, tyArg0, "cast", instCall);
+						}
+
+						vector<Value *> vecArgs;
+						vecArgs.push_back (valAddr);
+						
+						CallInst::Create (cnstFree, vecArgs, "", instCall);
+						instCall->dropAllReferences ();
+						vecDisposed.push_back (instCall);
+					}
+				}
+			}
+		}
+
+		for (vector<Instruction *>::iterator it = vecDisposed.begin ();
+				 it != vecDisposed.end (); ++it)
+			(*it)->eraseFromParent ();
+	}
+
+
+	// helper method
+	ConstantInt* TracerInstaller::getConstantInt (unsigned bits, unsigned n) {
+		switch (bits) {
+			case 1:
+				return ConstantInt::get (Type::getInt1Ty (*pC), n);
+			case 8:
+				return ConstantInt::get (Type::getInt8Ty (*pC), n);
+			case 16:
+				return ConstantInt::get (Type::getInt16Ty (*pC), n);
+			case 32:
+				return ConstantInt::get (Type::getInt32Ty (*pC), n);
+			case 64:
+				return ConstantInt::get (Type::getInt32Ty (*pC), n);
+			default:
+				return ConstantInt::get (Type::getIntNTy (*pC, bits), n);
+		}
+	}
+
+	Instruction* TracerInstaller::getNextInstr (Instruction *inst) {
+		BasicBlock::iterator iinstAft = inst;
+		iinstAft++;
+
+		return &*iinstAft;
+	}
+
+	vector<Value *> TracerInstaller::getOperands (User *user) {
+		vector<Value *> indices;
+
+		for (User::op_iterator iOper = user->op_begin ();
+				 iOper != user->op_end (); ++iOper)
+		{
+			Value *val = iOper->get ();
+			indices.push_back (val);
+		}
+
+		return indices;
+	}
+}
+

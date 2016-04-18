@@ -1,0 +1,218 @@
+/***
+ * PageTracer.cpp : Stack tracer installer
+ *
+ * Install stack tracer
+ * written by: gwangmu
+ *
+ * **/
+
+#include "llvm/IR/TypeFinder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+
+#include "corelab/UVA/PageTracer.h"
+#include "corelab/Metadata/LoadNamer.h"
+#include "corelab/Metadata/Metadata.h"
+#include "corelab/Utilities/Debug.h"
+#include "corelab/Utilities/GlobalCtors.h"
+
+#include <iostream>
+#include <cstdlib>
+#include <cassert>
+#include <cstdio>
+#include <string>
+
+using namespace llvm;
+using namespace std;
+
+namespace corelab {
+	static RegisterPass<PageTracerInstaller> X("inst-pgtracer", "install page tracer", false, false);
+
+	char PageTracerInstaller::ID = 0;
+
+	void PageTracerInstaller::getAnalysisUsage (AnalysisUsage &AU) const {
+		AU.addRequired< Namer > ();
+		AU.addRequired< LoadNamer > ();
+		AU.setPreservesAll ();
+	}
+
+	bool PageTracerInstaller::runOnModule (Module& M) {
+		this->pM = &M;
+		this->pC = &pM->getContext ();
+
+		// prepare frequently used types
+		tyVoid = Type::getVoidTy (*pC);
+		tyInt8p = PointerType::get (Type::getInt8Ty (*pC), 0);
+		tyInt16 = Type::getInt16Ty (*pC);
+		tySizeT = Type::getInt32Ty (*pC);
+
+		// install interfaces
+		installInitFinal ();
+		installPageTracer ();
+
+		return false;
+	}
+
+
+	// installer
+	void PageTracerInstaller::installInitFinal () {
+		// prepare frequently used type
+		FunctionType *tyFnVoidVoid = FunctionType::get (tyVoid, false);
+
+		// prepare init/final function
+		Constant *cnstInit = pM->getOrInsertFunction ("pagetrInitialize", tyVoid, NULL);
+		Constant *cnstFinal = pM->getOrInsertFunction ("pagetrFinalize", tyVoid, NULL);
+		
+		// contruct constructor function
+		Function *fnCtor = Function::Create (tyFnVoidVoid, GlobalValue::PrivateLinkage, "__pagetr_constructor__", pM);
+
+		BasicBlock *blkInit = BasicBlock::Create (*pC, "init", fnCtor);
+		CallInst::Create (cnstInit, "", blkInit);
+		ReturnInst::Create (*pC, blkInit);
+
+		callBeforeMain (fnCtor, 0);
+		
+		// contruct finalizer function
+		Function *fnDtor = Function::Create (tyFnVoidVoid, GlobalValue::PrivateLinkage, "__pagetr_destructor__", pM);
+
+		BasicBlock *blkFinal = BasicBlock::Create (*pC, "final", fnDtor);
+		CallInst::Create (cnstFinal, "", blkFinal);
+		ReturnInst::Create (*pC, blkFinal);
+
+		callAfterMain (fnDtor, 0);
+	}
+
+	void PageTracerInstaller::installPageTracer () {
+		vector<Instruction *> vecDisposed;
+
+		// prepare tracer
+		Constant *cnstMalloc = pM->getOrInsertFunction ("pagetrMalloc", tyVoid, 
+			tyInt16, tySizeT, tyInt8p, NULL);
+		Constant *cnstCalloc = pM->getOrInsertFunction ("pagetrCalloc", tyVoid,
+			tyInt16, tySizeT, tySizeT, tyInt8p, NULL);
+		Constant *cnstRealloc = pM->getOrInsertFunction ("pagetrRealloc", tyVoid,
+			tyInt8p, tySizeT, tyInt8p, NULL);
+		Constant *cnstFree = pM->getOrInsertFunction ("pagetrFree", tyVoid, 
+			tyInt8p, NULL);
+
+		for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ++ifn) {
+			// XXX identifying ctor/dtor as their name. XXX
+			string fnname = ifn->getName().str();
+			if (fnname == "__constructor__" || fnname == "__destructor__")
+				continue;
+
+			for (Function::iterator iblk = ifn->begin (); iblk != ifn->end (); ++iblk) {
+				for (BasicBlock::iterator iinst = iblk->begin (); iinst != iblk->end (); ++iinst) {
+					CallInst *instCall = dyn_cast<CallInst> (&*iinst);
+					if (!instCall) continue;
+
+					Instruction *instCallAft = getNextInstr (instCall);
+					vector<Value *> vecOpers = getOperands (instCall);
+					Function *fnCalled = instCall->getCalledFunction ();
+
+					if (!fnCalled) {
+						// check the case where called value is ConstantExpr
+						ConstantExpr *cexpCalled = dyn_cast<ConstantExpr> (instCall->getCalledValue());
+						if (cexpCalled && cexpCalled->getOpcode () == Instruction::BitCast) {
+							vector<Value *> vecOpers = getOperands (cexpCalled);
+							Function *fnCasted = dyn_cast<Function> (vecOpers[0]);
+							assert (fnCasted);
+							fnCalled = fnCasted;
+						}
+						else
+							continue;
+					}
+
+					string fnname = fnCalled->getName().str();
+					if (fnname == "offload_malloc") {
+						// install malloc tracer
+						vector<Value *> vecArgs;
+						vecArgs.push_back (getConstantInt (16, Namer::getInstrId (instCall)));
+						vecArgs.push_back (vecOpers[0]);
+						vecArgs.push_back (instCall);
+
+						CallInst::Create (cnstMalloc, vecArgs, "", instCallAft);
+					}
+					else if (fnname == "offload_calloc") {
+						// install calloc tracer
+						vector<Value *> vecArgs;
+						vecArgs.push_back (getConstantInt (16, Namer::getInstrId (instCall)));
+						vecArgs.push_back (vecOpers[0]);
+						vecArgs.push_back (vecOpers[1]);
+						vecArgs.push_back (instCall);
+
+						CallInst::Create (cnstCalloc, vecArgs, "", instCallAft);
+					}
+					else if (fnname == "offload_realloc") {
+						// install realloc tracer
+						vector<Value *> vecArgs;
+						vecArgs.push_back (vecOpers[0]);
+						vecArgs.push_back (vecOpers[1]);
+						vecArgs.push_back (instCall);
+
+						CallInst::Create (cnstRealloc, vecArgs, "", instCallAft);
+					}
+					else if (fnname == "offload_free") {
+						// install free tracer
+						Value *valAddr = vecOpers[0];
+		
+						Type *tyArg0 = ((Function *)cnstFree)->getFunctionType()->getParamType (0);	
+						if (valAddr->getType () != tyArg0) {
+							valAddr = new BitCastInst (valAddr, tyArg0, "cast", instCallAft);
+						}
+
+						vector<Value *> vecArgs;
+						vecArgs.push_back (valAddr);
+						
+						CallInst::Create (cnstFree, vecArgs, "", instCallAft);
+					}
+				}
+			}
+		}
+
+		for (vector<Instruction *>::iterator it = vecDisposed.begin ();
+				 it != vecDisposed.end (); ++it)
+			(*it)->eraseFromParent ();
+	}
+
+
+	// helper method
+	ConstantInt* PageTracerInstaller::getConstantInt (unsigned bits, unsigned n) {
+		switch (bits) {
+			case 1:
+				return ConstantInt::get (Type::getInt1Ty (*pC), n);
+			case 8:
+				return ConstantInt::get (Type::getInt8Ty (*pC), n);
+			case 16:
+				return ConstantInt::get (Type::getInt16Ty (*pC), n);
+			case 32:
+				return ConstantInt::get (Type::getInt32Ty (*pC), n);
+			case 64:
+				return ConstantInt::get (Type::getInt32Ty (*pC), n);
+			default:
+				return ConstantInt::get (Type::getIntNTy (*pC, bits), n);
+		}
+	}
+
+	Instruction* PageTracerInstaller::getNextInstr (Instruction *inst) {
+		BasicBlock::iterator iinstAft = inst;
+		iinstAft++;
+
+		return &*iinstAft;
+	}
+
+	vector<Value *> PageTracerInstaller::getOperands (User *user) {
+		vector<Value *> indices;
+
+		for (User::op_iterator iOper = user->op_begin ();
+				 iOper != user->op_end (); ++iOper)
+		{
+			Value *val = iOper->get ();
+			indices.push_back (val);
+		}
+
+		return indices;
+	}
+}
+

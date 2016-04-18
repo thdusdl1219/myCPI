@@ -1,0 +1,2431 @@
+/***
+ * Porting.cpp : Porting32
+ *
+ * Port 32-bit ARM(v7) bitcode to 32-bit x86(i386) bitcode
+ * written by : gwangmu \
+ *
+ * **/
+
+// Debug Option
+//#define PRINT_DUMP
+
+#include "llvm/IR/TypeFinder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/Support/raw_os_ostream.h"
+#include "llvm/Transforms/Utils/Cloning.h"
+
+#include "corelab/Metadata/Metadata.h"
+#include "corelab/Metadata/LoadNamer.h"
+#include "corelab/UVA/Porting.h"
+#include "corelab/Utilities/Debug.h"
+
+#include <iostream>
+#include <cassert>
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
+#include <string>
+#include <map>
+#include <set>
+
+#define MAX(a, b) ((a > b) ? a : b)
+#define PORTED_NAME(name) ((name) + ".p")
+#define UNPORTED_NAME(name) ((name).erase (name.length () - 2, 2))
+
+using namespace corelab;
+using namespace std;
+
+static Debug DEBUG("porting32");
+static RegisterPass<Porting32> X("porting32", "port to i386 w/ hybrid ABI", false, false);
+
+char Porting32::ID = 0;
+
+void Porting32::getAnalysisUsage (AnalysisUsage &AU) const {
+	AU.addRequired< DataLayoutPass > ();
+	AU.addRequired< LoadNamer > ();
+	AU.setPreservesAll ();
+}
+
+bool Porting32::runOnModule (Module& M) {
+	this->pM = &M;
+	this->pC = &M.getContext ();
+
+	// dummy function for creating basic-block
+	FunctionType *tyFnDummy = FunctionType::get (Type::getVoidTy (*pC), false);
+	fnDummy = Function::Create (tyFnDummy, GlobalValue::PrivateLinkage, "__porting_dummy__");
+	blkDummy = BasicBlock::Create (*pC, "dummy", fnDummy);
+	instDummy = new UnreachableInst (*pC, blkDummy);
+
+	// Port ARM IR to i386 stage by stage
+	DEBUG.PRINT ("*** Porting32: ARM IR to I386 ***");
+
+	DEBUG.BEGIN_TASK ("CVRT_TAR", "Converting target triple..");
+	convertTargetTriple ();
+	DEBUG.END_TASK ("CVRT_TAR");
+
+	DEBUG.BEGIN_TASK ("PORT", "Porting structs..");
+	portModule ();
+	DEBUG.END_TASK ("PORT");
+	
+	DEBUG.FINISH ();
+	
+	return false;
+}
+
+
+/* Convert IR target triple to i386 */
+void Porting32::convertTargetTriple () {	
+	pM->setTargetTriple ("i386-unknown-linux-gnu");
+}
+
+/* Convert target-dependent style struct declaration
+ * to packed struct whose byte alignment set according
+ * to ARM standard */
+void Porting32::portModule () {
+	DEBUG.PRINT ("Loading struct data..");
+	vector<StructType *> vecStructs = loadStructData ();
+	vector<FunctionType *> vecTyFns = loadFunctionTypeData ();
+
+	// create ported struct declaration
+	DEBUG.BEGIN_TASK ("CREAT_DECL", "Creating struct declarations..");
+	for (unsigned i = 0; i < vecStructs.size (); ++i) {
+		StructType *tyStruct = vecStructs[i];
+	
+		string strName;
+		string strNName;
+		if (tyStruct->isLiteral ()) {
+			strName = "(noname)";
+			strNName = "(noname)";
+		}
+		else {
+			strName = tyStruct->getName().str();
+			strNName = PORTED_NAME (strName);
+		}
+
+		if (isExcludedStruct (tyStruct)) {
+			// if excluded struct, mark it NULL and omit porting.
+			vecStructs[i] = NULL;
+			DEBUG.PRINT ("omitting excluded struct %s", strName.c_str());
+		}
+		else {
+			// if portable struct, map original struct to declaration of ported one.
+			StructType *tyNStruct = createPortedStructDecl (tyStruct);
+			mapStructs.insert (pair<StructType *, StructType *> (tyStruct, tyNStruct));
+
+			DEBUG.PRINT ("struct %s to struct %s", strName.c_str(), strNName.c_str());
+		}
+	}
+	DEBUG.END_TASK ("CREAT_DECL");
+
+	DEBUG.BEGIN_TASK ("FLT_FN", "Filtering porting-required function types..");
+	// map NULL in MAP_TY_FNS, if it requires porting
+	for (unsigned i = 0; i < vecTyFns.size (); ++i) {
+		FunctionType *tyFn = vecTyFns[i];
+
+		if (!hasPortedTypeArg (tyFn)) {
+			vecTyFns[i] = NULL;
+			DEBUG.PRINT ("omitting unnecessary function");
+		}
+		else {
+			mapTyFns.insert (pair<FunctionType *, FunctionType *> (tyFn, NULL));
+			DEBUG.PRINT ("taking porting-required function");
+		}
+
+#ifdef PRINT_DUMP
+		cerr << "portModule: tyFn (";
+		tyFn->dump();
+		cerr << ")" << endl;
+#endif
+	}
+	DEBUG.END_TASK ("FNT_FN");
+
+	vector<Type *> vecTys;
+	vecTys.insert (vecTys.end (), vecStructs.begin (), vecStructs.end ());
+	vecTys.insert (vecTys.end (), vecTyFns.begin (), vecTyFns.end ());
+
+	// create ported struct body
+	while (!vecTys.empty ()) {
+		// pop front element
+		Type *ty = vecTys.front ();
+		vecTys.erase (vecTys.begin ());
+
+		// if marked as un-portable type, continue.
+		if (ty == NULL)	continue;
+
+		if (StructType *tyStruct = dyn_cast<StructType> (ty)) {
+			string strName;
+			if (tyStruct->isLiteral ())
+				strName = "(noname)";
+			else
+				strName = tyStruct->getName().str();
+
+			DEBUG.BEGIN_TASK ("PORT_STR", "Creating ported struct body..: %s", strName.c_str ());
+			if (tyStruct->isOpaque ()) {
+				DEBUG.PASS_TASK ("PORT_STR", "omitting opaque struct");
+				continue;
+			}
+
+			vector<unsigned> vecNElemIdx = createPortedStructBody (tyStruct);
+
+			if (vecNElemIdx.empty ())
+			{
+				// If cannot create ported struct, push back and try later.
+				DEBUG.PASS_TASK ("PORT_STR", "Cannot port this struct");			
+				vecTys.push_back (tyStruct);
+				continue;
+			}
+
+			mapStElemIdx.insert (pair<StructType *, vector<unsigned> > (tyStruct, vecNElemIdx));
+			DEBUG.END_TASK ("PORT_STR");
+		}
+		else if (FunctionType *tyFn = dyn_cast<FunctionType> (ty)) {
+			DEBUG.BEGIN_TASK ("PORT_FN", "Creating ported function type..");
+			FunctionType *tyNFn = createPortedFunctionType (tyFn);
+
+			if (tyNFn == NULL) {
+				DEBUG.PASS_TASK ("PORT_FN", "Cannot port this function type");
+				vecTys.push_back (tyFn);
+				continue;
+			}
+
+			#ifdef PRINT_DUMP
+			cerr << "portModule: tyNFn (";
+			tyNFn->dump();
+			cerr << ")" << endl;
+			#endif
+
+			mapTyFns[tyFn] = tyNFn;
+			DEBUG.END_TASK ("PORT_FN");
+		}
+	}	
+
+	DEBUG.BEGIN_TASK ("REPL_STR", "Replacing to ported struct");
+	replaceToPortedStruct (); 	
+	DEBUG.END_TASK ("REPL_STR");
+}
+
+/* Load struct type data.
+ * Return: list of struct types in module */
+vector<StructType *> Porting32::loadStructData () {
+	TypeFinder tyFinder;
+	vector<StructType *> vecStructs;
+
+	tyFinder.run (*pM, false);
+	vecStructs.insert (vecStructs.begin(), tyFinder.begin(), tyFinder.end());
+
+	/* Test Print
+	for (vector<StructType *>::iterator it = vecStructs.begin();
+			 it != vecStructs.end(); it++) {
+		fprintf (stderr, "%s\n", (*it)->getName().str().c_str());
+	} */
+
+	return vecStructs;
+}
+
+vector<FunctionType *> Porting32::loadFunctionTypeData () {
+	set<FunctionType *> setTyFns;
+
+	for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ++ifn) 
+		setTyFns.insert (dyn_cast<FunctionType> (ifn->getFunctionType ()));
+
+	vector<FunctionType *> vecTyFns;
+	vecTyFns.insert (vecTyFns.end (), setTyFns.begin (), setTyFns.end ());
+
+	return vecTyFns;
+}
+
+/* If TY_O_STRUCT can be declared (which is NOT LITERAL), 
+ * return (opaque) ported type */
+StructType* Porting32::createPortedStructDecl (StructType *tyOStruct) {
+	StructType *tyNStruct;
+
+	if (!tyOStruct->isLiteral ())
+		tyNStruct = StructType::create (*pC, PORTED_NAME(tyOStruct->getName().str()));
+	else
+		tyNStruct = NULL;
+
+	return tyNStruct;
+}
+
+/* Create new struct following ARM standard.
+ * Return: pair of new struct and new index. NULL if failed. */
+vector<unsigned> Porting32::createPortedStructBody (StructType *tyOStruct) {
+	// not accept opaque struct
+	if (tyOStruct->isOpaque ())
+		assert (0 && "opaque type cannot have struct body");
+
+	// not accept excluded struct
+	if (isExcludedStruct (tyOStruct))
+		assert (0 && "excluded struct type cannot have new body");
+
+	bool isPackReq = isPackRequiredStruct (tyOStruct);
+
+	// convert to packed elements
+	vector<Type *> vecElems;
+	for (unsigned i = 0; i < tyOStruct->getNumElements (); ++i)
+		vecElems.push_back (tyOStruct->getElementType (i));
+
+	pair<vector<Type *>, vector<unsigned> > pairPElems;
+	if (isPackReq)
+		pairPElems = convertToPackedElems (vecElems);
+	else
+		pairPElems = convertToNoPackedElems (vecElems);
+	vector<Type *> &vecPElems = pairPElems.first;
+	vector<unsigned> &vecPElemIdx = pairPElems.second;
+
+	if (vecPElems.empty ())
+		return vector<unsigned> ();
+
+	// set ported struct body.
+	// if not literal, ASSUME DECL ALREADY EXISTS
+	StructType *tyNStruct = NULL;
+	if (tyOStruct->isLiteral ()) {
+		tyNStruct = StructType::get (*pC, vecPElems, isPackReq);
+		mapStructs[tyOStruct] = tyNStruct;
+	}
+	else {
+		tyNStruct = mapStructs[tyOStruct];
+		tyNStruct->setBody (vecPElems, isPackReq);
+	}
+
+	string strName;
+	if (tyNStruct->isLiteral ())
+		strName = "(noname)";
+	else
+		strName = tyNStruct->getName ();
+
+	DEBUG.PRINT ("Ported struct created: %s", strName.c_str());
+
+	return vecPElemIdx;
+}
+
+FunctionType* Porting32::createPortedFunctionType (FunctionType *tyFn) {
+	Type *tyNRet = portType (tyFn->getReturnType ());
+	if (tyNRet == NULL) return NULL;
+
+	vector<Type *> vecTyNParams;
+	for (unsigned i = 0; i < tyFn->getNumParams(); ++i) {
+		Type *tyNParam = portType (tyFn->getParamType (i));
+		if (tyNParam == NULL) return NULL;
+		
+		vecTyNParams.push_back (tyNParam);
+	}
+
+	return FunctionType::get (tyNRet, vecTyNParams, tyFn->isVarArg ());
+}
+
+
+/* return packed element and reordered indices.
+ * return empty element vector if failed */
+pair<vector<Type *>, vector<unsigned> > Porting32::convertToPackedElems (vector<Type *> vecElems) {
+	unsigned cntElem = vecElems.size ();
+
+	unsigned off = 0;
+	unsigned nidx = 0;
+	unsigned alignStruct = 0;
+	vector<unsigned> vecPElemIdx;
+	vector<Type *> vecPElems;
+
+	for (unsigned i = 0; i < cntElem; ++i) {
+		Type *tyElem = vecElems[i];
+		Type *tyPElem = portType (tyElem);
+
+		// If type porting failed, cancle processing.
+		if (tyPElem == NULL)
+			return pair<vector<Type *>, vector<unsigned> > (vector<Type *> (), vector<unsigned> ());
+		// if element type is opaque, cancle processing.
+		if (isOpaqueTy(tyPElem))
+			return pair<vector<Type *>, vector<unsigned> > (vector<Type *> (), vector<unsigned> ());
+
+		unsigned alignElem = getTypeByteAlign (tyPElem);
+		unsigned noff;
+
+		// Renew struct align
+		alignStruct = MAX (alignStruct, alignElem);
+
+		// Insert element (and padding, if needed)
+		noff = raiseToMulPowerOf2 (off, alignElem);
+		if (noff - off > 0)
+		{
+			vecPElems.push_back (ArrayType::get (Type::getInt8Ty(*pC), noff - off));
+			nidx++;
+		}
+		DEBUG.PRINT ("%d.off = %d, %d.noff = %d", nidx, off, nidx, noff);
+
+		vecPElems.push_back (tyPElem);
+		vecPElemIdx.push_back (nidx++);
+		off = noff + sizeOf (tyPElem);
+	}
+
+	// Attach tail padding
+	unsigned toff = raiseToMulPowerOf2 (off, alignStruct);
+	DEBUG.PRINT ("(end).off=%d, (end).toff=%d", off, toff);
+	if (toff - off > 0)
+		vecPElems.push_back (ArrayType::get (Type::getInt8Ty(*pC), toff - off));
+
+	return pair<vector<Type *>, vector<unsigned> > (vecPElems, vecPElemIdx);
+}
+
+/* return packed element and reordered indices.
+ * return empty element vector if failed */
+pair<vector<Type *>, vector<unsigned> > Porting32::convertToNoPackedElems (vector<Type *> vecElems) {
+	unsigned cntElem = vecElems.size ();
+
+	vector<unsigned> vecPElemIdx;
+	vector<Type *> vecPElems;
+
+	for (unsigned i = 0; i < cntElem; ++i) {
+		Type *tyElem = vecElems[i];
+		Type *tyPElem = portType (tyElem);
+
+		// If type porting failed, cancle processing.
+		if (tyPElem == NULL)
+			return pair<vector<Type *>, vector<unsigned> > (vector<Type *> (), vector<unsigned> ());
+		// if element type is opaque, cancle processing.
+		if (isOpaqueTy(tyPElem))
+			return pair<vector<Type *>, vector<unsigned> > (vector<Type *> (), vector<unsigned> ());
+
+		vecPElems.push_back (tyPElem);
+		vecPElemIdx.push_back (i);
+	}
+
+	return pair<vector<Type *>, vector<unsigned> > (vecPElems, vecPElemIdx);
+}
+
+/* Get byte align of type.
+ * Return: TYPE's alignment. always power of 2 */
+unsigned Porting32::getTypeByteAlign (Type *type) {
+	Type::TypeID tid = type->getTypeID ();
+	unsigned align = 0;
+
+	switch (tid) {
+		case Type::HalfTyID:
+			align = 2;
+			break;
+		case Type::FloatTyID:
+			align = 4;
+			break;
+		case Type::DoubleTyID:
+			align = 8;
+			break;
+		case Type::IntegerTyID:
+			align = raiseToNearPowerOf2 (type->getScalarSizeInBits () >> 3);
+			break;
+		case Type::StructTyID: {
+			// Follow largest align among elements
+			StructType *tyStruct = (StructType *)type;
+			align = getStructByteAlign (tyStruct);
+			break;
+		}
+		case Type::ArrayTyID: {
+			// Follow element's byte align
+			SequentialType *tySeq = (SequentialType *)type;
+			align = getTypeByteAlign (tySeq->getElementType ());
+			break;
+		}
+		case Type::PointerTyID:
+			align = 4;
+			break;
+		default:
+			DEBUG.ABORT ("not supported type");	
+	}
+
+	return align;
+}
+
+unsigned Porting32::raiseToNearPowerOf2 (unsigned num) {
+	for (unsigned i = 0, rval = 0x1; i < sizeof(unsigned) * 8; ++i, rval <<= 1)	
+		if (rval >= num)
+			return rval;
+
+	DEBUG.ABORT ("number raising failed due to overflow");
+
+	return 0;
+}
+
+unsigned Porting32::getStructByteAlign (StructType *tyStruct) {
+	unsigned cntElem = tyStruct->getNumElements ();
+	unsigned align = 0;
+
+	for (unsigned i = 0; i < cntElem; ++i) {
+		Type *tyElem = tyStruct->getElementType (i);
+		unsigned alignElem = getTypeByteAlign (tyElem);
+		
+		if (alignElem > align)
+			align = alignElem;
+	}
+
+	return align;
+}
+
+unsigned Porting32::raiseToMulPowerOf2 (unsigned num, unsigned unit) {
+	unsigned mask = unit - 1;
+	return (num + mask) & ~mask;
+}
+
+// XXX STRUCT PORTING EXCLUSION MAY DISUNIFY STACK/GLOBAL MEMORY ALLIGNMENT XXX
+bool Porting32::isExcludedStruct (StructType *tyStruct) {
+	if (!tyStruct->isLiteral ()) {
+		string name = tyStruct->getName ();
+
+		if (name == "struct._IO_FILE")				return true;
+		if (name == "struct._IO_marker")			return true;
+		if (name == "struct._G_fpos_t")				return true;
+		if (name == "struct.__mbstate_t")			return true;
+
+		if (name == "struct.siginfo_t")				return true;
+		if (name == "struct.sigaction") 			return true;
+		if (name == "struct.__sigset_t")			return true;
+
+		if (name == "struct.__va_list")				return true;
+
+//		if (name == "class.std::vector")			return false;
+//		if (name.length () >= 19 && name.substr (0, 19) == "struct.std::_Vector")
+//			return false;
+//		if (name == "class.std::map")					return false;
+//		if (name.length () >= 20 && name.substr (0, 20) == "struct.std::_Rb_tree")
+//			return false;
+//		if (name.length () >= 19 && name.substr (0, 19) == "class.std::_Rb_tree")
+//			return false;
+//		if (name.length () >= 16 && name.substr (0, 16) == "struct.std::pair")
+//			return false;
+//
+//		if (name.length () >= 9 && name.substr (0, 9) == "class.std")
+//			return true;
+//		if (name.length () >= 10 && name.substr (0, 10) == "struct.std")
+//			return true;
+	}
+	else if (tyStruct->getNumElements () == 0) {
+		return true;
+	}
+
+	return false;
+}
+
+bool Porting32::isPackRequiredStruct (StructType *tyStruct) {
+	if (!tyStruct->isLiteral ()) {
+		string name = tyStruct->getName ();
+
+		if (name.length () >= 9 && name.substr (0, 9) == "class.std")
+			return false;
+		if (name.length () >= 10 && name.substr (0, 10) == "struct.std")
+			return false;
+		if (name.length () >= 15 && name.substr (0, 15) == "class.__gnu_cxx")
+			return false;
+		if (name.length () >= 16 && name.substr (0, 16) == "struct.__gnu_cxx")
+			return false;
+//		if (name == "class.std::map")					return false;
+//		if (name.length () >= 16 && name.substr (0, 16) == "struct.std::pair")
+//			return false;
+//		
+//		if (name.length () >= 20 && name.substr (0, 20) == "struct.std::_Rb_tree")
+//			return false;
+//
+//		if (name.length () >= 19 && name.substr (0, 19) == "class.std::_Rb_tree")
+//			return false;
+		// XXX: VECTOR_BASE, MAP_BASE REQUIRED
+	}
+
+	return true;
+}	
+
+// XXX GLOBAL VARIABLE PORTING EXCLUSION MAY DISUNIFY STACK/GLOBAL MEMORY ALLIGNMENT XXX
+bool Porting32::isExcludedGlobalVariable (GlobalVariable *gvar) { 
+	// if external weak global variable, do not port
+	bool isExt = gvar->hasExternalWeakLinkage();
+	if (isExt) 
+		return true;
+
+	// if llvm-created global vairable, do not port
+	string name = gvar->getName().str();
+
+	// FIXME: there's no way to distinguish 'really' externally linked variables
+	// (like 'stderr') and those aren't.
+	// temporarily exclude some of variables by their name.
+	if (name == "stderr")		return true;
+	if (name == "stdout")		return true;
+	if (name == "stdin")		return true;
+
+	// if llvm-created global vairable, do not port
+	if (name.length() >= 4 && name.substr (0, 4) == "llvm")
+		return true;
+
+	return false;
+}
+
+// returns whether TY_FN has argument, having type supossed to be ported
+// XXX only detects types selected as porting target before calling this fn XXX
+bool Porting32::hasPortedTypeArg (FunctionType *tyFn) {
+
+	for (unsigned i = 0; i < tyFn->getNumParams (); ++i) {
+		bool ported = false;
+		portType (tyFn->getParamType (i), &ported);
+		if (ported)
+			return true;
+	}
+
+	return false;
+}
+
+void Porting32::replaceToPortedStruct () {
+	// replace process on function arguments
+	DisposeVector vecDispFns;
+
+	vector<Function *> vecModuleFns;
+	DisposeVector vecGlobalDisposed;
+	for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ifn++)
+		vecModuleFns.push_back (&*ifn);
+
+	DEBUG.BEGIN_TASK ("PROC_FNSIGN", "Processing on function signs..");
+	replacePassOnFunctionSign (vecModuleFns, vecGlobalDisposed, vecDispFns);
+	disposeFunctions (vecDispFns, true);
+	DEBUG.END_TASK ("PROC_FNSIGN");
+
+	// replace process on global value (global variable, function)
+	DefMap mapGlobalDef;
+
+	DEBUG.BEGIN_TASK ("PROC_GV", "Processing on global variables..");
+	// replace process on global variables (+ global alias)
+	vector<GlobalValue *> vecModuleGvars;
+	for (Module::global_iterator igbl = pM->global_begin ();
+			 igbl != pM->global_end (); ++igbl) {
+		vecModuleGvars.push_back (&*igbl);
+		pendDef (&*igbl, mapGlobalDef);		// regist this as PENDED 
+	}
+
+	for (Module::alias_iterator igali = pM->alias_begin ();
+			 igali != pM->alias_end (); ++igali) {
+		vecModuleGvars.push_back (&*igali);
+		pendDef (&*igali, mapGlobalDef);
+	}
+
+	while (!vecModuleGvars.empty ()) {
+		GlobalValue *gl = vecModuleGvars.front ();
+		vecModuleGvars.erase (vecModuleGvars.begin ());		
+
+		DEBUG.BEGIN_TASK ("GV", "Processing: %s", gl->getName().str().c_str());
+		if (!replacePassOnGlobalVariable (gl, mapGlobalDef, vecGlobalDisposed))
+			vecModuleGvars.push_back (gl);
+		DEBUG.END_TASK ("GV");
+	}
+	DEBUG.END_TASK ("PROC_GV");
+
+	// create function wrappers (which converts arguments before external fn. call)
+	DEBUG.BEGIN_TASK ("CREAT_FNWRAP", "Creating external function wrappers..");
+	for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ifn++) {
+		Function *fn = &*ifn;
+
+		if (isConverterWrapperRequired (fn)) {
+			DEBUG.BEGIN_TASK ("FNWRAP", "Creating wrapper: %s", fn->getName().str().c_str ());
+			createConverterWrapper (fn, mapGlobalDef);
+			DEBUG.END_TASK ("FNWRAP");
+		}
+	}
+	DEBUG.END_TASK ("CREAT_FNWRAP");
+
+	// replace process on each function
+	DEBUG.BEGIN_TASK ("PROC_FN", "Processing on functions..");
+	for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ifn++) {
+		Function *fn = &*ifn;
+		DEBUG.BEGIN_TASK ("FN", "Processing: %s", fn->getName().str().c_str());
+
+		if (fn->isDeclaration ()) {
+			DEBUG.PASS_TASK ("FN", "(omitting declaration..)");
+			continue;
+		}
+
+		// and skip the external function wrappers we inserted.
+		string fnname = fn->getName().str();
+		if (fnname.length () > 2 && fnname.substr (fnname.length () - 2, 2) == ".p") {
+			DEBUG.PASS_TASK ("FN", "(omitting external wrapper..)");
+			continue;
+		}
+
+		DefMap mapArgDef = DefMap ();
+		if (isPortedFunction (fn))
+			mapArgDef = mapFnArgs[fn];
+
+		replacePassOnFunction (fn, mapGlobalDef, mapArgDef);
+		DEBUG.END_TASK ("FN");
+	}
+	disposeValues (vecGlobalDisposed);	
+	DEBUG.END_TASK ("PROC_FN");
+
+	disposeFunctions (vecDispFns, false);
+}
+
+bool Porting32::replacePassOnGlobalVariable (GlobalValue *gl, DefMap &mapGlobalDef, 
+			DisposeVector &vecDisposed) {
+	if (GlobalVariable *gvar = dyn_cast<GlobalVariable> (gl)) {
+		// if GVAR is banned to port, omit GVAR
+		if (isExcludedGlobalVariable (gvar)) {
+			DEBUG.PRINT ("omitting excluded variable..");
+			removeDef (gvar, mapGlobalDef);	
+
+			return true;
+		}
+
+		bool tyPorted = false;
+		PointerType *tyGvar = gvar->getType ();
+		PointerType *tyNGvar = dyn_cast<PointerType> (portType (tyGvar, &tyPorted));
+		Constant *cnstNInitzer = NULL;
+		Type *tyNGvarDeref = tyNGvar->getElementType ();
+
+		if (tyNGvar == NULL) {
+	#ifdef PRINT_DUMP
+			cerr << gvar->getName().str() << ": "; tyGvar->dump (); cerr << endl;
+	#endif
+			DEBUG.ABORT ("replacePassOnGlobalVariable: some struct not tyPorted successfully");
+		}
+
+		bool initPorted = false;
+		if (gvar->hasInitializer ()) {
+			DefMap mapEmpty;
+			Constant *cnstInitzer = gvar->getInitializer ();
+			
+			// port CNST_INITZER 
+			Value *valNInitzer = portDef (cnstInitzer, mapGlobalDef, mapEmpty, &initPorted);
+			if (valNInitzer == NULL) {
+				DEBUG.PRINT ("cannot port this variable now");
+				return false;
+			}
+
+			cnstNInitzer = dyn_cast<Constant> (valNInitzer);
+
+			assert (cnstNInitzer != NULL && "ported initializer must have Constant type");
+		}
+		else
+			cnstNInitzer = NULL;
+			
+		if (tyPorted || initPorted) {
+			bool isConst = gvar->isConstant ();
+			GlobalValue::LinkageTypes lntype = gvar->getLinkage ();
+			string strName = gvar->getName ();
+
+			GlobalVariable *nGvar = new GlobalVariable (*pM, tyNGvarDeref, isConst, lntype, NULL, 
+				PORTED_NAME(strName), gvar);
+			nGvar->copyAttributesFrom (gvar);
+
+			nGvar->setInitializer (cnstNInitzer);
+
+			Constant *cnstInitzer = gvar->getInitializer ();
+			gvar->setInitializer (UndefValue::get (cnstInitzer->getType ()));
+		
+			tryRegistDef (gvar, nGvar, mapGlobalDef);
+		//	gvar->setInitializer (NULL);
+			registDispose (gvar, vecDisposed);
+		}
+		else {
+			DEBUG.PRINT ("omitting un-ported type variable..");
+			removeDef (gvar, mapGlobalDef);	
+		}
+	}
+	else if (GlobalAlias *gali = dyn_cast<GlobalAlias> (gl)) {
+//		bool tyPorted = false;
+//		PointerType *tyGali = gali->getType ();
+//		PointerType *tyNGali = (PointerType *)portType (tyGali, &tyPorted);
+//
+//		if (tyNGali == NULL) {
+//	#ifdef PRINT_DUMP
+//			cerr << gali->getName().str() << ": "; tyGali->dump (); cerr << endl;
+//	#endif
+//			DEBUG.ABORT ("replacePassOnGlobalVariable: some struct not tyPorted successfully");
+//		}
+		bool cnstPorted = false;
+
+		DefMap mapEmpty;
+		GlobalAlias *nGali = gali;
+		Constant *cnstAliasee = gali->getAliasee ();
+		Value *valNAliasee = portDef(cnstAliasee, mapGlobalDef, mapEmpty, &cnstPorted);
+		GlobalValue *gvalNAliasee = dyn_cast<GlobalValue> (valNAliasee);
+
+		if (cnstPorted) {
+			GlobalValue::LinkageTypes lntype = gali->getLinkage ();
+			string strName = gali->getName ();
+
+			nGali = GlobalAlias::create (lntype, PORTED_NAME (strName), gvalNAliasee);
+			gali->setAliasee (UndefValue::get (cnstAliasee->getType ()));
+
+			tryRegistDef (gali, nGali, mapGlobalDef);
+			registDispose (gali, vecDisposed);
+		}
+		else {
+			DEBUG.PRINT ("omitting un-ported type variable..");
+			removeDef (gali, mapGlobalDef);	
+		}
+	}
+
+	return true;
+}
+
+void Porting32::createConverterWrapper (Function *fn, DefMap &mapGlobalDef) {
+	FunctionType *tyOFn = fn->getFunctionType ();
+	FunctionType *tyNFn = dyn_cast<FunctionType> (portType (tyOFn));
+
+	assert (tyOFn != tyNFn && "need not to create wrapper. something's wrong.");
+
+	// make wrapper function
+	Function *fnWrapper = Function::Create (tyNFn, GlobalValue::PrivateLinkage,
+		PORTED_NAME(fn->getName().str()), pM);
+	BasicBlock *blkWrapper = BasicBlock::Create (*pC, "base", fnWrapper);
+
+	// create external function call: this would be te basis.
+	vector<Value *> vecDummyArgs;
+	for (unsigned i = 0; i < tyOFn->getNumParams (); i++)
+		vecDummyArgs.push_back (UndefValue::get (tyOFn->getParamType (i)));
+	CallInst *instCall = CallInst::Create (fn, vecDummyArgs, "", blkWrapper);
+	if (!instCall->getType()->isVoidTy ()) instCall->setName ("extcall");
+	Instruction *instAfterCall = new UnreachableInst (*pC, blkWrapper);	/**< will be deleted */
+
+	/* replace with real (converted) arguments.
+	 * insert argument-conversion code if required */
+	vector<Value *> vecAArgs;
+	for (Function::arg_iterator iarg = fnWrapper->arg_begin (); iarg != fnWrapper->arg_end (); iarg++)
+		vecAArgs.push_back (&*iarg);
+
+	for (unsigned i = 0; i < vecAArgs.size (); i++) {
+		Value *valOArg = NULL;
+
+		insertPortingCode (vecAArgs[i], instCall, true, valOArg);	
+		instCall->setArgOperand (i, valOArg);
+	}		
+
+	// insert post argument-conversion & return value conversion code
+	for (unsigned i = 0; i < instCall->getNumArgOperands (); i++) {
+		Value *valOArg = instCall->getArgOperand (i);
+		Value *valRes = NULL;		/**< Not used. dummy output */
+
+		if (dyn_cast<PointerType> (valOArg->getType ()))
+			insertPortingCode (valOArg, instAfterCall, false, valRes, vecAArgs[i]);
+	}
+	
+	Value *valNRet = NULL;
+	insertPortingCode (instCall, instAfterCall, false, valNRet);
+
+	// insert return inst.
+	Instruction *instReturn = NULL;
+	if (fnWrapper->getReturnType()->isVoidTy ())
+		instReturn = ReturnInst::Create (*pC, instAfterCall->getParent ());
+	else
+		instReturn = ReturnInst::Create (*pC, valNRet, instAfterCall);
+	instAfterCall->eraseFromParent ();		/**< temporary place-holder removed */
+
+	// regist the wrapper to global defmap
+	tryRegistDef (fn, fnWrapper, mapGlobalDef);
+
+	return;
+}
+
+vector<Argument *> Porting32::getFunctionArgs (Function *fn) {
+	vector<Argument *> vecArgs;
+
+	for (Function::arg_iterator it = fn->arg_begin ();
+			 it != fn->arg_end (); ++it)
+		vecArgs.push_back (&*it);
+
+	return vecArgs;
+}
+
+Function* Porting32::getFnFromCallableVal (Value *val) {
+	if (ConstantExpr *cexp = dyn_cast<ConstantExpr> (val)) {
+		OperandVector vecOpers = getOperands (cexp);
+		return getFnFromCallableVal (vecOpers[0]);
+	}
+	else if (Function *fn = dyn_cast<Function> (val)) {
+		return fn;
+	}
+	else {
+		// if function pointer, cannot get function from VAL
+		return NULL;
+	}
+}
+			
+bool Porting32::hasCallableType (Value *val) {
+	Type *tyVal = val->getType ();
+	
+	if (PointerType *tyPt = dyn_cast<PointerType> (tyVal)) {
+		if (dyn_cast<FunctionType> (tyPt->getElementType ()))
+			return true;
+	}
+
+	return false;
+}
+
+// XXX TY MUST 'POINTER' OF SOME TYPE XXX
+GlobalVariable* Porting32::getTempGlobalVariable (Type *ty) {
+	if (PointerType *tyPt = dyn_cast<PointerType> (ty)) {
+		Type *tyPtDeref = tyPt->getElementType ();
+		return new GlobalVariable (tyPtDeref, false, GlobalValue::PrivateLinkage);
+	}
+
+	DEBUG.ABORT ("Attempted to create non-pointer type global variable");
+
+	return NULL;
+}
+
+// FIXME: polishing required
+// Create ported function sign.
+void Porting32::replacePassOnFunctionSign (vector<Function *> vecFns, DisposeVector &vecDisposed, 
+		DisposeVector &vecDispFns) {
+	for (unsigned i = 0; i < vecFns.size (); ++i) {
+		Function *fn = vecFns[i];
+
+		/* Prepare new function's formal argument
+		 * Replacement target argument will be substituted with ported argument
+		 * and target argument itself pushed back to argument list */
+		vector<Type *> vecTArgTys;
+		
+		bool argPorted = false;
+		vector<Argument *> vecArgs = getFunctionArgs (fn);
+		vector<Value *> vecMapTarget;
+		for (unsigned i = 0; i < vecArgs.size (); ++i) {
+			bool ported = false;
+			Type *tyArg = vecArgs[i]->getType ();
+			Type *tyTArg = portType (tyArg, &ported);
+
+			vecTArgTys.push_back (tyTArg);
+			if (ported) {
+				/* if ported argument, register (temp) mapping target to VEC_MAP_TARGET */
+				GlobalVariable *cnstTemp = getTempGlobalVariable (tyArg);
+				vecMapTarget.push_back (cnstTemp);
+				argPorted = true;
+			}
+			else {
+				/* else, register NULL to VEC_MAP_TARGET */
+				vecMapTarget.push_back (NULL);
+			}
+		}
+
+		// Prepare new function's return type
+		bool retPorted = false;
+		Type *tyTRet = portType (fn->getReturnType (), &retPorted);
+
+		// if function signature is ported..
+		if (retPorted || argPorted)
+		{
+			Function::LinkageTypes lntype = fn->getLinkage ();
+			string strName = fn->getName ();
+#ifdef PRINT_DUMP
+			cerr << "replacePassOnFunctionSign: " << strName << endl;
+#endif
+
+			// blow out org function's name
+			fn->setName ("__disposed_function__");
+
+			FunctionType *tyTFn = FunctionType::get (tyTRet, vecTArgTys, fn->getFunctionType()->isVarArg ());
+			Function *pFn = Function::Create (tyTFn, lntype, strName);
+			assert (pFn != NULL && "T_FN should not be null");
+		
+			vector<Argument *> vecTArgs = getFunctionArgs (pFn);
+			ValueToValueMapTy mapValToVal;
+
+			/* Map unported formal arguments (from org function to new function)
+			 * Insert unported-to-ported def pair 
+			 * - to be pushed on local-defmap before pass-on-function */
+			for (unsigned i = 0; i < vecArgs.size (); ++i) {
+				if (vecMapTarget[i] != NULL) {
+					mapValToVal.insert (pair<const Value *, WeakVH> (vecArgs[i], vecMapTarget[i]));
+					mapFnArgs[pFn].insert (DefPair (vecMapTarget[i], vecTArgs[i]));
+				}
+				else {
+					mapValToVal.insert (pair<const Value *, WeakVH> (vecArgs[i], vecTArgs[i]));
+				}
+			}
+
+			for (unsigned i = 0; i < vecTArgs.size (); ++i)
+				vecTArgs[i]->takeName (vecArgs[i]);
+			
+			SmallVector<ReturnInst *, 4> vecRet;
+			CloneFunctionInto (pFn, fn, mapValToVal, false, vecRet);
+
+			assert (pFn != NULL && "T_FN should not be null");
+		
+			mapFns.insert (pair<Function *, Function *> (fn, pFn));
+			//mapTyFns[(FunctionType *)fn->getType ()] = (FunctionType *)pFn->getType ();
+			mapFnArgOrgCnt.insert (pair<Function *, unsigned>(pFn, vecArgs.size ()));
+
+			// dispose org function.
+			registDispose (fn, vecDispFns);
+
+			// push temporary function on module
+			pM->getFunctionList().push_back (pFn);
+		}
+	}
+}
+
+void Porting32::replacePassOnFunction (Function *fn, DefMap &mapGlobalDef, DefMap &mapArgDef) { 
+	DefMap mapLocalDef;
+	DisposeVector vecDisposed;
+
+	// push argument def-map to local def-map
+	mapLocalDef.insert (mapArgDef.begin (), mapArgDef.end ());
+
+	// replace process on each instructions
+	vector<Instruction *> vecInsts;
+	for (Function::iterator ibb = fn->begin (); ibb != fn->end (); ibb++) {
+		for (BasicBlock::iterator iinst = ibb->begin (); iinst != ibb->end (); iinst++) {
+			Instruction *inst = &*iinst;
+	
+			vecInsts.push_back (inst);
+			pendDef (inst, mapLocalDef);			
+		}
+	}
+
+	map<PHINode *, PHINode *> mapPhis;
+	while (!vecInsts.empty ()) {
+		Instruction *inst = NULL;
+		vector<Instruction *> vecPInsts;
+
+		inst = vecInsts[0];
+		vecInsts.erase (vecInsts.begin ());
+
+		bool ported = false;
+		Value *repl = NULL;
+		if (PHINode *instPhi = dyn_cast<PHINode> (inst)) {
+			PHINode *instNPhi = createPortedPHINodeDecl (instPhi);
+			mapPhis.insert (pair<PHINode *, PHINode *> (instPhi, instNPhi));
+
+			vecPInsts.push_back (instNPhi);
+			ported = true;	
+		}
+		else {
+			vecPInsts = portInstruction (inst, mapGlobalDef, mapLocalDef, &ported, &repl);
+		}
+
+		if (vecPInsts.empty () && !repl) {
+			vecInsts.push_back (inst);
+			inst->dump ();
+			DEBUG.PRINT ("instruction cannot be processed now");
+			continue;
+		}
+
+		if (ported) {
+			for (unsigned i = 0; i < vecPInsts.size (); i++)
+				vecPInsts[i]->insertBefore (inst);
+
+			Value *valRepl;
+			if (!repl)
+				valRepl = vecPInsts[vecPInsts.size () - 1];
+			else
+				valRepl = repl;
+
+			tryRegistDef (inst, valRepl, mapLocalDef);
+			registDispose (inst, vecDisposed);	
+		}
+		else {
+			removeDef (inst, mapLocalDef);
+		}
+	}
+
+	DEBUG.PRINT ("filling PHI nodes..");	
+	for (map<PHINode *, PHINode *>::iterator iphi = mapPhis.begin (); iphi != mapPhis.end (); ++iphi) {
+		PHINode *instOPhi = iphi->first;
+		PHINode *instNPhi = iphi->second;
+
+		fillPortedPHINode (instOPhi, instNPhi, mapGlobalDef, mapLocalDef); 
+	}
+
+	// Remove all disposed instructions (in reverse order, due to def-use chain)
+	disposeValues (vecDisposed);
+}
+
+/* Remap indices in VEC_INDICES
+ * using old struct -> ported struct index map (MAP_ST_ELEM_IDX)
+ * TY_START must be old struct type. (NOT PORTED TYPE) */
+vector<Value *> Porting32::remapIndexList (vector<Value *> &vecIndices, Type *tyStart) {
+	vector<Value *> vecNIndices;
+
+	Type *tyNext = tyStart;
+	for (unsigned i = 0; i < vecIndices.size (); ++i) {
+		bool ported;
+		StructType *tyStruct = dyn_cast<StructType>(tyNext);
+		if (tyStruct != NULL) portType (tyStruct, &ported);
+		ConstantInt *valIdx = (ConstantInt *)vecIndices[i];
+
+		if (tyStruct == NULL || !ported)
+			vecNIndices.push_back (valIdx);
+		else {
+			uint64_t bwidth = valIdx->getBitWidth ();
+			uint64_t val = valIdx->getZExtValue ();
+			Value *valNIdx = getConstantInt (bwidth, mapStElemIdx[tyStruct][val]);
+
+			vecNIndices.push_back (valNIdx);
+		}
+
+		if (i + 1 < vecIndices.size ())
+			tyNext = ((CompositeType *)tyNext)->getTypeAtIndex (valIdx);
+	}
+
+	return vecNIndices;
+}
+
+//FIXME: This function is redundant. Above function does a similar operation
+vector<unsigned> Porting32::remapUnsignedIndexList (vector<unsigned> &vecIndices, Type *tyStart) {
+	vector<unsigned> vecNIndices;
+
+	Type *tyNext = tyStart;
+	for (unsigned i = 0; i < vecIndices.size (); ++i) {
+		StructType *tyStruct = dyn_cast<StructType> (tyNext);
+
+		if (tyStruct == NULL)
+			vecNIndices.push_back (vecIndices[i]);
+		else
+			vecNIndices.push_back (mapStElemIdx[tyStruct][vecIndices[i]]);
+
+		if (i + 1 < vecIndices.size ())
+			tyNext = ((CompositeType *)tyNext)->getTypeAtIndex (vecIndices[i]);
+	}
+
+	return vecNIndices;
+
+}
+
+vector<unsigned> Porting32::convertValueToUnsigned (vector<Value *> &vecValues) {
+	vector<unsigned> vecUnsigned;
+	
+	for (unsigned i = 0; i < vecValues.size (); ++i) {
+		vecUnsigned.push_back (((ConstantInt *)vecValues[i])->getZExtValue ());
+	}
+
+	return vecUnsigned;
+}
+
+Porting32::OperandVector Porting32::getOperands (User *user) {
+	vector<Value *> indices;
+
+	for (User::op_iterator iOper = user->op_begin ();
+			 iOper != user->op_end (); ++iOper)
+	{
+		Value *val = iOper->get ();
+		indices.push_back (val);
+	}
+
+	return indices;
+}
+
+/* Return ported def, if exists
+ * return O_DEF if not exists */
+Value* Porting32::portDef (Value *oDef, DefMap &mapGlobalDef, DefMap &mapLocalDef, OUT bool *ported) {
+	// if O_DEF has been replaced..
+	DefMap::iterator iDef;
+
+	iDef = mapGlobalDef.find (oDef);
+	if (iDef != mapGlobalDef.end ())
+	{
+		if (ported != NULL) *ported = true;
+		return iDef->second;
+	}
+
+	iDef = mapLocalDef.find (oDef);
+	if (iDef != mapLocalDef.end ())
+	{
+		if (ported != NULL) *ported = true;
+		return iDef->second;
+	}
+
+	// XXX polishing required : more systematically..
+	// if O_DEF has callable type but not NULL..
+	if (hasCallableType (oDef) && !dyn_cast<ConstantPointerNull> (oDef)) {
+		bool fnPorted = false;
+		Value *pVal = portCallableValue (oDef, mapGlobalDef, &fnPorted);
+	
+		if (ported != NULL) *ported = fnPorted;
+		return pVal;
+	}
+
+	// if O_DEF is Constant (other than global value)..
+	if (!dyn_cast<GlobalValue>(oDef)) {
+		if (Constant *cnst = dyn_cast<Constant>(oDef)) {
+			bool cnstPorted = false;
+			Constant *nCnst = portConstant (cnst, mapGlobalDef, mapLocalDef, &cnstPorted);
+			if (nCnst == NULL)
+				return NULL;
+			
+			if (ported != NULL) *ported = cnstPorted;
+			return nCnst;
+		}
+	}
+
+	// if O_DEF is ordinary value
+	if (ported != NULL) *ported = false;
+	return oDef;
+}
+
+void Porting32::pendDef (Value *oVal, DefMap &mapDef) {
+	mapDef[oVal] = NULL;
+}
+
+
+/* if O_INST had potable type, insert def list to search later
+ * otherwise, replace all uses instantly */
+void Porting32::tryRegistDef (Value *oVal, Value *nVal, DefMap &mapDef) {
+	bool ported = false;
+	Type *tyPorted = portType (oVal->getType (), &ported);
+	
+	if (tyPorted == NULL) {
+#ifdef PRINT_DUMP
+		oVal->getType()->dump ();
+		cerr << endl;
+#endif
+		DEBUG.ABORT ("tryRegistDef: some struct not ported successfully");
+	}
+
+	if (!ported) {
+		DEBUG.PRINT ("portable type. replacing all..");
+		oVal->replaceAllUsesWith (nVal);
+	}
+	else {
+		DEBUG.PRINT ("un-portable type. registered");
+		if (mapDef.find (oVal) == mapDef.end ())
+			mapDef.insert (DefPair (oVal, nVal));
+		else if (mapDef[oVal] == NULL)						// if PENDED def, update it
+			mapDef[oVal] = nVal;
+		else
+			DEBUG.ABORT ("attemped to map def twice");
+	}
+}
+
+void Porting32::removeDef (Value *oVal, DefMap &mapDef) {
+	if (mapDef.find (oVal) != mapDef.end ())
+		mapDef.erase (oVal);
+}
+
+/* push back to dispose list */
+void Porting32::registDispose (Value *val, DisposeVector &vecDisposed) {
+	DEBUG.PRINT ("pushed dispose list: %s", val->getName().str().c_str());
+	vecDisposed.push_back (val);
+}
+
+void Porting32::disposeValues (DisposeVector &vecDisposed) {
+	list<Value *> lstDisposed;
+	lstDisposed.insert (lstDisposed.begin (), vecDisposed.begin (), vecDisposed.end ());
+
+	for (int i = vecDisposed.size () - 1; i >= 0; --i) {
+		Value *&valDisp = vecDisposed[i];
+		DEBUG.BEGIN_TASK ("DISP_VAL", "disposing '%s'..", valDisp->getName().str().c_str());
+	
+		if (Instruction *inst = dyn_cast<Instruction>(valDisp)) {
+			inst->replaceAllUsesWith (UndefValue::get (inst->getType ()));
+			inst->eraseFromParent ();
+		}
+		else if (GlobalVariable *gvar = dyn_cast<GlobalVariable>(valDisp)) {
+			gvar->removeDeadConstantUsers ();
+			if (!gvar->user_empty ()) {
+				DEBUG.PASS_TASK ("DISP_VAL", "not now..");
+				for (Value::user_iterator it = gvar->user_begin (); 
+						 it != gvar->user_end (); ++it) 
+					it->dump ();
+			}
+
+			gvar->eraseFromParent ();
+		}
+		else if (GlobalAlias *gali = dyn_cast<GlobalAlias>(valDisp)) {
+			gali->removeDeadConstantUsers ();
+			if (gali->getNumUses () > 0) { 
+				DEBUG.PASS_TASK ("DISP_VAL", "not now..");
+				for (Value::user_iterator it = gali->user_begin (); 
+						 it != gali->user_end (); ++it) {
+					it->dump ();
+					it->user_begin()->dump ();
+				}
+			}
+
+			gali->eraseFromParent ();
+		}
+		else {
+			valDisp->dump();
+			assert (0 && "unhandled dispose value");
+		}
+
+		DEBUG.END_TASK ("DISP_VAL");
+	}
+}
+
+void Porting32::disposeFunctions (DisposeVector &vecDispFns, bool remainDecl) {
+	for (int i = vecDispFns.size () - 1; i >= 0; --i) {
+		DEBUG.PRINT ("blowing function body '%s'..", vecDispFns[i]->getName().str().c_str());
+		Function *fn = dyn_cast<Function> (vecDispFns[i]);
+
+		fn->deleteBody ();
+	}
+
+	for (int i = vecDispFns.size () - 1; i >= 0; --i) {
+		DEBUG.PRINT ("disposing '%s'..", vecDispFns[i]->getName().str().c_str());
+		if (remainDecl)
+			DEBUG.PRINT_SUB ("(remaining declaration)");
+
+		Function *fn = dyn_cast<Function> (vecDispFns[i]);
+		fn->removeDeadConstantUsers ();
+
+		if (!remainDecl) {
+			if (!fn->user_empty ()) {
+				DEBUG.PRINT_SUB ("not now..");
+				for (Value::user_iterator it = fn->user_begin (); 
+						 it != fn->user_end (); ++it) {
+					it->dump ();
+					it->user_begin()->dump ();
+				}
+			}
+		}
+
+		fn->dropAllReferences ();
+		if (fn->getParent () == NULL) {
+			if (!remainDecl)	delete fn;
+		}
+		else {
+			if (remainDecl) 	fn->removeFromParent ();
+			else 							fn->eraseFromParent ();
+		}
+	}
+}	
+
+
+/* Return ported type.
+ * Return NULL if type porting is still in processing */ 
+Type* Porting32::portType (Type *type, OUT bool *ported) {
+	if (StructType *tyStruct = dyn_cast<StructType> (type)) {
+		map<StructType *, StructType *>::iterator it = mapStructs.find ((StructType *)type);
+
+		/* if not found, type is not ported
+		 * if found, type ported to it->second
+		 * (still it can be NULL if ported type is literal before processing) */
+		if (it == mapStructs.end ()) {
+			if (ported != NULL) *ported = false;
+			return type;	
+		}
+		else {
+			if (ported != NULL) *ported = true;
+			return it->second;
+		}
+	}
+	else if (ArrayType *tyArray = dyn_cast<ArrayType> (type)) {
+		Type *tyElem = tyArray->getElementType ();
+		unsigned cntArray = tyArray->getNumElements ();
+		bool portedElem = false;
+
+		Type *tyNElem = portType (tyElem, &portedElem);
+		
+		// if ported element type TY_N_ELEM is NULL, error occured.
+		if (tyNElem == NULL)
+			return NULL;
+		else {
+			if (ported != NULL)
+				*ported = portedElem;
+			return ArrayType::get (tyNElem, cntArray);
+		}
+	}
+	else if (VectorType *tyVec = dyn_cast<VectorType> (type)) {
+		Type *tyElem = tyVec->getElementType ();
+		unsigned cntVector = tyVec->getNumElements ();
+		bool portedElem = false;
+
+		Type *tyNElem = portType (tyElem, &portedElem);
+		
+		// if ported element type TY_N_ELEM is NULL, error occured.
+		if (tyNElem == NULL)
+			return NULL;
+		else {
+			if (ported != NULL)
+				*ported = portedElem;
+			return VectorType::get (tyNElem, cntVector);
+		}
+	}
+	else if (PointerType *tyPt = dyn_cast<PointerType> (type)) {
+		bool portedBase = false;
+		Type *tyNPtDeref = portType (tyPt->getElementType (), &portedBase);
+
+		// if ported dereferenced type TY_N_ELEM is NULL, error occured.
+		if (tyNPtDeref == NULL)
+			return NULL;
+		else {
+			if (ported != NULL)
+				*ported = portedBase;
+			return PointerType::get (tyNPtDeref, tyPt->getAddressSpace ());
+		}
+	}
+	else if (FunctionType *tyFn = dyn_cast<FunctionType> (type)) {
+		map<FunctionType *, FunctionType *>::iterator it = mapTyFns.find (tyFn);
+
+		if (it == mapTyFns.end ()) {
+			// give it a second chance: can it be ported on the spot?
+			FunctionType *tyNFn = createPortedFunctionType (tyFn);
+
+			if (ported != NULL) *ported = (tyNFn != tyFn);
+			return tyNFn;	
+		}
+		else {
+			if (ported != NULL) *ported = true;
+			return it->second;
+		}
+	}
+	else {
+		if (ported != NULL)
+			*ported = false;
+		return type;
+	}
+}
+
+/* Return ported type.
+ * Return NULL if ported type not exists */ 
+Type* Porting32::unportType (Type *type, OUT bool *unported) {
+	Type::TypeID tid = type->getTypeID ();
+
+	switch (tid) {
+		case Type::StructTyID: {
+			StructType *tyUStruct = NULL;
+
+			for (map<StructType *, StructType *>::iterator it = mapStructs.begin ();
+					 it != mapStructs.end (); ++it) {
+				if (it->second == type) {
+					tyUStruct = it->first;
+					break;
+				}
+			}
+
+			if (tyUStruct == NULL) {
+				if (unported != NULL) *unported = false;
+				return type;	
+			}
+			else {
+				if (unported != NULL) *unported = true;
+				return tyUStruct;
+			}
+		}
+		case Type::ArrayTyID: {
+			Type *tyElem = ((SequentialType *)type)->getElementType ();
+			unsigned cntArray = ((ArrayType *)type)->getNumElements ();
+			bool unportedElem = false;
+
+			Type *tyUElem = unportType (tyElem, &unportedElem);
+			if (tyUElem == NULL)
+				return NULL;
+			else {
+				if (unported != NULL)
+					*unported = unportedElem;
+				return ArrayType::get (tyUElem, cntArray);
+			}
+		}
+		case Type::VectorTyID: {
+			Type *tyElem = ((SequentialType *)type)->getElementType ();
+			unsigned cntVector = ((VectorType *)type)->getNumElements ();
+			bool unportedElem = false;
+
+			Type *tyUElem = unportType (tyElem, &unportedElem);
+			if (tyUElem == NULL)
+				return NULL;
+			else {
+				if (unported != NULL)
+					*unported = unportedElem;
+				return VectorType::get (tyUElem, cntVector);
+			}
+		}
+		case Type::PointerTyID: {
+			PointerType *tyPt = (PointerType *)type;
+			bool unportedBase = false;
+
+			Type *tyUPtDeref = unportType (tyPt->getElementType (), &unportedBase);
+			if (tyUPtDeref == NULL)
+				return NULL;
+			else {
+				if (unported != NULL)
+					*unported = unportedBase;
+				return PointerType::get (tyUPtDeref, tyPt->getAddressSpace ());
+			}
+		}
+		case Type::FunctionTyID: {
+			FunctionType *tyUFn = NULL;
+
+			for (map<FunctionType *, FunctionType *>::iterator it = mapTyFns.begin ();
+					 it != mapTyFns.end (); ++it) {
+				if (it->second == type) {
+					tyUFn = it->first;
+					break;
+				}
+			}
+
+			if (tyUFn == NULL) {
+				if (unported != NULL) *unported = false;
+				return type;	
+			}
+			else {
+				if (unported != NULL) *unported = true;
+				return tyUFn;
+			}
+		}
+		default:
+			if (unported != NULL)
+				*unported = false;
+			return type;
+	}
+}
+
+Constant* Porting32::portConstant (Constant *cnst, DefMap &mapGlobalDef, DefMap &mapLocalDef,
+			OUT bool *ported) {
+	if (dyn_cast<ConstantStruct>(cnst) != NULL) {
+		ConstantStruct *cnstStruct = (ConstantStruct *)cnst;
+
+		bool stPorted = false;
+		StructType *tyStruct = (StructType *)cnstStruct->getType ();
+		StructType *tyNStruct = (StructType *)portType (tyStruct, &stPorted);
+		vector<Constant *> vecNElem;
+
+		vector<unsigned> &vecNElemIdx = mapStElemIdx[tyStruct];
+
+		for (unsigned i = 0; i < vecNElemIdx.size (); ++i) {
+			bool elemPorted = false;
+			Constant *cnstElem = cnstStruct->getAggregateElement (i);
+			Value *valNElem = portDef (cnstElem, mapGlobalDef, mapLocalDef, &elemPorted);
+
+			// if porting failed, return NULL
+			if (valNElem == NULL) return NULL;
+			
+			// else, VAL_N_ELEM should be ported 'constant'
+			Constant *cnstNElem = dyn_cast<Constant> (valNElem);
+
+			stPorted |= elemPorted;
+			vecNElem.push_back (cnstNElem);
+
+			// (ported(next idx) - ported(this idx)) > 1, should insert padding
+			if (i + 1 < vecNElemIdx.size () && vecNElemIdx[i + 1] - vecNElemIdx[i] > 1) {
+				Constant *cnstPad = ConstantArray::get ((ArrayType *)tyNStruct->getElementType (vecNElemIdx[i] + 1),
+					vector<Constant *> ());
+				vecNElem.push_back (cnstPad);
+			}
+		}
+
+		// if final padding exists, insert it
+		if ((tyNStruct->getNumElements () - 1) - vecNElemIdx[vecNElemIdx.size () - 1] == 1) {
+			Constant *cnstPad = ConstantArray::get (
+				(ArrayType *)tyNStruct->getElementType (tyNStruct->getNumElements () - 1),
+				vector<Constant *> ());
+			vecNElem.push_back (cnstPad);
+		}
+
+#ifdef PRINT_DUMP
+		cerr << "portConstant: struct to ";
+		tyNStruct->dump ();
+		cerr << endl;
+#endif
+
+		if (ported != NULL) *ported = stPorted;
+		return ConstantStruct::get (tyNStruct, vecNElem);
+	}
+	else if (dyn_cast<ConstantArray>(cnst) != NULL) {
+		ConstantArray *cnstArr = (ConstantArray *)cnst;
+
+		bool arrPorted = false;
+		ArrayType *tyArr = (ArrayType *)cnstArr->getType ();
+		ArrayType *tyNArr = (ArrayType *)portType (tyArr, &arrPorted);
+		vector<Constant *> vecNElem;
+
+		unsigned cntElem = tyArr->getNumElements ();
+		for (unsigned i = 0; i < cntElem; ++i) {
+			bool elemPorted = false;
+			Constant *cnstElem = cnstArr->getAggregateElement (i);
+			Value *valNElem = portDef (cnstElem, mapGlobalDef, mapLocalDef, &elemPorted);
+
+			// if porting failed, return NULL
+			if (valNElem == NULL) return NULL;
+			
+			// else, VAL_N_ELEM should be ported 'constant'
+			Constant *cnstNElem = dyn_cast<Constant> (valNElem);
+
+			arrPorted |= elemPorted;
+			vecNElem.push_back (cnstNElem);
+		}
+
+		if (ported != NULL) *ported = arrPorted;
+		return ConstantArray::get (tyNArr, vecNElem);
+	}
+	else if (dyn_cast<ConstantVector>(cnst) != NULL) {
+		ConstantVector *cnstVec = (ConstantVector *)cnst;
+
+		bool arrPorted = false;
+		VectorType *tyVec = (VectorType *)cnstVec->getType ();
+		vector<Constant *> vecNElem;
+
+		unsigned cntElem = tyVec->getNumElements ();
+		for (unsigned i = 0; i < cntElem; ++i) {
+			bool elemPorted = false;
+			Constant *cnstElem = cnstVec->getAggregateElement (i);
+			Value *valNElem = portDef (cnstElem, mapGlobalDef, mapLocalDef, &elemPorted);
+
+			// if porting failed, return NULL
+			if (valNElem == NULL) return NULL;
+			
+			// else, VAL_N_ELEM should be ported 'constant'
+			Constant *cnstNElem = dyn_cast<Constant> (valNElem);
+
+			arrPorted |= elemPorted;
+			vecNElem.push_back (cnstNElem);
+		}
+
+		if (ported != NULL) *ported = arrPorted;
+		return ConstantVector::get (vecNElem);
+	}
+	else if (dyn_cast<ConstantExpr>(cnst) != NULL) {
+		ConstantExpr *cnstExpr = (ConstantExpr *)cnst;
+
+		bool exprPorted = false;	
+		Instruction *instCnst = cnstExpr->getAsInstruction ();
+		Value *valRepl = NULL;
+		vector<Instruction *> vecNInstCnsts = portInstruction (instCnst, mapGlobalDef, mapLocalDef, &exprPorted, &valRepl);
+
+		// if instruction porting not done, return NULL
+		if (vecNInstCnsts.empty () && !valRepl) {
+#ifdef PRINT_DUMP
+			cerr << "portConstant.ConstantExpr: porting failed" << endl;
+			instCnst->dump();
+#endif
+			instCnst->dropAllReferences ();
+			return NULL;
+		}
+
+		if (!valRepl)
+			valRepl = vecNInstCnsts[vecNInstCnsts.size () - 1];
+		Constant *cnstNExpr = dyn_cast<Constant> (getAsConstant (valRepl));
+		assert (cnstNExpr != NULL && "constant expr not created");
+
+		for (unsigned i = 0; i < vecNInstCnsts.size (); i++)
+			vecNInstCnsts[i]->dropAllReferences ();
+		instCnst->dropAllReferences ();
+
+		if (ported != NULL) *ported = exprPorted;
+		return cnstNExpr;
+	}
+	else if (dyn_cast<ConstantAggregateZero>(cnst) != NULL) {
+		ConstantAggregateZero *cnstAgg = (ConstantAggregateZero *)cnst;
+		
+		bool aggPorted = false;
+		Type *tyAgg = cnstAgg->getType ();
+		Type *tyNAgg = portType (tyAgg, &aggPorted);
+
+		if (ported != NULL) *ported = aggPorted;
+		return ConstantAggregateZero::get (tyNAgg);
+	}
+	else if (dyn_cast<ConstantPointerNull>(cnst) != NULL) {
+		ConstantPointerNull *cnstPt = (ConstantPointerNull *)cnst;
+		
+		bool ptPorted = false;
+		PointerType *tyPt = cnstPt->getType ();
+		PointerType *tyNPt = (PointerType *)portType (tyPt, &ptPorted);
+
+		if (ported != NULL) *ported = ptPorted;
+		return ConstantPointerNull::get (tyNPt);
+	}
+	else if (dyn_cast<UndefValue>(cnst) != NULL) {
+		UndefValue *cnstUn = (UndefValue *)cnst;
+		
+		bool unPorted = false;
+		Type *tyUn = cnstUn->getType ();
+		Type *tyNUn = portType (tyUn, &unPorted);
+
+		if (ported != NULL) *ported = unPorted;
+		return UndefValue::get (tyNUn);
+	}
+	else if (dyn_cast<ConstantInt>(cnst) != NULL || 
+					 dyn_cast<ConstantFP>(cnst) != NULL ||
+					 dyn_cast<ConstantDataSequential>(cnst) != NULL) {
+		if (ported != NULL) *ported = false;
+		return cnst;
+	}
+	else {
+		cnst->dump ();
+		DEBUG.ABORT ("un-portable constant");
+		return NULL;
+	}
+}
+
+/* return empty vector if error */
+vector<Instruction *> Porting32::portInstruction (Instruction *inst, DefMap &mapGlobalDef,
+			DefMap &mapLocalDef, OUT bool *ported, OUT Value **repl) {
+	vector<Instruction *> vecInstRet;
+
+	bool argPorted = false, argError = false;
+	bool tyPorted = false;
+	OperandVector vecOpers = getOperands (inst);
+	OperandVector vecNOpers = portOperands (vecOpers, mapGlobalDef, mapLocalDef, &argPorted, &argError);
+	OperandArrayRef arefNOpers = OperandArrayRef (vecNOpers);
+	Type *tyNInst = portType (inst->getType (), &tyPorted);
+	string strName = inst->getName ();
+	unsigned iOpcode = inst->getOpcode ();
+
+	bool erased = false;
+
+	// if ported operand is empty, it must not be ported
+	if (argError)	return vector<Instruction *> ();
+
+	// if call instruction, new instruction's type must be ported function's return type
+	if (CallInst *instCall = dyn_cast<CallInst>(inst)) {
+		Value *pVal = portDef (instCall->getCalledValue (), mapGlobalDef, mapLocalDef);
+		tyNInst = pVal->getType ();
+	}
+
+	/// PORTING CODE
+	// Case: Memory Ops
+	if (AllocaInst *instAlloc = dyn_cast<AllocaInst>(inst)) {
+		if (argPorted || tyPorted) {
+			Type *tyNAlloc = portType (instAlloc->getAllocatedType ());
+		
+			Instruction *instRet = new AllocaInst (tyNAlloc, arefNOpers[0], PORTED_NAME (strName));
+			vecInstRet.push_back (instRet);
+			printReplaceLog ("Alloca", inst, instRet);
+		}
+	}
+
+	else if (LoadInst *instLoad = dyn_cast<LoadInst>(inst)) {
+		if (argPorted) {
+			// gather old instruction parameters
+			bool oVolat = instLoad->isVolatile ();
+			unsigned oAlign = instLoad->getAlignment ();
+			AtomicOrdering oOrder = instLoad->getOrdering ();
+			SynchronizationScope oSynch = instLoad->getSynchScope ();
+
+			// create new instruction w/ new def
+			Instruction *instRet = new LoadInst (arefNOpers[0], PORTED_NAME (strName), oVolat, oAlign, oOrder, oSynch);
+			vecInstRet.push_back (instRet);
+			printReplaceLog ("Load", inst, instRet);
+		}
+	} 
+
+	else if (StoreInst *instStore = dyn_cast<StoreInst>(inst)) {
+		if (argPorted) {
+			// gather old instruction parameters
+			bool oVolat = instStore->isVolatile ();
+			unsigned oAlign = instStore->getAlignment ();
+			AtomicOrdering oOrder = instStore->getOrdering ();
+			SynchronizationScope oSynch = instStore->getSynchScope ();
+
+			// create new instruction w/ new def
+////XXX DEBUG
+//			arefNOpers[0]->dump ();
+//			arefNOpers[1]->dump ();
+////XXX DEBUG
+			Instruction *instRet = new StoreInst (arefNOpers[0], arefNOpers[1], oVolat, oAlign, oOrder, oSynch);
+			vecInstRet.push_back (instRet);
+			printReplaceLog ("Store", inst, instRet);
+		}
+	} 
+
+	else if (dyn_cast<GetElementPtrInst>(inst) && argPorted) {
+		// FIXME: for external variable, load-time porting required
+		// remap indices
+		vector<Value *> vecIndices = arefNOpers.slice(1).vec();
+		vector<Value *> vecNIndices = remapIndexList (vecIndices, vecOpers[0]->getType ());
+
+		// create new instruction
+		Instruction *instRet = GetElementPtrInst::Create(arefNOpers[0], vecNIndices, PORTED_NAME(strName)); 
+		vecInstRet.push_back (instRet);
+		printReplaceLog ("GetElementPtr", inst, instRet);
+	}
+
+	// Case: Aggregate Ops
+	else if (ExtractValueInst *instExt = dyn_cast<ExtractValueInst>(inst)) {
+		if (argPorted) {
+			// FIXME: for external variable, load-time porting required
+			// FIXME: TEST REQUIRED
+			// remap indices
+			vector<unsigned> vecIndices = instExt->getIndices ();
+			vector<unsigned> vecNIndices = remapUnsignedIndexList (vecIndices, vecOpers[0]->getType ());
+
+			// create new instruction
+			Instruction *instRet = ExtractValueInst::Create(arefNOpers[0], vecNIndices, PORTED_NAME(strName)); 
+			vecInstRet.push_back (instRet);
+			printReplaceLog ("ExtractValue", inst, instRet);
+		}
+	}
+
+	else if (InsertValueInst *instIns = dyn_cast<InsertValueInst>(inst)) {
+		if (argPorted) {
+			// FIXME: for external variable, load-time porting required
+			// FIXME: TEST REQUIRED
+			// remap indices
+			vector<unsigned> vecIndices = instIns->getIndices ();
+			vector<unsigned> vecNIndices = remapUnsignedIndexList (vecIndices, vecOpers[0]->getType ());
+
+			// create new instruction
+			Instruction *instRet = InsertValueInst::Create(arefNOpers[0], arefNOpers[1], vecNIndices, PORTED_NAME(strName)); 
+			vecInstRet.push_back (instRet);
+			printReplaceLog ("InsertValue", inst, instRet);
+		}
+	}
+
+
+	// Case: Vector Ops
+	else if (dyn_cast<ExtractElementInst>(inst)) {
+		if (argPorted) {
+			// FIXME: for external variable, load-time porting required
+			// create new instruction
+			Instruction *instRet = ExtractElementInst::Create(arefNOpers[0], arefNOpers[1], PORTED_NAME(strName)); 
+			vecInstRet.push_back (instRet);
+			printReplaceLog ("ExtractElement", inst, instRet);
+		}
+	}
+
+	else if (dyn_cast<InsertElementInst>(inst)) {
+		if (argPorted) {
+			// FIXME: for external variable, load-time porting required
+			// create new instruction
+			Instruction *instRet = InsertElementInst::Create(arefNOpers[0], arefNOpers[1], arefNOpers[2], PORTED_NAME(strName)); 
+			vecInstRet.push_back (instRet);
+			printReplaceLog ("InsertElement", inst, instRet);
+		}
+	}
+
+	
+	// Case: Cast Ops
+	else if (dyn_cast<CastInst>(inst)) {
+		if (argPorted || tyPorted) {
+			Instruction *instRet = CastInst::Create ((Instruction::CastOps)iOpcode, arefNOpers[0], tyNInst, 
+				PORTED_NAME(strName));
+			vecInstRet.push_back (instRet);
+			printReplaceLog ("Cast", inst, instRet);
+		}
+	}
+
+	// Case: Terminator Ops.
+	else if (dyn_cast<ReturnInst>(inst) && argPorted) {
+		Instruction *instRet = ReturnInst::Create (*pC, arefNOpers[0]);
+		vecInstRet.push_back (instRet);
+		printReplaceLog ("Return", inst, instRet);
+	}
+
+	// Case: Call Ops.
+	else if (dyn_cast<CallInst> (inst) || dyn_cast<InvokeInst> (inst)) {
+		if (argPorted || tyPorted) {
+			CallInst *instCall = dyn_cast<CallInst> (inst);
+			InvokeInst *instInvoke = dyn_cast<InvokeInst> (inst);
+			assert ((instCall || instInvoke) && "inst must be either call or invoke");
+
+			Value *pVal = portDef (instCall->getCalledValue(), mapGlobalDef, mapLocalDef, NULL);
+			Function *pFn = getFnFromCallableVal (pVal);
+			vector<Value *> vecTArgs;
+			if (instCall) vecTArgs = arefNOpers.slice (0, arefNOpers.size () - 1).vec ();
+			else if (instInvoke) vecTArgs = arefNOpers.slice (0, arefNOpers.size () - 3).vec ();
+
+
+			// special case: if the instruction was involved in va-arg..
+//			PointerType *tyCalled = dyn_cast<PointerType> (pVal->getType ());
+//			FunctionType *tyCalledFn = dyn_cast<FunctionType> (tyCalled->getElementType ());
+//tyCalledFn->dump ();
+//inst->dump ();
+//pVal->dump ();
+//
+
+			Instruction *instRet;
+			if (instCall) {
+				instRet = CallInst::Create (pVal, vecTArgs);
+
+				if (!instRet->getType()->isVoidTy ())
+					instRet->setName (PORTED_NAME (strName));
+			}
+			else if (instInvoke) {
+				BasicBlock *bbNormal = instInvoke->getNormalDest ();
+				BasicBlock *bbExc = instInvoke->getUnwindDest ();
+
+				instRet = InvokeInst::Create (pVal, bbNormal, bbExc, vecTArgs);
+			}
+			vecInstRet.push_back (instRet);
+
+			if (instCall) printReplaceLog ("Call", instCall, instRet);
+			else if (instInvoke) printReplaceLog ("Invoke", instInvoke, instRet);
+		}
+	}
+
+	else if (CmpInst *instCmp = dyn_cast<CmpInst>(inst)) {
+		if (argPorted) {
+			// FIXME: TEST REQUIRED
+			unsigned short oPred = instCmp->getPredicate ();
+
+			Instruction *instRet = CmpInst::Create ((Instruction::OtherOps)iOpcode, oPred, arefNOpers[0], arefNOpers[1],
+				PORTED_NAME (strName));
+			vecInstRet.push_back (instRet);
+			printReplaceLog ("Cmp", instCmp, instRet);
+		}
+	}
+
+	else if (dyn_cast<SelectInst>(inst) && argPorted) {
+		// FIXME: TEST REQUIRED
+		Instruction *instRet = SelectInst::Create (arefNOpers[0], arefNOpers[1], arefNOpers[2], PORTED_NAME (strName));
+		vecInstRet.push_back (instRet);
+		printReplaceLog ("Select", inst, instRet);
+	}
+
+	// Case: (binary) Bitwise Ops.
+	else if (dyn_cast<BinaryOperator>(inst) && argPorted) {
+		Instruction *instRet = BinaryOperator::Create ((Instruction::BinaryOps)iOpcode, arefNOpers[0], arefNOpers[1],
+			PORTED_NAME (strName));
+		vecInstRet.push_back (instRet);
+		printReplaceLog ("BinaryOperation", inst, instRet);
+	}
+
+	else if (LandingPadInst *instLpad = dyn_cast<LandingPadInst>(inst)) {
+		if (tyPorted) {
+			unsigned clauses = instLpad->getNumClauses ();
+			Value *personality = instLpad->getPersonalityFn ();
+
+			LandingPadInst *instNLpad = LandingPadInst::Create (tyNInst, personality, clauses, PORTED_NAME (strName));
+
+			if (!instLpad->isCleanup ()) {
+				for (int i = 0; i < clauses; i++) {
+					Constant *cnstClause = instLpad->getClause (i);
+					Constant *cnstNClause = dyn_cast<Constant> (portDef (cnstClause, mapGlobalDef, mapLocalDef));
+					instNLpad->addClause (cnstNClause);
+				}
+			}
+			else 
+				instNLpad->setCleanup (true);
+
+			Instruction *instRet = instNLpad;
+			vecInstRet.push_back (instRet);
+			printReplaceLog ("LandingPad", inst, instRet);
+		}
+	}
+
+	// check any instruction is to be returned
+	bool noInstToRet = vecInstRet.empty ();
+
+	if (noInstToRet && !erased) {
+		// instruction not ported. should push original instruction
+		vecInstRet.push_back (inst);
+	}
+
+	/// RETURN
+	if (ported != NULL) *ported = (!noInstToRet || erased);
+	return vecInstRet;
+}
+
+
+/* Creates empty PHI_NODE having ported return type */
+PHINode* Porting32::createPortedPHINodeDecl (PHINode *instPhi) {
+	Type *tyNPhi = portType (instPhi->getType ());
+	unsigned oNumVal = instPhi->getNumIncomingValues ();
+	string strName = instPhi->getName ();
+
+	PHINode *instNPhi = PHINode::Create (tyNPhi, oNumVal, PORTED_NAME (strName));
+	printReplaceLog ("PHINode", instPhi, instNPhi);	
+
+	return instNPhi;
+}
+
+/* Fills ported PHI_NODE's incoming block and its value */
+void Porting32::fillPortedPHINode (PHINode *instOPhi, PHINode *instNPhi, DefMap &mapGlobalDef, 
+			DefMap &mapLocalDef) {
+	bool argPorted = false, argError = false;
+	OperandVector vecOpers = getOperands (instOPhi);
+	OperandVector vecNOpers = portOperands (vecOpers, mapGlobalDef, mapLocalDef, &argPorted, &argError);
+	OperandArrayRef arefNOpers = OperandArrayRef (vecNOpers);
+	
+	assert (!argError && "some arguments are not ported until filling PHI_NODE");
+
+	for (unsigned i = 0; i < arefNOpers.size (); ++i)
+		instNPhi->addIncoming (arefNOpers[i], instOPhi->getIncomingBlock (i));
+}
+
+
+Porting32::OperandVector Porting32::portOperands (OperandVector &vecOpers, DefMap &mapGlobalDef, 
+			DefMap &mapLocalDef, OUT bool *ported, OUT bool *error) {
+	unsigned cntArgs = vecOpers.size ();
+	vector<Value *> vecNArgs;
+	bool operPorted = false;
+
+	for (unsigned i = 0; i < cntArgs; ++i) {
+		Value *valArg = vecOpers[i];
+		Value *valNArg = portDef (valArg, mapGlobalDef, mapLocalDef);
+
+		if (valNArg == NULL) {
+			cerr << "Unportable operand" << endl;
+			//valArg->dump ();
+			if (error != NULL) *error = true;	
+			return OperandVector ();
+		}
+	
+		if (valArg != valNArg)
+			operPorted = true;
+
+		vecNArgs.push_back (valNArg);
+	}
+
+	if (ported != NULL) *ported = operPorted;
+	if (error != NULL) *error = false;
+	return vecNArgs;
+}
+
+// XXX all if statements must return within itself XXX
+Value* Porting32::portCallableValue (Value *val, DefMap &mapGlobalDef, OUT bool *ported) {
+	if (Function *fn = dyn_cast<Function> (val)) {
+		map<Function *, Function *>::iterator ifn = mapFns.find (fn);
+		
+		if (ifn != mapFns.end ()) {
+			if (ported != NULL) *ported = true;
+			return ifn->second;
+		}
+		else {
+			if (ported != NULL) *ported = false;
+			return fn;
+		}
+	}
+	
+	if (ConstantExpr *cexp = dyn_cast<ConstantExpr> (val)) {
+		if (cexp->getOpcode () == Instruction::BitCast) {
+			OperandVector vecOpers = getOperands (cexp);
+
+			if (Function *fnCalled = dyn_cast<Function> (vecOpers[0])) {
+				// if VAL is bitcast'ed function..
+				bool ported = false;
+
+				Function *fnNCalled = dyn_cast<Function> (portCallableValue (fnCalled, 
+					mapGlobalDef, &ported));
+
+				return ConstantExpr::getBitCast (fnNCalled, portType (cexp->getType ()));
+			}
+			else if (GlobalAlias *galiCalled = dyn_cast<GlobalAlias> (vecOpers[0])) {
+				DefMap mapEmpty;
+				bool ported = false;
+				GlobalAlias *galiNCalled = dyn_cast<GlobalAlias> (portDef (galiCalled, 
+					mapGlobalDef, mapEmpty, &ported));
+
+				return ConstantExpr::getBitCast (galiNCalled, portType (cexp->getType ()));
+			}
+		}
+	}
+
+	if (hasCallableType (val)) {
+		/* if VAL is still callable type, 
+		 * possibly VAL is a function pointer. return VAL */
+		return val;
+	}
+
+	val->dump ();
+	val->getType()->dump ();
+	DEBUG.ABORT ("VAL must be either Function or ConstantExpr");
+
+	return NULL;
+}
+
+// FIXME: polising required
+bool Porting32::isPortedFunction (Function *fn) {
+	map<Function *, unsigned>::iterator it = mapFnArgOrgCnt.find (fn);
+
+	return (it != mapFnArgOrgCnt.end ());
+}
+
+bool Porting32::isOpaqueTy (Type *type) {
+	if (StructType *tyStruct = dyn_cast<StructType>(type))
+		return tyStruct->isOpaque ();
+	else if (ArrayType *tyArray = dyn_cast<ArrayType>(type))
+		return isOpaqueTy (tyArray->getElementType ());
+	else if (VectorType *tyVector = dyn_cast<VectorType>(type))
+		return isOpaqueTy (tyVector->getElementType ());
+	else
+		return false;
+}
+
+/* If VAL_OUT is not null, VAL_TAR is assumed to output parameter
+ * and dereferenced before copying. */
+bool Porting32::insertPortingCode (Value *valTar, Instruction *before, bool reverse, 
+			OUT Value *&valRes, Value *valOut) {
+	vector<BasicBlock *> blks;
+
+	// filter trivial case
+	bool ported = false;
+	Type *tyTar = valTar->getType ();
+	Type *tyNTar = (!reverse ? portType (tyTar, &ported) : unportType (tyTar, &ported));
+
+	if (!ported) {
+		valRes = valTar;
+		return false;
+	}
+
+	// is output parameter?
+	bool isOparam = (valOut != NULL);
+
+	// generate porting code
+	BasicBlock *blkAlloc = BasicBlock::Create (*pC, "prt.alloc.p", fnDummy);
+	vector<BasicBlock *> blksCopy;
+	BasicBlock *blkLoad = BasicBlock::Create (*pC, "prt.load.p", fnDummy);
+
+	if (!isOparam)	valOut = new AllocaInst (tyNTar, NULL, "alloc.p", blkAlloc);
+	else 						valTar = new LoadInst (valTar, "deref.tar.p", blkAlloc);
+	blks.push_back (blkAlloc);
+
+	blksCopy = generateCopyPortingCode (valTar, valOut, blkLoad, reverse);
+	blks.insert (blks.end(), blksCopy.begin(), blksCopy.end());
+
+	Instruction *instLoad = NULL;
+	if (!isOparam)	instLoad = new LoadInst (valOut, "load.p", blkLoad);
+	blks.push_back (blkLoad);
+
+	// set successor
+	for (unsigned i = 0; i < blks.size () - 1; ++i) 
+		if (!blks[i]->getTerminator ())
+			Instruction *instBr = BranchInst::Create (blks[i + 1], blks[i]);
+	
+	// insert blocks
+	BasicBlock *blkBefore = before->getParent ();
+	BasicBlock *blkInst = blkBefore->splitBasicBlock (before, before->getParent()->getName());
+	for (unsigned i = 0; i < blks.size (); ++i)
+		blks[i]->moveBefore (blkInst);
+
+	BranchInst *instBrBefore = (BranchInst *)blkBefore->getTerminator ();
+	instBrBefore->setSuccessor (0, blks[0]);
+	
+	Instruction *instBrInst = BranchInst::Create (blkInst, blks[blks.size() - 1]);
+
+#ifdef PRINT_DUMP
+	cerr << "converter block - ";
+	valTar->dump();
+	for (unsigned i = 0; i < blks.size (); ++i) {
+		blks[i]->moveBefore (blkInst);
+		blks[i]->dump ();
+	}
+	cerr << "converter block ------" << endl;
+#endif
+
+	if (!isOparam)	valRes = instLoad;
+	else 						valRes = valOut;
+	return true;	
+}
+
+vector<BasicBlock *> Porting32::generateCopyPortingCode (Value *valVal, Value *valPt, BasicBlock *blkExit,
+			bool reverse) {
+	vector<BasicBlock *> blks;
+	Type *tyVal = valVal->getType ();
+
+	// Struct: for all elems, reduce{src(extract) - dst(getelementptr)} - call(copy)
+	if (StructType *styVal = dyn_cast<StructType>(tyVal)) {
+#ifdef PRINT_DUMP
+		cerr << "generateCopyPortingCode: ";
+		styVal->dump ();
+		cerr << " to ";
+		valPt->getType()->dump ();
+		cerr << endl;
+		valVal->dump ();
+		valPt->dump ();
+#endif
+
+		StructType *tyOStruct, *tyNStruct;
+		vector<unsigned> mapValIdx;
+		vector<unsigned> mapPtIdx;
+		unsigned cntElem;
+
+		if (reverse) {
+			bool unported = false;
+			tyNStruct = styVal;
+			tyOStruct = (StructType *)unportType (styVal, &unported);
+			
+			if (!unported) return blks;
+
+			mapValIdx = mapStElemIdx[tyOStruct];
+			for (unsigned i = 0; i < tyOStruct->getNumElements (); ++i)
+				mapPtIdx.push_back (i);
+		}
+		else {
+			bool unported = false;
+			tyOStruct = styVal;
+			tyNStruct = (StructType *)unportType (styVal, &unported);
+
+			if (!unported) return blks;
+			
+			mapPtIdx = mapStElemIdx[tyOStruct];
+			for (unsigned i = 0; i < tyOStruct->getNumElements (); ++i)
+				mapValIdx.push_back (i);
+		}
+		cntElem = tyOStruct->getNumElements();
+
+		for (unsigned i = 0; i < cntElem; ++i) {
+			BasicBlock *blkRed = BasicBlock::Create (*pC, "prt.red.p", fnDummy);
+			vector<BasicBlock *> blksCopy;
+			BasicBlock *blkEnd = BasicBlock::Create (*pC, "prt.reduce.p", fnDummy);
+
+			vector<unsigned> vecExtIdx;
+			vecExtIdx.push_back (mapValIdx[i]);
+			Instruction *instExt = ExtractValueInst::Create (valVal, vecExtIdx, "val.elem.p", blkRed);
+
+			vector<Value *> vecGepIdx;
+			vecGepIdx.push_back (getConstantInt (32, 0));
+			vecGepIdx.push_back (getConstantInt (32, mapPtIdx[i]));
+			Instruction *instGep = GetElementPtrInst::Create (valPt, vecGepIdx, "pt.elem.p", blkRed);
+			blks.push_back (blkRed);
+
+#ifdef PRINT_DUMP
+			instExt->dump ();
+			instGep->dump ();
+#endif
+
+			blksCopy = generateCopyPortingCode (instExt, instGep, blkEnd, reverse);
+			blks.insert (blks.end(), blksCopy.begin(), blksCopy.end());
+			blks.push_back (blkEnd);
+		}
+	}
+
+	// Array: for all elems, reduce{src(extract) - dst(getelementptr)} - call(copy)
+	else if (ArrayType *atyVal = dyn_cast<ArrayType>(tyVal)) {
+#ifdef PRINT_DUMP
+		cerr << "generateCopyPortingCode: ";
+		atyVal->dump ();
+		cerr << " to ";
+		valPt->getType()->dump ();
+		cerr << endl;
+		valVal->dump ();
+		valPt->dump ();
+#endif
+
+		for (unsigned i = 0; i < atyVal->getNumElements (); ++i) {
+			BasicBlock *blkRed = BasicBlock::Create (*pC, "prt.reduce.p", fnDummy);
+			vector<BasicBlock *> blksCopy;
+			BasicBlock *blkEnd = BasicBlock::Create (*pC, "prt.end.p", fnDummy);
+
+			vector<unsigned> vecExtIdx;
+			vecExtIdx.push_back (i);
+			Instruction *instExt = ExtractValueInst::Create (valVal, vecExtIdx, "val.elem.p", blkRed);
+
+			vector<Value *> vecGepIdx;
+			vecGepIdx.push_back (getConstantInt (32, 0));
+			vecGepIdx.push_back (getConstantInt (32, i));
+			Instruction *instGep = GetElementPtrInst::Create (valPt, vecGepIdx, "pt.elem.p", blkRed);
+			blks.push_back (blkRed);
+
+			blksCopy = generateCopyPortingCode (instExt, instGep, blkEnd, reverse);
+			blks.insert (blks.end(), blksCopy.begin(), blksCopy.end());
+			blks.push_back (blkEnd);
+		}
+	}
+
+	// Vector: for all elems, reduce{src(extract) - dst(getelementptr)} - call(copy)
+	else if (VectorType *atyVal = dyn_cast<VectorType>(tyVal)) {
+#ifdef PRINT_DUMP
+		cerr << "generateCopyPortingCode: ";
+		atyVal->dump ();
+		cerr << " to ";
+		valPt->getType()->dump ();
+		cerr << endl;
+		valVal->dump ();
+		valPt->dump ();
+#endif
+
+		for (unsigned i = 0; i < atyVal->getNumElements (); ++i) {
+			BasicBlock *blkRed = BasicBlock::Create (*pC, "prt.reduce.p", fnDummy);
+			vector<BasicBlock *> blksCopy;
+			BasicBlock *blkEnd = BasicBlock::Create (*pC, "prt.end.p", fnDummy);
+
+			vector<unsigned> vecExtIdx;
+			vecExtIdx.push_back (i);
+			Instruction *instExt = ExtractValueInst::Create (valVal, vecExtIdx, "val.elem.p", blkRed);
+
+			vector<Value *> vecGepIdx;
+			vecGepIdx.push_back (getConstantInt (32, 0));
+			vecGepIdx.push_back (getConstantInt (32, i));
+			Instruction *instGep = GetElementPtrInst::Create (valPt, vecGepIdx, "pt.elem.p", blkRed);
+			blks.push_back (blkRed);
+
+			blksCopy = generateCopyPortingCode (instExt, instGep, blkEnd, reverse);
+			blks.insert (blks.end(), blksCopy.begin(), blksCopy.end());
+			blks.push_back (blkEnd);
+		}
+	}
+
+	// Pointer: dereference - nullcheck - if not null >> call(copy)
+	else if (PointerType *ptyVal = dyn_cast<PointerType>(tyVal)) {
+#ifdef PRINT_DUMP
+		cerr << "generateCopyPortingCode: ";
+		ptyVal->dump ();
+		cerr << " to ";
+		valPt->getType()->dump ();
+		cerr << endl;
+		valVal->dump ();
+		valPt->dump ();
+#endif
+
+		BasicBlock *blkChkNull = BasicBlock::Create (*pC, "prt.chknull.p", fnDummy);
+		BasicBlock *blkIfNull = BasicBlock::Create (*pC, "prt.ifnull.p", fnDummy);
+		BasicBlock *blkDeref = BasicBlock::Create (*pC, "prt.deref.p", fnDummy);
+		vector<BasicBlock *> blksCopy;
+		BasicBlock *blkEnd = BasicBlock::Create (*pC, "prt.end.p", fnDummy);
+
+		// FIXME: new structure's pointer -> point to alloc'ed area
+		// FIXME: old one to alloc'ed area copy
+		Type *tyAlloced = ((PointerType *)(((PointerType *)valPt->getType())->getElementType()))->getElementType ();
+		Instruction *instPtDeref = new AllocaInst (tyAlloced, "alloc.deref.pt.p", blkDeref);
+		Instruction *instPtDerefStore = new StoreInst (instPtDeref, valPt, blkDeref);
+		Instruction *instValDeref = new LoadInst (valVal, "deref.val.p", blkDeref);
+		blks.push_back (blkDeref);
+
+		blksCopy = generateCopyPortingCode (instValDeref, instPtDeref, blkEnd, reverse);
+		blks.insert (blks.end(), blksCopy.begin(), blksCopy.end());
+
+		blks.push_back (blkEnd);
+
+		// insert null-checker
+		Instruction *instCmp = new ICmpInst (*blkChkNull, CmpInst::ICMP_EQ, valVal,
+			ConstantPointerNull::get (ptyVal), "cmpnull.p");
+		Instruction *instBr = BranchInst::Create (blkIfNull, blks[0], instCmp, blkChkNull);
+		blks.insert (blks.begin(), blkChkNull);
+
+		PointerType *tyPtDeref = (PointerType *)((PointerType *)valPt->getType ())->getElementType ();
+		Instruction *instStore = new StoreInst (ConstantPointerNull::get (tyPtDeref), valPt, blkIfNull);
+		Instruction *instBrEnd = BranchInst::Create (blkExit, blkIfNull);
+		blks.insert (blks.begin() + 1, blkIfNull);
+	}
+
+	// Default: direct copy
+	else {
+#ifdef PRINT_DUMP
+		cerr << "generateCopyPortingCode: ";
+		valVal->getType()->dump ();
+		cerr << " to ";
+		valPt->getType()->dump ();
+		cerr << endl;
+		valVal->dump ();
+		valPt->dump ();
+#endif
+
+		BasicBlock *blkCopy = BasicBlock::Create (*pC, "prt.copy.default.p", fnDummy);
+		Instruction *instCopy = new StoreInst (valVal, valPt, blkCopy);
+		blks.push_back (blkCopy);
+	}
+
+	return blks;
+}
+
+
+unsigned Porting32::sizeOf (Type *type) {
+	Type::TypeID tid = type->getTypeID ();
+
+	// FIXME: size following TYPE class, or fixed constant?
+	switch (tid) {
+		case Type::VoidTyID:
+			return 0;
+		case Type::HalfTyID:
+		case Type::FloatTyID:
+		case Type::DoubleTyID:
+		case Type::IntegerTyID:
+			return type->getPrimitiveSizeInBits () >> 3;
+		case Type::PointerTyID:
+			return 4;
+		case Type::StructTyID: {
+			DataLayout* dlayout = (DataLayout*) (pM->getDataLayout ());
+			const StructLayout *stlayout = dlayout->getStructLayout ((StructType *)type);
+			return stlayout->getSizeInBytes ();
+		}
+		case Type::ArrayTyID: 
+			return ((ArrayType *)type)->getNumElements() * 
+				sizeOf (((SequentialType *)type)->getElementType ());
+		case Type::VectorTyID: 
+			return ((VectorType *)type)->getNumElements() * 
+				sizeOf (((SequentialType *)type)->getElementType ());
+		default:
+			DEBUG.ABORT ("not supported type");	
+			return 0;
+	}
+}
+
+ConstantInt* Porting32::getConstantInt (unsigned bits, unsigned n) {
+	switch (bits) {
+		case 1:
+			return ConstantInt::get (Type::getInt1Ty (*pC), n);
+		case 8:
+			return ConstantInt::get (Type::getInt8Ty (*pC), n);
+		case 16:
+			return ConstantInt::get (Type::getInt16Ty (*pC), n);
+		case 32:
+			return ConstantInt::get (Type::getInt32Ty (*pC), n);
+		case 64:
+			return ConstantInt::get (Type::getInt64Ty (*pC), n);
+		default:
+			return ConstantInt::get (Type::getIntNTy (*pC, bits), n);
+	}
+}
+
+/* return a nested constant of VAL */
+Constant* Porting32::getAsConstant (Value *val) {
+	if (Instruction *inst = dyn_cast<Instruction> (val)) {
+		SmallVector<Value *, 4> ValueOperands;
+		for (Instruction::op_iterator I = inst->op_begin(), E = inst->op_end(); I != E; ++I)
+			ValueOperands.push_back(I->get ());
+
+		ArrayRef<Value *> Ops(ValueOperands);
+
+		switch (inst->getOpcode()) {
+			case Instruction::Trunc:
+			case Instruction::ZExt:
+			case Instruction::SExt:
+			case Instruction::FPTrunc:
+			case Instruction::FPExt:
+			case Instruction::UIToFP:
+			case Instruction::SIToFP:
+			case Instruction::FPToUI:
+			case Instruction::FPToSI:
+			case Instruction::PtrToInt:
+			case Instruction::IntToPtr:
+			case Instruction::BitCast:
+				return (ConstantExpr *)ConstantExpr::getCast ((Instruction::CastOps)inst->getOpcode(),
+																getAsConstant (Ops[0]), inst->getType());
+			case Instruction::Select:
+				return (ConstantExpr *)ConstantExpr::getSelect (getAsConstant(Ops[0]), getAsConstant(Ops[1]), getAsConstant(Ops[2]));
+			case Instruction::InsertElement:
+				return (ConstantExpr *)ConstantExpr::getInsertElement (getAsConstant(Ops[0]), getAsConstant(Ops[1]), getAsConstant(Ops[2]));
+			case Instruction::ExtractElement:
+				return (ConstantExpr *)ConstantExpr::getExtractElement (getAsConstant(Ops[0]), getAsConstant(Ops[1]));
+			case Instruction::InsertValue:
+				return (ConstantExpr *)ConstantExpr::getInsertValue (getAsConstant(Ops[0]), getAsConstant(Ops[1]),
+					((InsertValueInst *)inst)->getIndices());
+			case Instruction::ExtractValue:
+				return (ConstantExpr *)ConstantExpr::getExtractValue (getAsConstant(Ops[0]),
+					((InsertValueInst *)inst)->getIndices());
+			case Instruction::ShuffleVector:
+				return (ConstantExpr *)ConstantExpr::getShuffleVector (getAsConstant(Ops[0]), getAsConstant(Ops[1]), getAsConstant(Ops[2]));
+
+			case Instruction::GetElementPtr: {
+				bool inbound = ((GetElementPtrInst *)inst)->isInBounds();
+				return (ConstantExpr *)ConstantExpr::getGetElementPtr (getAsConstant(Ops[0]), Ops.slice (1), inbound);
+			}
+
+			case Instruction::ICmp:
+				return (ConstantExpr *)ConstantExpr::getICmp (((CmpInst *)inst)->getPredicate(), getAsConstant(Ops[0]), getAsConstant(Ops[1]));
+
+			case Instruction::FCmp:
+				return (ConstantExpr *)ConstantExpr::getFCmp (((CmpInst *)inst)->getPredicate(), getAsConstant(Ops[0]), getAsConstant(Ops[1]));
+
+			default:
+				assert(inst->getNumOperands() == 2 && "Must be binary operator?");
+				ConstantExpr *BO =
+					(ConstantExpr *)ConstantExpr::get ((Instruction::BinaryOps)inst->getOpcode(),
+																 getAsConstant(Ops[0]), getAsConstant(Ops[1]));
+
+				// FIXME: this part should be included
+		//    if (isa<OverflowingBinaryOperator>(BO)) {
+		//      BO->setHasNoUnsignedWrap(SubclassOptionalData &
+		//                               OverflowingBinaryOperator::NoUnsignedWrap);
+		//      BO->setHasNoSignedWrap(SubclassOptionalData &
+		//                             OverflowingBinaryOperator::NoSignedWrap);
+		//    }
+		//    if (isa<PossiblyExactOperator>(BO))
+		//      BO->setIsExact(SubclassOptionalData & PossiblyExactOperator::IsExact);
+
+				return BO;
+		}
+	}
+	else if (Constant *cnst = dyn_cast<Constant> (val)) {
+		return cnst;
+	}
+	else {
+		assert (0 && "the value cannot be converted to constant");
+	}
+}
+
+void Porting32::printReplaceLog (string domain, Value *oVal, Value *nVal) {
+#ifdef PRINT_DUMP
+//if (debugflag) {
+	cerr << domain << ": ";
+	oVal->dump ();
+	cerr << "  replaced to ";
+	nVal->dump ();
+//}
+#else
+	cerr << domain << ": replaced" << endl;
+#endif
+}

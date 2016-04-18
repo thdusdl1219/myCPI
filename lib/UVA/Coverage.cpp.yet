@@ -1,0 +1,189 @@
+/***
+ *
+ * Offload/Coverage.cpp
+ *
+ *
+ */
+
+#include "llvm/IR/LLVMContext.h"
+
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/CommandLine.h"
+
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/Passes.h"
+
+#include "corelab/Utilities/InstInsertPt.h"
+#include "corelab/Utilities/GlobalCtors.h"
+#include "corelab/Metadata/Metadata.h"
+#include "corelab/Metadata/LoadNamer.h"
+#include "corelab/UVA/Coverage.h"
+
+#include <iostream>
+#include <list>
+#include <cstdlib>
+
+using namespace llvm;
+using namespace corelab;
+
+char Coverage::ID = 0;
+static RegisterPass<Coverage> X("coverage", "get the coverage", false, false);
+
+
+void Coverage::getAnalysisUsage(AnalysisUsage &AU) const
+{
+	AU.addRequired< LoopInfo >();
+	AU.addRequired< LoadNamer >();
+	AU.setPreservesAll();
+}
+
+void Coverage::setFunctions(Module &M){
+	LLVMContext &Context = getGlobalContext();
+
+	// Declare profiler runtime functions
+	Initialize = M.getOrInsertFunction(
+			"coverage_initialize",
+			Type::getVoidTy(Context),
+			Type::getInt32Ty(Context),
+			(Type*)0);
+
+	Finalize = M.getOrInsertFunction(
+			"coverage_finalize",
+			Type::getVoidTy(Context),
+			(Type*)0);
+	
+	beginFunction = M.getOrInsertFunction( 
+			"coverage_beginFunction",
+			Type::getVoidTy(Context),
+			Type::getInt32Ty(Context),
+			(Type*)0);
+
+	endFunction = M.getOrInsertFunction(
+			"coverage_endFunction",
+			Type::getVoidTy(Context),
+			Type::getInt32Ty(Context),
+			(Type*)0);
+
+	return;
+}
+
+bool Coverage::runOnModule(Module& M) {
+	setFunctions(M);
+	getOffloadable();
+	for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
+		Function &F = *fi;
+		if (F.isDeclaration()) continue;
+		runOnFunction(F);
+	}
+	setIniFini(M);
+	return false;
+}
+
+void Coverage::getOffloadable() {
+	FILE* offFile = fopen ("offloadFunction.profile", "r");
+	if(offFile == NULL)
+		perror("Coverage offloadFunction.profile opening error");
+
+	uint32_t id, count;
+	char strbuf[512];
+	while (fgets (strbuf, sizeof(strbuf), offFile)) {
+		sscanf(strbuf, "%u:%u\n", &id, &count);
+		offloadable.push_back(id);
+			}
+	fclose(offFile);
+	return;
+}
+
+bool Coverage::runOnFunction(Function& F) {
+	LLVMContext &Context = getGlobalContext();
+	LoadNamer &loadNamer = getAnalysis< LoadNamer >();
+	for (Function::iterator bi = F.begin(), be = F.end(); bi != be; ++bi) {
+		for (BasicBlock::iterator ii = bi->begin(), ie = bi->end(); ii != ie; ++ii) {
+			Instruction *instruction = &*ii;
+
+			// For every calling instruction in internal function,
+			// check it.
+			if(instruction->getOpcode() == Instruction::Call) {
+				CallInst* instCall = (CallInst*)instruction;
+				Function *f = NULL;
+
+				if (ConstantExpr *cexpCalled = dyn_cast<ConstantExpr> (instCall->getCalledValue ())) {
+					if (cexpCalled->getOpcode () == Instruction::BitCast) {
+						Value *valCasted = cexpCalled->op_begin()->get ();
+						f = dyn_cast<Function> (valCasted);
+					}
+				}
+				else if (Function *fnCalled = dyn_cast<Function> (instCall->getCalledValue ())) {
+					f = dyn_cast<Function> (instCall->getCalledValue ());
+				}
+
+				//Function* f = instCall->getCalledFunction();
+				if (f != NULL) {
+					uint32_t calledFunctionId = loadNamer.getFunctionId(*f);
+				
+					// check whether it is offlodable or not. 
+					if (calledFunctionId != 0){
+						if (std::find(offloadable.begin(), offloadable.end(), calledFunctionId)==offloadable.end()) continue;
+						std::vector<Value*> Args(1);
+						Args.resize (1);
+						Value* ID = ConstantInt::get(Type::getInt32Ty(Context), calledFunctionId);
+						Args[0] = ID;
+
+						BasicBlock *bb = instCall->getParent();
+						BasicBlock::iterator iterCallAfter = instruction;
+						
+						if(iterCallAfter == bb->end())
+							return false;
+						
+						iterCallAfter++;
+						Instruction *instCallAfter = &(*iterCallAfter);
+						
+						// implement call instruction.
+						CallInst::Create(beginFunction, Args, "", instCall);
+						CallInst::Create(endFunction, Args, "", instCallAfter);	
+					}
+				
+				}
+			}
+		}
+	}
+	return false;
+}
+
+void Coverage::setIniFini(Module& M) {
+	LLVMContext &Context = getGlobalContext();
+	LoadNamer &loadNamer = getAnalysis< LoadNamer >();
+	std::vector<Type*> formals(0);
+	std::vector<Value*> actuals(0);
+	FunctionType *voidFcnVoidType = FunctionType::get(Type::getVoidTy(Context), formals, false);
+
+	/* initialize */
+	Function *initForCtr = Function::Create( 
+			voidFcnVoidType, GlobalValue::InternalLinkage, "__constructor__", &M); 
+	BasicBlock *entry = BasicBlock::Create(Context,"entry", initForCtr); 
+	BasicBlock *initBB = BasicBlock::Create(Context, "init", initForCtr); 
+	actuals.resize(1);
+
+	Value *FunctionCount = ConstantInt::get(Type::getInt32Ty(Context), loadNamer.numFuncs);
+	actuals[0] = FunctionCount;
+	
+	CallInst::Create(Initialize, actuals, "", entry); 
+	BranchInst::Create(initBB, entry); 
+	ReturnInst::Create(Context, 0, initBB);
+	callBeforeMain(initForCtr);
+	
+	/* finalize */
+	Function *finiForDtr = Function::Create(
+			voidFcnVoidType, GlobalValue::InternalLinkage, "__destructor__",&M);
+  BasicBlock *finiBB = BasicBlock::Create(Context, "entry", finiForDtr);
+  BasicBlock *fini = BasicBlock::Create(Context, "fini", finiForDtr);
+  actuals.resize(0);
+	CallInst::Create(Finalize, actuals, "", fini);
+  BranchInst::Create(fini, finiBB);
+  ReturnInst::Create(Context, 0, fini);
+	callAfterMain(finiForDtr);
+}
