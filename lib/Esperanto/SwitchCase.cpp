@@ -2,9 +2,9 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Constants.h"
 
-#include "corelab/Esperanto/IniFini.h"
-#include "corelab/Esperanto/Casting.h"
-#include "corelab/Esperanto/InstInsertPt.h"
+#include "corelab/Utilities/IniFini.h"
+#include "corelab/Utilities/Casting.h"
+#include "corelab/Utilities/InstInsertPt.h"
 //#include "corelab/Metadata/NamedMetadata.h"
 #include "corelab/Esperanto/InstMarker.h"
 #include "corelab/Esperanto/EspInit.h"
@@ -30,7 +30,7 @@ namespace corelab {
   }
 
   bool SwitchCase::runOnModule (Module& M) {
-    LLVMContext& Context = getGlobalContext();
+    LLVMContext& Context = M.getContext();
     RemoteCall& remoteCall = getAnalysis< RemoteCall >(); 
     EspInitializer& espInit = getAnalysis< EspInitializer >();
     // EsperantoNamer& en = getAnalysis<EsperantoNamer>();
@@ -74,7 +74,7 @@ namespace corelab {
   }
 
   void SwitchCase::setFunctions(Module& M) { 
-    LLVMContext& Context = getGlobalContext();
+    LLVMContext& Context = M.getContext();
     RemoteCall& remoteCall = getAnalysis<RemoteCall>(); 
     // void* consume(int jobid)i;
 
@@ -120,7 +120,7 @@ namespace corelab {
   }
 
   Function* SwitchCase::createExecFunction(Module& M) {
-    LLVMContext& Context = getGlobalContext();
+    LLVMContext& Context = M.getContext();
     const DataLayout& dataLayout = M.getDataLayout();
 
     // LoadNamer& loadNamer = getAnalysis< LoadNamer >();

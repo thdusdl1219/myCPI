@@ -65,7 +65,7 @@ bool RemoteCall::runOnModule(Module& M) {
 
 
 void RemoteCall::setFunctions(Module &M) {
-	LLVMContext &Context = getGlobalContext();
+	LLVMContext &Context = M.getContext();
 
 	// int generateJobId(int);
 	GenerateJobId = M.getOrInsertFunction(
@@ -170,7 +170,7 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 }
 
 Instruction* RemoteCall::createJobId(Function* f, Instruction *insertBefore){
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = f->getParent()->getContext();
 	EspInitializer& esp = getAnalysis< EspInitializer >();
 	int functionId = esp.functionTable.getFunctionID(f);
 
@@ -182,11 +182,11 @@ Instruction* RemoteCall::createJobId(Function* f, Instruction *insertBefore){
 
 void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, Instruction *insertBefore) {
 	
-	LLVMContext &Context = getGlobalContext();
 	//EsperantoNamer& esperantoNamer = getAnalysis< EsperantoNamer >();
 	EspInitializer& esp = getAnalysis< EspInitializer >();
 	InstMarker& iMarker =getAnalysis< InstMarker >();
 	Module *M = f->getParent();
+	LLVMContext &Context = M->getContext();
 	const DataLayout &dataLayout = M->getDataLayout();
 	std::vector<Value*> actuals(0);
 

@@ -54,7 +54,7 @@ namespace corelab {
 
 	bool DeviceLinker::runOnModule(Module& M)
 	{
-		LLVMContext &Context = getGlobalContext();
+		//LLVMContext &Context = getGlobalContext();
 		setFunctions(M);
 		insertRegisterDevice(M);
 		return false;

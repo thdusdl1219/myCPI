@@ -52,7 +52,7 @@ namespace corelab {
 
 	bool MainCreator::runOnModule(Module& M)
 	{
-		LLVMContext &Context = getGlobalContext();
+		//LLVMContext &Context = getGlobalContext();
 		setFunctions(M);
 		setIniFini(M);	
 		return false;
@@ -60,7 +60,7 @@ namespace corelab {
 
 
 	void MainCreator::setIniFini(Module& M){
-		LLVMContext &Context = getGlobalContext();
+		LLVMContext &Context = M.getContext();
 		std::vector<Type*> formals(0);
 		std::vector<Value*> actuals(0);
 

@@ -47,7 +47,7 @@ namespace corelab {
 
 	bool InstMarker::runOnModule(Module& M)
 	{
-		LLVMContext &Context = getGlobalContext();
+		//LLVMContext &Context = getGlobalContext();
 		markClassInst(M);
 		markFunctionInst(M);
 		removeMarkedRegion(M);
@@ -57,7 +57,7 @@ namespace corelab {
 	}
 
 	void InstMarker::makeMetadata(Instruction* instruction, int Id) {
-		LLVMContext &context = getGlobalContext();
+		LLVMContext &context = instruction->getModule()->getContext();
 		//XXX: Is it okay to cast Value* to Metadata* directly?
 		Constant* IdV = ConstantInt::get(Type::getInt64Ty(context), Id);
 		Metadata* IdM = (Metadata*)ConstantAsMetadata::get(IdV);
@@ -255,7 +255,7 @@ namespace corelab {
 		typedef Module::iterator FF;
 		typedef Function::iterator BB;
 		typedef BasicBlock::iterator II;
-		LLVMContext& Context = getGlobalContext(); 
+		//LLVMContext& Context = getGlobalContext(); 
 		EspInitializer& database = getAnalysis< EspInitializer >();
 
 		for(FF FI = M.begin(),FE = M.end();FI !=FE; ++FI){
