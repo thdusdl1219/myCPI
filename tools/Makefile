@@ -9,6 +9,7 @@ LEVEL=..
 #
 # List all of the subdirectories that we will compile.
 #
-DIRS=
+DIRS=esperanto\
+		 dataQ\
 
 include $(LEVEL)/Makefile.common

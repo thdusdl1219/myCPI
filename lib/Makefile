@@ -10,6 +10,7 @@ LEVEL=..
 #
 
 DIRS=Utilities\
+		 Esperanto\
 
 
 include $(LEVEL)/Makefile.common

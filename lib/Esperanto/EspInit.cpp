@@ -46,7 +46,7 @@ namespace corelab {
 
 	bool EspInitializer::runOnModule(Module& M)
 	{
-		LLVMContext &Context = getGlobalContext();
+		//LLVMContext &Context = getGlobalContext();
 		buildMetadataTable();
 		//buildDriverTable();
 		buildProtocolTable();
