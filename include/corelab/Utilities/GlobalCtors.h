@@ -2,7 +2,7 @@
 #define GLOBAL_CTORS_H
 
 #include "llvm/IR/Function.h"
-#include "llvmOld/Analysis/ProfileInfo.h"//juhyun
+#include "corelab/Utilities/ProfileInfo.h"//juhyun
 
 namespace corelab {
   using namespace llvm;
