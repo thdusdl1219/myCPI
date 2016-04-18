@@ -5,6 +5,7 @@
 
 // #include "../Eevent/eventManager.h"
 #include "esperantoUtils.h"
+#include "../networkUtils/tcpComm.h"
 #include "dataQ/dataQManager.h"
 #include "deviceRuntimeManager.h"
 
