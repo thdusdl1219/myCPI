@@ -59,7 +59,7 @@ namespace corelab {
       // return that operation
       static Instruction *makeNonEmpty(BasicBlock *bb) {
 
-        LLVMContext &Context = getGlobalContext();
+        LLVMContext &Context = bb->getModule()->getContext();
 
         Value *zero = ConstantInt::get( Type::getInt32Ty(Context), 0 );
         Instruction *nop = BinaryOperator::Create(
@@ -94,7 +94,7 @@ namespace corelab {
       // Create a new insertion point at the beginning of this function
       static InstInsertPt Beginning(Function *f) {
         if( f->isDeclaration() ) {
-          BasicBlock *bb = BasicBlock::Create( getGlobalContext() );
+          BasicBlock *bb = BasicBlock::Create( f->getParent()->getContext() );
           f->getBasicBlockList().push_back( bb );
           return Beginning( bb );
         } else {
