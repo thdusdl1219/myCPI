@@ -1,0 +1,45 @@
+/***
+ *
+ * Offload/HotFunction.h
+ *
+ * This pass checks which function is hot!!
+ *
+ */
+
+#ifndef LLVM_CORELAB_HOT_FUNCTION_H
+#define LLVM_CORELAB_HOT_FUNCTION_H
+
+#include "llvm/Pass.h"
+#include "llvm/IR/Module.h"
+#include "llvm/IR/Constants.h"
+
+#include <cstdio>
+
+namespace corelab {
+	using namespace llvm;
+
+	class HotFunction : public ModulePass {
+		public:
+			static char ID;
+			HotFunction() : ModulePass(ID) {}
+			
+			
+			const char *getPassName() const { return "HotFunction"; }
+
+			virtual bool runOnModule (Module& M);
+			virtual void getAnalysisUsage(AnalysisUsage& AU) const;
+			bool runOnFunction(Function& F);
+
+		private:
+			Constant* beginFunction;
+			Constant* endFunction;
+
+			Constant* Initialize;
+			Constant* Finalize;
+
+			void setIniFini(Module& M);
+			void setFunctions(Module& M);
+	};
+}
+
+#endif

@@ -1,0 +1,413 @@
+/***
+ * Selector.cpp : Offloading function selector
+ *
+ * Selects offloading target.
+ * Extracts loop to form independent function
+ * if it is selected as offloading target.
+ * written by : gwangmu
+ *
+ * **/
+
+#include "llvm/IR/TypeFinder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/IR/Dominators.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/Analysis/LoopInfo.h"
+#include "llvm/Transforms/Utils/CodeExtractor.h"
+
+#include "corelab/UVA/Selector.h"
+#include "corelab/UVA/Filter.h"
+#include "corelab/Metadata/Metadata.h"
+#include "corelab/Utilities/Debug.h"
+#include "corelab/Utilities/ModuleLoops.h"
+
+#include <vector>
+#include <iostream>
+#include <cassert>
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
+#include <string>
+
+using namespace llvm;
+using namespace std;
+using namespace corelab::UVA;
+
+namespace corelab {
+	static Debug DEBUG("selector");
+	static RegisterPass<FnSelector> X("fn-selector", "selects offloading target, "
+		"extracts loops to form function if required.", false, false);
+
+	static const char* arrJmpFns[] = {
+		#define JUMP(x) #x,
+		#include "jmp_fn.dat"
+		#undef JUMP
+	};
+
+	char FnSelector::ID = 0;
+
+	void FnSelector::getAnalysisUsage (AnalysisUsage &AU) const {
+		AU.addRequired< Namer > ();
+		AU.addRequired< LoadNamer > ();
+		AU.addRequired< LoopInfo > ();
+		AU.addRequired< FnFilter > ();
+		AU.addRequired< CallGraph > ();
+		AU.setPreservesAll ();
+	}
+
+	bool FnSelector::runOnModule (Module& M) {
+		// initilize environment variable
+		this->pM = &M;
+		this->pC = &M.getContext ();
+		this->loadNamer = &getAnalysis< LoadNamer > ();
+		this->namer = &getAnalysis< Namer >();
+
+		// XXX TEMPORARY!!! XXX
+		for (Module::global_iterator igvar = M.global_begin ();
+				 igvar != M.global_end (); igvar++) {
+			string gname = igvar->getName().str ();
+			//if (gname.substr (0, 4) == "_ZTV" && gname.substr (0, 7) != "_ZTVN10")
+				igvar->setConstant (false);
+		}
+		// XXX TEMPORARY!!! XXX
+
+		DEBUG.PRINT ("*** Function Selector ***");
+
+		DEBUG.BEGIN_TASK ("LOAD", "Loading hot routine profile..");
+		FnSelector::HotRtnVector vecRtnRank = getHotRoutineProfile ();
+		DEBUG.END_TASK ("LOAD");
+
+		DEBUG.BEGIN_TASK ("SELECT", "Selecting offloading targets..");
+		FnSelector::HotRtnVector vecTargets = getOffloadingTargets (vecRtnRank, false);
+		DEBUG.END_TASK ("SELECT");
+
+		if (vecTargets.empty ()) {
+			DEBUG.BEGIN_TASK ("SELECTA", "Selecting offloading targets.. (including loops)");
+			vecTargets = getOffloadingTargets (vecRtnRank, true);
+			DEBUG.END_TASK ("SELECTA");
+		}
+
+		DEBUG.BEGIN_TASK ("FNIZE", "Functionizing targets..");
+		FnSelector::HotRtnVector vecFnTargets = functionizeTargets (vecTargets);
+		DEBUG.END_TASK ("FNIZE");
+
+		DEBUG.BEGIN_TASK ("JMPCALL", "Checking jump-resistance of targets..");
+		vecFnTargets = selectJumpResistantTargets (vecFnTargets);
+		DEBUG.END_TASK ("JMPCALL");
+
+		DEBUG.BEGIN_TASK ("PRINT", "Printing offloading targets..");
+		printOffloadingTargets (vecFnTargets);
+		DEBUG.END_TASK ("PRINT");
+
+		DEBUG.FINISH ();
+
+		return false;
+	}
+
+	
+	FnSelector::HotRtnVector FnSelector::getHotRoutineProfile () {
+		FnSelector::HotRtnVector vecRtnRank;
+
+		FILE* fp;
+		const int BUF_SIZE = 1000;
+		char buf[BUF_SIZE];
+
+		fp = fopen ("hotRoutine.profile", "r");
+	
+		assert (fp && "hot routine profile 'hotRoutine.profile' not found");
+	
+		while (fgets (buf, BUF_SIZE, fp)) {
+			HotRtnEntry entry;
+			char cRtn;
+
+			sscanf (buf, "[%c%d] exe_time = %d, call_count = %d, gain = %lld \n",
+				&cRtn, &entry.rtnID.id, &entry.tExec, &entry.cntCall, &entry.gain);
+			entry.rtnID.type = getRtnTypeFromChar (cRtn);
+
+			vecRtnRank.push_back (entry);
+		}
+		
+		return vecRtnRank;
+	}
+
+	FnSelector::HotRtnVector FnSelector::getOffloadingTargets (HotRtnVector &vecRtnRank, bool takeLoop) {
+		FnSelector::HotRtnVector vecTargets;
+
+		const int TARGET_CNT_MAX = 3;
+		FnFilter &filter = getAnalysis< FnFilter > ();
+
+		for (unsigned i = 0; i < vecRtnRank.size () && vecTargets.size () < TARGET_CNT_MAX; ++i) {
+			HotRtnEntry &entry = vecRtnRank[i];
+
+			DEBUG.BEGIN_TASK ("INV", "Investigating.. (type:%c, id:%d)",
+				getRtnCharFromType (entry.rtnID.type), entry.rtnID.id);
+
+			if (entry.gain <= 0) {
+				DEBUG.EXIT_TASK ("INV", "gain value under 0");
+				break;
+			}
+
+			switch (entry.rtnID.type) {
+				case LOOP_TYPE: {
+					if (!takeLoop) {
+						DEBUG.PASS_TASK ("INV", "(skipping loop)");
+						continue;
+					}
+					else {
+						Loop *loop = getLoopFromID (entry.rtnID.id);
+						Function *fnParent = getParentFunction (loop);
+
+						RtnID parentID;
+						parentID.id = loadNamer->getFunctionId (*fnParent);
+						parentID.type = FUNC_TYPE;
+						DEBUG.PRINT ("parent info (type:%c, id:%d)",
+							getRtnCharFromType (parentID.type), parentID.id);
+
+						if (containsID (vecTargets, parentID)) {
+							DEBUG.PASS_TASK ("INV", "parent already selected as target");
+							continue;
+						}
+						if (!filter.isOffloadableLoop (entry.rtnID.id)) {
+							DEBUG.PASS_TASK ("INV", "unoffloadable routine");
+							continue;
+						}
+
+						DEBUG.PRINT ("selected.");
+						vecTargets.push_back (entry);
+					}
+				} break;
+				case FUNC_TYPE:
+					if (!filter.isOffloadableFn (entry.rtnID.id)) {
+						DEBUG.PASS_TASK ("INV", "unoffloadable routine");
+						continue;
+					}
+
+					DEBUG.PRINT ("selected.");
+					vecTargets.push_back (entry);
+
+					break;
+				default:
+					assert (0 && "RTN_TYPE must be either LOOP_TYPE or FUNC_TYPE");
+					break;
+			}
+
+			DEBUG.END_TASK ("INV");
+		}
+		
+////XXX DEBUG
+//		for (unsigned i = 0; i < vecTargets.size (); ++i)
+//			fprintf (stderr, "type:%c, id:%d\n", 
+//				getRtnCharFromType (vecTargets[i].rtnID.type), vecTargets[i].rtnID.id);
+////XXX DEBUG
+		return vecTargets;
+	}
+
+	FnSelector::HotRtnVector FnSelector::functionizeTargets (HotRtnVector &vecTargets) {
+		vector<Function *> vecTargetFns;
+		//ModuleLoops &moduleLoops = getAnalysis< ModuleLoops > ();
+
+		for (unsigned i = 0; i < vecTargets.size (); ++i) {
+			RtnID rtnID = vecTargets[i].rtnID;
+
+			DEBUG.BEGIN_TASK ("PROC", "Processing.. (type:%c, id:%d)",
+				getRtnCharFromType (rtnID.type), rtnID.id);
+
+			switch (rtnID.type) {
+				case LOOP_TYPE: {
+					Loop *loop = getLoopFromID (rtnID.id);
+					Function *fnParent = getParentFunction (loop);
+					//DominatorTree &treeDom = moduleLoops.getAnalysis_DominatorTree (fnParent);
+					//LoopInfo &loopInfo = getAnalysis< LoopInfo > (*fn);
+					// XXX DOMINATOR_TREE_ANALYSIS USAGE??
+					DominatorTree treeDom = DominatorTreeAnalysis().run (*fnParent);
+
+					CodeExtractor codeExtract = CodeExtractor (treeDom, *loop, false);
+					if (!codeExtract.isEligible ()) {
+						DEBUG.PASS_TASK ("PROC", "functionization failed");
+						vecTargetFns.push_back (NULL);
+						continue;
+					}
+
+					Function *fnLoop = codeExtract.extractCodeRegion ();
+					DEBUG.PRINT ("function created (name:%s)", fnLoop->getName().str().c_str());
+
+					vecTargetFns.push_back (fnLoop);
+				} break;
+				case FUNC_TYPE:
+					vecTargetFns.push_back (loadNamer->getFunction (*pM, rtnID.id));
+					break;
+				default:
+					assert (0 && "RTN_TYPE must be either LOOP_TYPE or FUNC_TYPE");
+					break;
+			}	
+
+			DEBUG.END_TASK ("PROC");
+		}
+
+		FnSelector::HotRtnVector vecFnTargets;
+
+		DEBUG.BEGIN_TASK ("RESET_META", "Resetting metadata..");
+		namer->reset (*pM);
+		loadNamer->reload ();
+		DEBUG.END_TASK ("RESET_META");
+
+		DEBUG.BEGIN_TASK ("REASSN_ID", "Reassigning routine id..");
+		for (unsigned i = 0; i < vecTargets.size (); ++i) {
+			if (vecTargetFns[i] == NULL) continue;
+			HotRtnEntry nEntry = vecTargets[i];
+
+			nEntry.rtnID.id = loadNamer->getFunctionId (*vecTargetFns[i]);
+			nEntry.rtnID.type = FUNC_TYPE;
+
+			if (nEntry.rtnID.type != vecTargets[i].rtnID.type
+					|| nEntry.rtnID.id != vecTargets[i].rtnID.id) {
+				DEBUG.PRINT ("changed from (type:%c, id:%d) to (type:%c, id:%d)",
+					getRtnCharFromType (vecTargets[i].rtnID.type), vecTargets[i].rtnID.id,
+					getRtnCharFromType (nEntry.rtnID.type), nEntry.rtnID.id);
+			}
+
+			vecFnTargets.push_back (nEntry);
+		}
+		DEBUG.END_TASK ("REASSN_ID");
+	
+		return vecFnTargets;
+	}
+
+	FnSelector::HotRtnVector FnSelector::selectJumpResistantTargets (HotRtnVector &vecTargets) {
+		// load jump fn list
+		set<Function *> setJmpFns;
+		for (unsigned i = 0; i < sizeof(arrJmpFns) / sizeof(const char*); ++i) {
+			if (Function *fnJmp = pM->getFunction (arrJmpFns[i]))
+				setJmpFns.insert (fnJmp);
+		}
+
+		// find jump callers
+		set<Function *> setJmpCallers;
+
+		DEBUG.BEGIN_TASK ("FINDJC", "Finding jump callers..");
+		for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ifn++) {
+			for (Function::iterator iblk = ifn->begin (); iblk != ifn->end (); iblk++) {
+				for (BasicBlock::iterator iinst = iblk->begin (); iinst != iblk->end (); iinst++) {
+					Instruction *inst = &*iinst;
+					Function *fnCalled = NULL;
+
+					if (CallInst *instCall = dyn_cast< CallInst > (inst))
+						fnCalled = instCall->getCalledFunction();
+					else if (InvokeInst *instInvoke = dyn_cast< InvokeInst > (inst))
+						fnCalled = instInvoke->getCalledFunction ();
+
+					if (fnCalled != NULL && fnCalled->isDeclaration () 
+							&& setJmpFns.find (fnCalled) != setJmpFns.end ()) {
+						setJmpCallers.insert (fnCalled);
+						DEBUG.PRINT ("found '%s' in '%s'", 
+							fnCalled->getName().str().c_str (), ifn->getName().str().c_str ());
+					}
+				}
+			}
+		}
+		DEBUG.END_TASK ("FINDJC");
+
+		// select jump-resistant targets
+		HotRtnVector vecJRTargets;
+		namer->reset (*pM);
+		loadNamer->reload ();
+		CallGraph *callgraph = &getAnalysis< CallGraph > ();
+
+		DEBUG.BEGIN_TASK ("SELECTJR", "Selecting jump-resistant targets..");
+		for (unsigned i = 0; i < vecTargets.size (); i++, callgraph->reset ()) {
+			Function *fnTarget = loadNamer->getFunction (*pM, vecTargets[i].rtnID.id);
+			CallGraphNode *nodeTarget = callgraph->getNode (fnTarget);
+			// if the target has jump-caller callee, accept it.
+			bool hasJmpCallerAsCallee = false;
+			for (set<Function *>::iterator it = setJmpCallers.begin ();
+					 it != setJmpCallers.end (); it++) {
+				CallGraphNode *nodeCaller = callgraph->getNode (*it);
+				if (nodeCaller->isDescendant (nodeTarget)) {
+					hasJmpCallerAsCallee = true;
+					break;
+				}
+			}
+
+			// remove all caller edges
+			set<CallGraphNode *> setParents;
+			for (CallGraphNode::iterator ipar = nodeTarget->parentBegin ();
+					 ipar != nodeTarget->parentEnd (); ipar++)
+				setParents.insert (*ipar);
+			for (set<CallGraphNode *>::iterator ipar = setParents.begin ();
+					 ipar != setParents.end (); ipar++)
+				callgraph->removeEdge (*ipar, nodeTarget);
+
+			// find path to MAIN fn
+			bool doesJmpCallerReachableToMain = false;
+			for (set<Function *>::iterator it = setJmpCallers.begin ();
+					 it != setJmpCallers.end (); it++) {
+				CallGraphNode *nodeCaller = callgraph->getNode (*it);
+				if (nodeCaller->isDescendant (callgraph->getMainNode ())) {
+					DEBUG.PRINT ("Rejecting '%s'.. (type:%c, id:%d)", 
+						fnTarget->getName().str().c_str (),
+						getRtnCharFromType (vecTargets[i].rtnID.type), vecTargets[i].rtnID.id);
+					 doesJmpCallerReachableToMain = true;
+					break;
+				}
+			}
+
+			if (!hasJmpCallerAsCallee || !doesJmpCallerReachableToMain) {
+				DEBUG.PRINT ("Accepting '%s'.. (type:%c, id:%d)", 
+					fnTarget->getName().str().c_str (),
+					getRtnCharFromType (vecTargets[i].rtnID.type), vecTargets[i].rtnID.id);
+				vecJRTargets.push_back (vecTargets[i]);
+			}
+		}
+		DEBUG.END_TASK ("SELECTJR");
+
+		return vecJRTargets;
+	}
+
+	void FnSelector::printOffloadingTargets (HotRtnVector vecFnTargets) {
+		FILE* fp;
+
+		fp = fopen ("offloadFunction.profile", "w");
+
+		// FORMAT) <Function ID> : <Avg. execution time>
+		for (unsigned i = 0; i < vecFnTargets.size (); ++i)
+			fprintf (fp, "%u : %u\n", vecFnTargets[i].rtnID.id, vecFnTargets[i].tExec / vecFnTargets[i].cntCall);
+
+		fclose (fp);
+	}
+
+
+	// helper methods
+	Loop* FnSelector::getLoopFromID (LoopID loopID) {
+		for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ++ifn) {	
+			Function *fn = &*ifn;
+
+			if (fn->isDeclaration ()) continue;
+
+			LoopInfo &loopInfo = getAnalysis< LoopInfo > (*fn);
+			FuncID fnID = loadNamer->getFunctionId (*fn);
+
+			// XXX only takes care of outer-most loop XXX
+			for (Loop::iterator iloop = loopInfo.begin (); iloop != loopInfo.end (); ++iloop) {
+				if (loopID == loadNamer->getLoopContextId (*iloop, fnID))
+					return *iloop;
+			}
+		}
+		
+		return NULL;
+	}
+
+	Function* FnSelector::getParentFunction (Loop *loop) {
+		return (*loop->block_begin())->getParent ();
+	}
+
+	bool FnSelector::containsID (HotRtnVector &vecHotRtn, RtnID rtnID) {
+		for (unsigned i = 0; i < vecHotRtn.size (); ++i) {
+			if (vecHotRtn[i].rtnID == rtnID) 
+				return true;
+		}
+
+		return false;
+	}
+}

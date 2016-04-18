@@ -1,0 +1,605 @@
+/***
+ * Selector.cpp : Offloading function selector
+ *
+ * Construct offload-able function set
+ * XXX C version-sensitive. may be ill-functional other than C99 XXX
+ * if callee function is used without including appropriate
+ * header (such as 'putwc' w/o <wchar.h>), callee function may be
+ * enclosed by bitcast.
+ * XXX THIS CASE IS ASSUMED TO BE NOT EXIST XXX
+ * written by : gwangmu
+ *
+ * **/
+
+#include "llvm/IR/TypeFinder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/ADT/StringMap.h"
+
+#include "corelab/UVA/Filter.h"
+#include "corelab/Callgraph/Callgraph.h"
+#include "corelab/Utilities/Debug.h"
+
+#include <iostream>
+#include <cassert>
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
+#include <string>
+
+//#define HOTFN_INSPECTION
+
+using namespace llvm;
+using namespace std;
+using namespace corelab::UVA;
+
+namespace corelab {
+	static Debug DEBUG("filter");
+	static RegisterPass<FnFilter> X("fn-filter", "construct offload-able function set", false, false);
+
+	static const char* arrAllowExtFns[] = {
+		#define ALLOW(x) #x,
+		#include "allow_ext_fn.dat"
+		#undef ALLOW
+	};
+
+	static const char* arrJmpFns[] = {
+		#define JUMP(x) #x,
+		#include "jmp_fn.dat"
+		#undef JUMP
+	};
+
+	char FnFilter::ID = 0;
+
+	void FnFilter::getAnalysisUsage (AnalysisUsage &AU) const {
+		AU.addRequired< LoadNamer > ();	
+		AU.addRequired< CallGraph > ();
+		AU.addRequired< LoopInfo > ();
+		AU.setPreservesAll ();
+	}
+
+	bool FnFilter::runOnModule (Module& M) {
+		// initilize environment variable
+		this->pM = &M;
+		this->pC = &M.getContext ();
+		this->grfCall = &getAnalysis< CallGraph > ();
+		this->loadNamer = &getAnalysis< LoadNamer > ();
+
+		fprintf (stderr, "*** Function Filter ***\n");
+
+		// load function sets
+		loadAllowedExternalFnSet ();
+		loadJumpFnSet ();
+
+		// selecting process
+		for (Module::iterator ifn = M.begin (); ifn != M.end (); ++ifn) {
+			Function *fn = &*ifn;
+
+			for (Function::iterator iblk = fn->begin (); iblk != fn->end (); ++iblk) {
+				BasicBlock *blk = &*iblk;
+
+				// filter un-offloadable functions
+				if (hasUnhandledExternalFnUsage (blk)) {
+					registUnableFns (fn, "Using unhandled external fn");
+					break;
+				}
+				#ifdef FILTER_FUNCTION_PT
+				else if (hasFnPointerUsage (blk)) {
+					registUnableFns (fn, "Using function pointer");
+					break;
+				}
+				#endif
+
+			}
+		}
+
+		#ifdef HOTFN_INSPECTION
+		dumpInspectionResult ();
+		#endif
+
+		return false;
+	}
+
+	void FnFilter::loadAllowedExternalFnSet () {
+		for (unsigned i = 0; i < sizeof(arrAllowExtFns) / sizeof(const char *); ++i)
+			setAllowExtFns.insert (arrAllowExtFns[i]);
+	}
+
+	void FnFilter::loadJumpFnSet () {
+		for (unsigned i = 0; i < sizeof(arrJmpFns) / sizeof(const char*); ++i)
+			setJmpFns.insert (arrJmpFns[i]);
+	}
+
+	/* Check whether function FN has output, whose return value is in use as def */
+	bool FnFilter::hasOutputDef (BasicBlock *blk, unsigned option) {
+		#ifdef HOTFN_INSPECTION
+		bool res = false;
+		#endif
+
+		for (BasicBlock::iterator iinst = blk->begin (); iinst != blk->end (); ++iinst) {
+			Instruction *inst = &*iinst;
+
+			if (CallInst *instCall = dyn_cast< CallInst > (inst)) {
+				Function* fnCalled = dyn_cast<Function> (instCall->getCalledValue());
+				if (fnCalled != NULL && 
+						isOutputFn (fnCalled, option) && 
+						instCall->hasNUsesOrMore (1)) {
+
+					#ifdef HOTFN_INSPECTION
+					Function *fn = blk->getParent ();
+	
+					mapFltCause[fn].push_back (CauseInfo (inst, "somewhere using return from output function"));
+					mapFltCause[fn].push_back (CauseInfo (&*ibb, "containing unallowed instruction"));
+					#endif
+
+					#ifdef HOTFN_INSPECTION
+					res = true;
+					#else
+					return true;
+					#endif
+				}
+			}
+		}
+		
+		#ifdef HOTFN_INSPECTION
+		return res;
+		#else
+		return false;
+		#endif
+	}
+
+	/* Check whether function FN has external function usage
+	 * which does not handled by offloading code */
+	/* XXX ASSUME EXTERNAL FNS ARE NOT ACCESSED THROUGH THEIR ADDRESS XXX */
+	bool FnFilter::hasUnhandledExternalFnUsage (BasicBlock *blk) {
+		Function *fn = blk->getParent ();
+		#ifdef HOTFN_INSPECTION
+		bool res = false;
+		#endif
+
+		for (BasicBlock::iterator iinst = blk->begin (); iinst != blk->end (); ++iinst) {
+			Instruction *inst = &*iinst;
+			Value *valCalled = NULL;
+
+			if (CallInst *instCall = dyn_cast< CallInst > (inst))
+				valCalled = instCall->getCalledValue();
+			else if (InvokeInst *instInvoke = dyn_cast< InvokeInst > (inst))
+				valCalled = instInvoke->getCalledValue ();
+
+			if (valCalled) {
+				if (Function *fnCalled = dyn_cast< Function > (valCalled))
+					if (fnCalled->isDeclaration ()) {
+						// exclude handled cases
+						if (isAllowedExternalFn (fnCalled)) 		continue;
+						if (fnCalled->isIntrinsic ())						continue;
+			
+						// pend jump cases
+						if (isJumpFn (fnCalled)) {
+							fprintf (stderr, "%s: in %s\n", __func__, fn->getName().str().c_str ());
+							fprintf (stderr, "%s: detected jump fn '%s'\n", __func__, fnCalled->getName().str().c_str ());
+							fprintf (stderr, "%s: potentially unoffloadable. needs verification.\n", __func__);
+							continue;
+						}
+	
+						// not offloadable
+						fprintf (stderr, "hasUnhandledExternalFnUsage: in %s\n", fn->getName().str().c_str());
+						fprintf (stderr, "hasUnhandledExternalFnUsage: detected unhandled fn '%s'\n",
+							fnCalled->getName().str().c_str());				
+
+						#ifdef HOTFN_INSPECTION
+						mapFltCause[fn].push_back (CauseInfo (inst, "calling disallowed external function"));
+						mapFltCause[fn].push_back (CauseInfo (&*ibb, "containing unallowed instruction"));
+						#endif
+
+						#ifdef HOTFN_INSPECTION	
+						res = true;
+						#else
+						return true;
+						#endif
+					}
+			}
+		}
+
+		#ifdef HOTFN_INSPECTION
+		return res;
+		#else
+		return false;
+		#endif
+	}
+
+	// XXX MUST BE CALLED AFTER RUN_ON_MODULE XXX
+	bool FnFilter::hasUnoffloadableFnCall (BasicBlock *blk) {
+		for (BasicBlock::iterator iinst = blk->begin (); iinst != blk->end (); ++iinst) {
+			if (CallInst *instCall = dyn_cast<CallInst> (&*iinst)) {
+				Value *valCalled = instCall->getCalledValue ();
+				Function *fnCalled = getFnFromCallableVal (valCalled);
+		
+				if (fnCalled && setUnableFns.find (fnCalled) != setUnableFns.end ()) {
+					//blk->dump ();
+					fprintf (stderr, "hasUnoffloadableFnCall: detected unoffloadable fn call '%s'\n",
+						fnCalled->getName().str().c_str());				
+					return true;
+				}
+			}
+			else if (InvokeInst *instInvoke = dyn_cast<InvokeInst> (&*iinst)) {
+				Value *valCalled = instInvoke->getCalledValue ();
+				Function *fnCalled = getFnFromCallableVal (valCalled);
+		
+				if (fnCalled && setUnableFns.find (fnCalled) != setUnableFns.end ()) {
+					//blk->dump ();
+					fprintf (stderr, "hasUnoffloadableFnCall: detected unoffloadable fn call '%s'\n",
+						fnCalled->getName().str().c_str());				
+					return true;
+				}
+				
+			}
+		}
+
+		return false;
+	}
+
+	/* Check whether function FN has function pointer usage. *
+	 * Any one usage of function pointer type will be counted. */
+	bool FnFilter::hasFnPointerUsage (BasicBlock *blk) {
+		#ifdef HOTFN_INSPECTION
+		bool res = false;
+		#endif
+
+		for (BasicBlock::iterator iinst = blk->begin (); iinst != blk->end (); ++iinst) {
+			Instruction *inst = &*iinst;
+			vector<Value *> vecOpers = getOperands (inst);
+
+			if (isOrHasFnPointerType (inst->getType ())) {
+				fprintf (stderr, "hasFnPointerUsage: in %s\n", blk->getParent()->getName().str().c_str());
+				fprintf (stderr, "hasFnPointerUsage: function pointer usage-> ");
+				inst->dump ();
+
+				#ifdef HOTFN_INSPECTION
+				mapFltCause[fn].push_back (CauseInfo (inst, "returning function pointer type"));
+				mapFltCause[fn].push_back (CauseInfo (&*blk, "containing unallowed instruction"));
+				#endif
+
+				#ifdef HOTFN_INSPECTION
+				res = true;
+				#else
+				return true;
+				#endif
+			}
+
+			for (unsigned i = 0; i < vecOpers.size (); ++i) {
+				if (isOrHasFnPointerType (vecOpers[i]->getType ())) {
+					fprintf (stderr, "hasFnPointerUsage: in %s\n", blk->getParent()->getName().str().c_str());
+					fprintf (stderr, "hasFnPointerUsage: function pointer usage-> ");
+					vecOpers[i]->dump ();
+
+					#ifdef HOTFN_INSPECTION
+					mapFltCause[fn].push_back (CauseInfo (inst, "argument has function pointer type"));
+					mapFltCause[fn].push_back (CauseInfo (&*blk, "containing unallowed instruction"));
+					#endif
+
+					#ifdef HOTFN_INSPECTION
+					res = true;
+					#else
+					return true;
+					#endif
+				}
+			}
+		}
+
+		#ifdef HOTFN_INSPECTION
+		return res;
+		#else
+		return false;
+		#endif
+	}
+
+	// Set manipulator
+	void FnFilter::registUnableFns (Function *invRoot, string cause) {
+		CallGraphNode *node = grfCall->getNode (invRoot);
+		string name = node->getFunction()->getName().str();
+		bool preUnabled = (setUnableFns.find (invRoot) != setUnableFns.end ());
+
+		// if node is NULL, INV_ROOT is not in callgraph fn.	
+		if (!node) 			return;
+		if (preUnabled) cause = string ("(already unabled)");
+
+		DEBUG.PRINT ("unoffloadable '%s': %s", name.c_str(), cause.c_str());	
+		if (preUnabled) return;
+
+		setUnableFns.insert (invRoot);
+
+		for (CallGraphNode::iterator ipar = node->parentBegin ();
+				 ipar != node->parentEnd (); ++ipar) {
+			Function *fnParent = (*ipar)->getFunction ();
+
+			#ifdef HOTFN_INSPECTION
+			mapFltCause[fnParent].push_back (CauseInfo (invRoot, string ("calling '") + name + string ("'")));
+			#endif
+
+			DEBUG.BEGIN_RECURSE ();
+			registUnableFns (fnParent, string());
+			DEBUG.END_RECURSE ();
+		}
+	}
+
+
+#ifdef HOTFN_INSPECTION
+	struct HotFnInfo {
+		Function *fn;
+		unsigned fnID;
+		unsigned timeExe;
+		unsigned cntCall;
+		unsigned cost;
+	};
+
+	// inspection result dump
+	void FnFilter::dumpInspectionResult () {
+		LoadNamer &loadNamer = getAnalysis< LoadNamer > ();
+		FILE* fp;
+		vector< HotFnInfo > vecHfInfo;
+		
+		fp = fopen ("hotFunction.sort.profile", "r");
+		assert (fp != NULL && "hot function profile 'hotFunction.sort.profile' not found");
+
+		for (unsigned i = 0; i < HOTFN_INSPECTION; ++i) {
+			HotFnInfo infoHotFn;
+
+			int res = fscanf (fp, "[%d] exe_time = %d, call_count = %d, cost = %d \n",
+				&infoHotFn.fnID, &infoHotFn.timeExe, &infoHotFn.cntCall, &infoHotFn.cost);
+			if (res == EOF) break;
+
+			infoHotFn.fn = loadNamer->getFunction (*pM, infoHotFn.fnID);
+
+			vecHfInfo.push_back (infoHotFn);
+		}
+
+		fprintf (stderr, "\n\n");
+		DEBUG.PRINT ("*** Hot function analysis result ***");
+		for (vector< HotFnInfo >::iterator it = vecHfInfo.begin (); it != vecHfInfo.end (); ++it) {
+			HotFnInfo &infoHf = *it;
+
+			DEBUG.PRINT ("Function '%s' (id:%d, exetime:%d, callcount:%d, cost:%d)",
+				infoHf.fn->getName().str().c_str(), infoHf.fnID, infoHf.timeExe, infoHf.cntCall, infoHf.cost);
+			DEBUG.indent ();
+
+			dumpRuledOutCause (infoHf.fn);
+
+			DEBUG.outdent ();
+			fprintf (stderr, "\n");
+		}
+	}
+
+	void FnFilter::dumpRuledOutCause (Function *fn) {
+		static set< Function *> setDumped;
+
+		if (mapFltCause.find (fn) == mapFltCause.end ()) {
+			DEBUG.PRINT ("(passed)");
+		}
+		else {
+			vector< CauseInfo > &vecCauses = mapFltCause[fn];
+
+			for (unsigned i = 0; i < vecCauses.size (); ++i) {
+				DEBUG.PRINT ("%s", vecCauses[i].desc.c_str());
+				if (Instruction *inst = dyn_cast<Instruction> (vecCauses[i].source)) {
+					vecCauses[i].source->dump ();
+				}
+
+				if (Function *fnSrc = dyn_cast<Function> (vecCauses[i].source)) {
+					DEBUG.indent ();
+
+					if (setDumped.find (fnSrc) == setDumped.end ()) {
+						setDumped.insert (fnSrc);
+						dumpRuledOutCause (fnSrc);
+					}
+
+					DEBUG.outdent ();
+				}
+			}
+		}
+	}
+#endif
+
+	
+	// helper method
+	vector<Value *> FnFilter::getOperands (User *user) {
+		vector<Value *> opers;
+
+		for (User::op_iterator iOper = user->op_begin ();
+				 iOper != user->op_end (); ++iOper)
+		{
+			Value *val = iOper->get ();
+			opers.push_back (val);
+		}
+
+		return opers;
+	}
+
+	vector<Argument *> FnFilter::getFunctionArgs (Function *fn) {
+		vector<Argument *> vecArgs;
+
+		for (Function::arg_iterator it = fn->arg_begin ();
+				 it != fn->arg_end (); ++it)
+			vecArgs.push_back (&*it);
+
+		return vecArgs;
+	}
+
+	bool FnFilter::isOutputFn (Function *fn, unsigned option) {
+		string name = fn->getName ();
+
+		if (option & IO_LEGACY) {
+			if (name == "_IO_putc")			return true;
+			if (name == "puts")					return true;
+			if (name == "putchar")			return true;
+			if (name == "printf") 			return true;
+			if (name == "vprintf") 			return true;
+			if (name == "fwrite") 			return true;		// File IO
+			if (name == "fputc")				return true;		// File IO
+			if (name == "fputs")				return true;		// File IO
+			if (name == "fprintf")			return true;		// File IO
+			if (name == "vfprintf")			return true;		// File IO
+		}
+
+		if (option & IO_WIDE) {
+			if (name == "putwc")					return true;
+			if (name == "putwchar")				return true;
+			if (name == "wprintf") 				return true;
+			if (name == "vwprintf") 			return true;
+			if (name == "fputwc")					return true;		// File IO
+			if (name == "fputws")					return true;		// File IO
+			if (name == "fwprintf")				return true;		// File IO
+			if (name == "vfwprintf")			return true;		// File IO
+		}
+
+		if (option & IO_BUFFER) {
+			if (option & IO_LEGACY) {
+				if (name == "sprintf")			return true;
+				if (name == "vsprintf")			return true;
+				if (name == "snprintf")			return true;
+				if (name == "vsnprintf")		return true;
+			}
+
+			if (option & IO_WIDE) {
+				if (name == "swprintf")		return true;
+				if (name == "vswprintf")	return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool FnFilter::isAllowedExternalFn (Function *fn) {
+		string name = fn->getName().str();
+
+		for (set< string >::iterator it = setAllowExtFns.begin ();
+				 it != setAllowExtFns.end (); ++it) {
+			// if last character is wildcard, test substring
+			if ((*it)[it->length () - 1] == '*') {
+				if (name.length () >= it->length () - 1
+						&& it->substr (0, it->length () - 1) == name.substr (0, it->length () - 1))
+					return true;
+			}
+
+			if (*it == name)
+				return true;
+		}
+		
+		return false;
+	}
+
+	bool FnFilter::isJumpFn (Function *fn) {
+		return (setJmpFns.find (fn->getName().str ()) != setJmpFns.end ());
+	}			
+
+	bool FnFilter::isOrHasFnPointerType (Type *ty) {
+		return (isOrHasFnPointerTypeAux (ty, vector<StructType *> ()));
+	}
+
+
+	// helper method auxiliary	
+	bool FnFilter::isOrHasFnPointerTypeAux (Type *ty, vector<StructType *> vecVisited) {
+		if (StructType *tyStruct = dyn_cast<StructType> (ty)) {
+			unsigned cntElem = tyStruct->getNumElements ();
+
+			if (std::find (vecVisited.begin (), vecVisited.end (), tyStruct) != vecVisited.end ()) return false;
+			vecVisited.push_back (tyStruct);
+
+			for (unsigned i = 0; i < cntElem; i++) {
+				if (isOrHasFnPointerTypeAux (tyStruct->getElementType (i), vecVisited))
+					return true;
+			}
+
+			return false;
+		}
+		else if (ArrayType *tyArr = dyn_cast<ArrayType> (ty)) {
+			return (isOrHasFnPointerTypeAux (tyArr->getElementType (), vecVisited));
+		}
+		else if (PointerType *tyPt = dyn_cast<PointerType> (ty)) {
+			// return whether element type is pointer of function type
+			// XXX type of 'Function' class = pointer of function
+			// XXX type of function pointer = DOUBLE POINTER of function
+			if (PointerType *tyPtDeref = dyn_cast<PointerType> (tyPt->getElementType ())) {
+				if (dyn_cast<FunctionType> (tyPtDeref->getElementType ())) {
+					return true;
+				}
+			}
+
+			return (isOrHasFnPointerTypeAux (tyPt->getElementType (), vecVisited));
+		}
+		else { 			// XXX ASSUME NO VECTOR TYPE
+			return false;
+		}
+	}
+
+	// XXX ASSUME VAL IS BITCAST ONLY XXX
+	Function* FnFilter::getFnFromCallableVal (Value *val) {
+		if (ConstantExpr *cexp = dyn_cast<ConstantExpr> (val)) {
+			return dyn_cast<Function> (cexp->getOperand (0));
+		}
+		else if (Function *fn = dyn_cast<Function> (val)) {
+			return fn;
+		}
+		else {
+			// if function pointer, cannot get function from VAL
+			return NULL;
+		}
+	}
+
+	Loop* FnFilter::getLoopFromID (LoopID loopID) {
+		for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ++ifn) {
+			Function *fn = &*ifn;
+	
+			if (fn->isDeclaration ()) continue;
+
+			LoopInfo &loopInfo = getAnalysis< LoopInfo > (*fn);
+			FuncID fnID = loadNamer->getFunctionId (*fn);
+
+			// XXX only takes care of outer-most loop XXX
+			for (Loop::iterator iloop = loopInfo.begin (); iloop != loopInfo.end (); ++iloop) {
+				if (loopID == loadNamer->getLoopContextId (*iloop, fnID))
+					return *iloop;
+			}
+		}
+		
+		return NULL;
+	}
+
+
+	// Analysis interfaces
+	bool FnFilter::isOffloadableFn (FuncID fnID) {
+		Function *fn = loadNamer->getFunction (*pM, fnID);
+		return (setUnableFns.find (fn) == setUnableFns.end ());
+	}
+
+	bool FnFilter::isOffloadableLoop (LoopID loopID) {
+		Loop *loop = getLoopFromID (loopID);
+
+		DEBUG.BEGIN_TASK ("CHECK", "Received request for offloadability check of loop %d", loopID);
+		for (Loop::block_iterator iblk = loop->block_begin (); iblk != loop->block_end (); ++iblk) {
+			BasicBlock *blk = *iblk;
+
+			// filter un-offloadable functions
+			if (hasUnhandledExternalFnUsage (blk)) {
+				DEBUG.EXIT_TASK ("CHECK", "Using unhandled external fn. Rejected");
+				return false;
+			}
+			#ifdef FILTER_FUNCTION_PT
+			else if (hasFnPointerUsage (blk)) {
+				DEBUG.EXIT_TASK ("CHECK", "Using function pointer. Rejected");
+				return false;
+			}
+			#endif
+			else if (hasUnoffloadableFnCall (blk)) {
+				DEBUG.EXIT_TASK ("CHECK", "Calling unoffloadable fn. Rejected");
+				return false;
+			}
+		}
+		DEBUG.PRINT ("Accepted");
+		DEBUG.END_TASK ("CHECK");
+
+		return true;	
+	}
+}
+

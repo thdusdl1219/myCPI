@@ -1,0 +1,96 @@
+/***
+ * DynLoadStore.cpp : dynamic load/store counter
+ *
+ * counts the number of dynamic load/store operations.
+ * written by : gwangmu 
+ *
+ * **/
+
+#include "llvm/IR/TypeFinder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/Analysis/LoopInfo.h"
+
+#include "corelab/Utilities/GlobalCtors.h"
+#include "corelab/UVA/DynLoadStore.h"
+#include "corelab/Utilities/Debug.h"
+
+#include <vector>
+#include <inttypes.h>
+
+using namespace corelab;
+using namespace std;
+
+static RegisterPass<DynLoadStore> X("dyn-ldst", "counts dynamic load/stores", false, false);
+
+char DynLoadStore::ID = 0;
+
+void DynLoadStore::getAnalysisUsage (AnalysisUsage &AU) const {
+	AU.addRequired< LoopInfo >();
+	AU.setPreservesAll ();
+}
+
+bool DynLoadStore::runOnModule (Module& M) {
+	Type *tyVoid = Type::getVoidTy (M.getContext ());
+	const DataLayout *dataLayout = M.getDataLayout ();
+	unsigned numInsts = 0;
+	unsigned numLdSts = 0;
+	unsigned numFns = 0;
+	unsigned numLoops = 0;
+
+	// install counter
+	Constant *cnstCountLoad = M.getOrInsertFunction ("dcCountLoad", tyVoid, NULL);
+	Constant *cnstCountStore = M.getOrInsertFunction ("dcCountStore", tyVoid, NULL);
+
+	for (Module::iterator ifn = M.begin (); ifn != M.end(); ifn++) {
+		if (ifn->isDeclaration ()) continue;
+		numFns++;
+
+		/* XXX debug XXX */
+		LoopInfo &loopInfo = getAnalysis< LoopInfo > (*ifn);
+		vector<Loop *> vecLoops = vector<Loop *>(loopInfo.begin (), loopInfo.end ());
+		numLoops += vecLoops.size ();
+		/* XXX debug XXX */
+
+		for (Function::iterator iblk = ifn->begin (); iblk != ifn->end (); iblk++) {
+			for (BasicBlock::iterator iinst = iblk->begin (); iinst != iblk->end (); iinst++) {
+				Instruction *inst = &*iinst;
+				numInsts++;
+
+				if (LoadInst *instLoad = dyn_cast<LoadInst> (inst)) {
+					//if (dataLayout->getTypeSizeInBits (instLoad->getType ()) > 32)
+					CallInst::Create (cnstCountLoad, "", inst);
+					numLdSts++;
+				}
+				else if (StoreInst *instStore = dyn_cast<StoreInst> (inst)) {
+					//if (dataLayout->getTypeSizeInBits (instStore->getValueOperand()->getType ()) > 32)
+					CallInst::Create (cnstCountStore, "", inst);
+					numLdSts++;
+				}
+			}
+		}
+	}
+
+	// install dump call
+	Constant *cnstDump = M.getOrInsertFunction ("dcDump", tyVoid, NULL);
+
+	FunctionType *tyVoidVoidFn = FunctionType::get (tyVoid, false);
+	Function *fnDtor = Function::Create (tyVoidVoidFn, GlobalValue::InternalLinkage, "__destructor__", &M);
+	BasicBlock *blkDtor = BasicBlock::Create (M.getContext (), "dtor", fnDtor);
+	ReturnInst *instRet = ReturnInst::Create (M.getContext (), 0, blkDtor);
+	CallInst::Create (cnstDump, "", instRet);
+	
+	callAfterMain (fnDtor);
+
+	// print statistics
+	//fprintf (stderr, ">> # Instructions: %u\n", numInsts);
+	//fprintf (stderr, ">> # Load/Store Instructions: %u\n", numLdSts);
+	//fprintf (stderr, ">> # Functions: %u\n", numFns);
+	//fprintf (stderr, ">> # Loops: %u\n", numLoops);
+	fprintf (stderr, ">> The value you wants: %lf\n",
+		(double)(numLdSts + numFns * 2 + numLoops * 3) / numInsts);		/* XXX debug XXX */
+
+	return false;
+}

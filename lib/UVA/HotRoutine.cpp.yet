@@ -1,0 +1,289 @@
+/***
+ * PageTracer.cpp : Stack tracer installer
+ *
+ * Install stack tracer
+ * written by: gwangmu
+ *
+ * **/
+
+#include "llvm/IR/TypeFinder.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Instructions.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/FileSystem.h"
+
+#include "corelab/UVA/HotRoutine.h"
+#include "corelab/Metadata/Metadata.h"
+#include "corelab/Utilities/Debug.h"
+#include "corelab/Utilities/GlobalCtors.h"
+
+#include <set>
+#include <iostream>
+#include <cstdlib>
+#include <cassert>
+#include <cstdio>
+#include <string>
+
+using namespace llvm;
+using namespace std;
+using namespace corelab::UVA;
+
+namespace corelab {
+	static RegisterPass<HotRoutine> X("hot-routine", "install hot routine profiler", false, false);
+
+	char HotRoutine::ID = 0;
+
+	void HotRoutine::getAnalysisUsage (AnalysisUsage &AU) const {
+		AU.addRequired< Namer > ();
+		AU.addRequired< LoadNamer > ();
+		AU.addRequired< LoopInfo > ();
+		AU.setPreservesAll ();
+	}
+
+	bool HotRoutine::runOnModule (Module& M) {
+		this->pM = &M;
+		this->pC = &pM->getContext ();
+
+		// prepare frequently used types
+		tyVoid = Type::getVoidTy (*pC);
+		tyID = Type::getInt16Ty (*pC);
+
+		// prepare metadata
+		loadNamer = &getAnalysis< LoadNamer > ();
+
+		// install interfaces
+		installFunctionEvent ();
+		//installLoopEvent ();			// FIXME: temporarily disabled
+		installInitFinal ();
+
+//		error_code EC;
+//		raw_fd_ostream ost("dump.ll", EC, llvm::sys::fs::F_RW);
+//		pM->print (ost, NULL);
+
+		return false;
+	}
+
+
+	// installer
+	void HotRoutine::installInitFinal () {
+		// prepare frequently used type
+		FunctionType *tyFnVoidVoid = FunctionType::get (tyVoid, false);
+
+		// prepare functions
+		Constant *cnstInit = pM->getOrInsertFunction ("hrInitialize", tyVoid, NULL);
+		Constant *cnstFinal = pM->getOrInsertFunction ("hrFinalize", tyVoid, NULL);
+
+		// contruct constructor function
+		Function *fnCtor = Function::Create (tyFnVoidVoid, GlobalValue::PrivateLinkage, "__hr_constructor__", pM);
+
+		BasicBlock *blkInit = BasicBlock::Create (*pC, "init", fnCtor);
+		CallInst::Create (cnstInit, "", blkInit);
+		ReturnInst::Create (*pC, blkInit);
+
+		callBeforeMain (fnCtor, 0);
+		
+		// contruct finalizer function
+		Function *fnDtor = Function::Create (tyFnVoidVoid, GlobalValue::PrivateLinkage, "__hr_destructor__", pM);
+
+		BasicBlock *blkFinal = BasicBlock::Create (*pC, "final", fnDtor);
+		CallInst::Create (cnstFinal, "", blkFinal);
+		ReturnInst::Create (*pC, blkFinal);
+
+		callAfterMain (fnDtor, 0);
+	}
+
+	void HotRoutine::installFunctionEvent () {
+		// prepare tracer
+		Constant *cnstBegin = pM->getOrInsertFunction ("hrFunctionBegin", tyVoid, tyID, NULL);
+		Constant *cnstEnd = pM->getOrInsertFunction ("hrFunctionEnd", tyVoid,	tyID, NULL);
+
+		for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ++ifn) {
+			Function *fn = &*ifn;
+
+			// XXX identifying ctor/dtor as their name. XXX
+			string fnname = fn->getName().str();
+			if (fnname == "__constructor__" || fnname == "__destructor__"
+					|| fnname == "__hr_constructor__" ||	fnname == "__hr_destructor__"
+					|| (fnname.length () > 9 && fnname.substr (0, 9) == "_GLOBAL__")
+					|| (fnname.length () > 3 && fnname.substr (0, 3) == "_ZN"
+							&& (fnname.find ("nwE") != string::npos || fnname.find ("naE") != string::npos))
+					|| (fnname.length () > 4 && fnname.substr (0, 4) == "_Znw")
+					|| (fnname.length () > 4 && fnname.substr (0, 4) == "_Zna")
+					|| fnname.substr (0, 16) == "_ZN11offload_std"
+					|| fnname == "main")
+				continue;
+
+			if (fn->isDeclaration ()) continue;
+
+			vector<Value *> vecArgs;
+			vecArgs.push_back (getConstantInt (FUNC_ID_BITS, loadNamer->getFunctionId (*fn)));
+
+			// install HR_FUNCTION_BEGIN
+			BasicBlock *blkBegin = fn->begin ();
+			Instruction *instBeginTerm = &*blkBegin->getFirstNonPHI ();
+			CallInst::Create (cnstBegin, vecArgs, "", instBeginTerm);
+
+			// install HR_FUNCTION_END
+			for (Function::iterator iblk = fn->begin (); iblk != fn->end (); ++iblk) {
+				if (ReturnInst *instRet = dyn_cast<ReturnInst> (iblk->getTerminator ())) {
+					CallInst::Create (cnstEnd, vecArgs, "", instRet);
+				}
+			}
+		}
+	}
+
+	void HotRoutine::installLoopEvent () {
+		// prepare tracer
+		Constant *cnstBegin = pM->getOrInsertFunction ("hrLoopBegin", tyVoid, tyID, tyID, NULL);
+		Constant *cnstEnd = pM->getOrInsertFunction ("hrLoopEnd", tyVoid,	tyID, tyID, NULL);
+
+		for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ++ifn) {
+			Function *fn = &*ifn;
+
+			if (fn->isDeclaration ()) continue;
+			map<LoopID, Loop *> mapLoops = getTotalLoopsInFn (fn);
+		
+			for (map<LoopID, Loop *>::iterator imap = mapLoops.begin (); imap != mapLoops.end (); ++imap) {
+				LoopID loopID = imap->first;
+				Loop *loop = imap->second;
+
+				vector<Value *> vecArgs;
+				vecArgs.push_back (getConstantInt (FUNC_ID_BITS, loadNamer->getFunctionId (*fn))); 
+				vecArgs.push_back (getConstantInt (LOOP_ID_BITS, loopID));
+
+				assert (loop != NULL && "LOOP IS NULL");
+
+				// install HR_LOOP_BEGIN
+				BasicBlock *blkBegin = loop->getLoopPreheader ();
+				Instruction *instBeginTerm = blkBegin->getTerminator ();
+				CallInst::Create (cnstBegin, vecArgs, "", instBeginTerm);
+
+				// install HR_LOOP_END
+				typedef pair<LandingPadInst *, BasicBlock *> PHIEntry;
+				typedef map<LandingPadInst *, vector<PHIEntry> > PHIConvertTable;
+				PHIConvertTable tblPHIConvert;
+				SmallVector<Loop::Edge, 1> vecEdges;
+				loop->getExitEdges (vecEdges);
+				
+				for (unsigned i = 0; i < vecEdges.size (); ++i) {
+					BasicBlock *blkExiting = const_cast<BasicBlock *> (vecEdges[i].first);
+					BasicBlock *blkExit = const_cast<BasicBlock *> (vecEdges[i].second);
+					BasicBlock *blkEdge = BasicBlock::Create (*pC, "loop.end.edge", fn, blkExit);
+
+					// reserving (possible) landing pad inst.
+					LandingPadInst *instLpad = blkExit->getLandingPadInst ();
+
+					// linking EXITING -> EDGE
+					TerminatorInst *instExitingTerm = blkExiting->getTerminator ();
+					unsigned idxSucc = 0;
+					for (unsigned size = instExitingTerm->getNumSuccessors (); idxSucc < size; ++idxSucc)
+						if (instExitingTerm->getSuccessor (idxSucc) == blkExit) break;
+					instExitingTerm->setSuccessor (idxSucc, blkEdge);
+					
+					// linking EDGE -> EXIT
+					BranchInst::Create (blkExit, blkEdge);
+
+					// accepting EXIT <- EDGE
+					for (BasicBlock::iterator iinst = blkExit->begin (); iinst != blkExit->end (); ++iinst) {
+						PHINode *instPhi = dyn_cast<PHINode> (&*iinst);
+						if (instPhi == NULL) break;
+
+						for (unsigned i = 0, size = instPhi->getNumIncomingValues (); i < size; ++i) {
+							if (instPhi->getIncomingBlock (i) == blkExiting) {
+								instPhi->setIncomingBlock (i, blkEdge);
+								break;
+							}
+						}
+					}
+
+					// installing HR_LOOP_END
+					Instruction *instTerm = blkEdge->getTerminator ();
+
+					if (instLpad) {
+						LandingPadInst *instClone = dyn_cast<LandingPadInst> (instLpad->clone ());
+						assert (instClone != NULL);
+						instClone->insertBefore (instTerm);
+
+						// registering PHINode entry
+						tblPHIConvert[instLpad].push_back (PHIEntry (instClone, blkEdge));
+					}
+					CallInst::Create (cnstEnd, vecArgs, "", instTerm);
+				}
+
+				if (!tblPHIConvert.empty ()) {
+					for (PHIConvertTable::iterator ie = tblPHIConvert.begin ();
+							 ie != tblPHIConvert.end (); ++ie) {
+						LandingPadInst *instDLpad = ie->first;
+						vector<PHIEntry> &vecPHIEntries = ie->second;
+
+						PHINode *instPhi = PHINode::Create (vecPHIEntries[0].first->getType (),
+							0, "lpad.edges", instDLpad);
+						for (int i = 0; i < vecPHIEntries.size (); i++)
+							instPhi->addIncoming (vecPHIEntries[i].first, vecPHIEntries[i].second);
+
+						instDLpad->replaceAllUsesWith (instPhi);
+						instDLpad->eraseFromParent ();
+					}
+				}
+			}
+		}
+	}
+
+
+	// helper method
+	ConstantInt* HotRoutine::getConstantInt (unsigned bits, unsigned n) {
+		switch (bits) {
+			case 1:
+				return ConstantInt::get (Type::getInt1Ty (*pC), n);
+			case 8:
+				return ConstantInt::get (Type::getInt8Ty (*pC), n);
+			case 16:
+				return ConstantInt::get (Type::getInt16Ty (*pC), n);
+			case 32:
+				return ConstantInt::get (Type::getInt32Ty (*pC), n);
+			case 64:
+				return ConstantInt::get (Type::getInt32Ty (*pC), n);
+			default:
+				return ConstantInt::get (Type::getIntNTy (*pC, bits), n);
+		}
+	}
+
+	// XXX ASSUME FN is NOT declaration XXX
+	map<LoopID, Loop *> HotRoutine::getTotalLoopsInFn (Function *fn) {
+		map<LoopID, Loop *> mapLoops;
+		FuncID fnID = loadNamer->getFunctionId (*fn);
+		LoopInfo &loopInfo = getAnalysis< LoopInfo > (*fn);
+
+		for (LoopInfo::iterator iloop = loopInfo.begin (); iloop != loopInfo.end (); ++iloop) {
+			//vector<Loop *> vecLoops = flattenSubLoopList (*iloop);
+			//// XXX ONLY PROFILES OUTER-MOST LOOPS XXX
+			vector<Loop *> vecLoops;
+			vecLoops.push_back (*iloop);
+		
+			for (unsigned i = 0; i < vecLoops.size (); ++i) {
+				LoopID loopID = loadNamer->getLoopContextId (vecLoops[i], fnID);
+				mapLoops.insert (pair<LoopID, Loop *> (loopID , vecLoops[i]));
+			}
+		}
+
+		return mapLoops;
+	}
+
+	vector<Loop *> HotRoutine::flattenSubLoopList (Loop *loop) {
+		vector<Loop *> vecTotalLoops;
+		vecTotalLoops.push_back (loop);
+
+		vector<Loop *> &vecSubLoops = loop->getSubLoopsVector ();
+		for (unsigned i = 0; i < vecSubLoops.size (); ++i) {
+			vecTotalLoops.push_back (vecSubLoops[i]);
+
+			vector<Loop *> vecSubTotalLoops = flattenSubLoopList (vecSubLoops[i]);
+			vecTotalLoops.insert (vecTotalLoops.end (), vecSubTotalLoops.begin (), vecSubTotalLoops.end ());
+		}
+		
+		return vecTotalLoops;
+	}
+}
+

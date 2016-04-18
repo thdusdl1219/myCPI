@@ -1,0 +1,576 @@
+/***
+ *
+ * Server.cpp : Code partitioner for Server.
+ *
+ *
+ * **/
+
+#include "llvm/IR/LLVMContext.h"
+
+#include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/IntrinsicInst.h"
+#include "llvm/Support/Compiler.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/Debug.h"
+#include "llvm/Support/CommandLine.h"
+
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Analysis/Passes.h"
+
+#include "corelab/Utilities/InstInsertPt.h"
+#include "corelab/Utilities/GlobalCtors.h"
+#include "corelab/Utilities/Casting.h"
+#include "corelab/Metadata/Metadata.h"
+#include "corelab/UVA/Client.h"
+#include "corelab/UVA/HoistVariables.h"
+#include "corelab/Callgraph/Callgraph.h"
+
+#include <cstdlib>
+#include <cstring>
+#include <cstdio>
+#include <vector>
+#include <set>
+#include <algorithm>
+
+//#define GLOBAL_DEBUG
+//#define CLIENT_ONLY
+
+using namespace corelab;
+using namespace std;
+
+char OffloadClient::ID = 0;
+static RegisterPass<OffloadClient> X("offload-client", "offload client-side(arm).", false, false);
+
+void OffloadClient::getAnalysisUsage(AnalysisUsage &AU) const {
+	AU.addRequired< DataLayoutPass >();
+	AU.addRequired< CallGraph >();
+	AU.addRequired< LoadNamer >();
+	AU.setPreservesAll();
+}
+
+bool OffloadClient::runOnModule(Module& M) {
+	initialize (M);
+
+	// set function pointer translatation.
+	fcnptr = new FunctionPointerTranslater(M);
+	
+	// Filter out global variables using pointer and move up to global variable.
+	hoist = new HoistVariables(M);
+	hoist->getGlobalVariableList(M);
+	//hoist->distinguishGlobalVariables();
+	//hoist->createSubGlobalVariables(M, *dataLayout);
+	hoist->createGlobalVariableFunctions (*dataLayout);
+
+	// Insert operation function to original codes.
+	createExecYFunction ();
+	set<Function *> setTargets = loadOffloadTargets ();
+	buildRemoteFunctions (setTargets);
+	installInitFinal ();
+
+	//delete(hoist);
+	delete(fcnptr);
+
+	return false;
+}
+
+void OffloadClient::initialize (Module &M) {
+	this->pM = &M;
+	this->pC = &M.getContext ();
+	this->loadNamer = &getAnalysis< LoadNamer > ();
+	this->dataLayout = &getAnalysis< DataLayoutPass >().getDataLayout ();
+
+	cnstOffInit = pM->getOrInsertFunction (
+			"offloadClientInitialize", 
+			Type::getVoidTy(*pC), 
+			(Type*)0);
+
+	cnstOffFinal = pM->getOrInsertFunction (
+			"offloadClientFinalize", 
+			Type::getVoidTy(*pC),
+			(Type*)0);
+	
+	cnstOffProduceFID = pM->getOrInsertFunction (
+			"offloadClientProduceFunctionId",
+			Type::getVoidTy(*pC),	
+			Type::getInt32Ty(*pC), 
+			(Type*)0);
+
+	cnstOffProduceFArgs = pM->getOrInsertFunction (
+			"offloadClientProduceFunctionArg",
+			Type::getVoidTy(*pC), 
+			Type::getInt8PtrTy(*pC), 
+			Type::getInt32Ty(*pC), 
+			(Type*)0);
+
+	cnstOffRunFn = pM->getOrInsertFunction (
+			"offloadClientRunFunction",
+			Type::getVoidTy(*pC), 
+			(Type*)0);
+
+	cnstOffConsumeRet = pM->getOrInsertFunction (
+			"offloadClientConsumeRet",
+			Type::getInt8PtrTy(*pC), 
+			Type::getInt32Ty(*pC), 
+			(Type*)0);
+
+	cnstOffWorth = pM->getOrInsertFunction (
+			"offloadClientIsWorthOffloading",
+			Type::getInt1Ty(*pC), 
+			Type::getInt32Ty(*pC), 
+			(Type*)0);
+
+	/* Yielding feature extension */
+	cnstOffConsumeYFID = pM->getOrInsertFunction(
+			"offloadClientConsumeYFunctionId",
+			Type::getInt32Ty(*pC), 
+			(Type*)0);
+
+	cnstOffConsumeYFArgs = pM->getOrInsertFunction(
+			"offloadClientConsumeYFunctionArg",
+			Type::getInt8PtrTy(*pC), 
+			Type::getInt32Ty(*pC), 
+			(Type*)0);
+
+	cnstOffRunYFn = pM->getOrInsertFunction(
+			"offloadClientRunYFunction",
+			Type::getVoidTy(*pC), 
+			(Type*)0);
+	
+	cnstOffReturnYFn = pM->getOrInsertFunction(
+			"offloadClientReturnYFunction",
+			Type::getVoidTy(*pC), 
+			(Type*)0);
+	
+	cnstOffProduceYRet = pM->getOrInsertFunction(
+			"offloadClientProduceYRet",
+			Type::getVoidTy(*pC),	
+			Type::getInt8PtrTy(*pC), 
+			Type::getInt32Ty(*pC), 
+			(Type*)0);
+
+	return;
+}
+
+
+std::set<Function *> OffloadClient::loadOffloadTargets () {
+	FILE* profile = fopen ("offloadFunction.profile", "r");
+	assert (profile && "offloadFunction.profile not found.");
+
+	char strbuf[512];
+	vector<unsigned> funcIdList;
+	while (fgets (strbuf, sizeof(strbuf), profile)) {
+		int id = 0;
+		int access = 0;
+		sscanf(strbuf, "%d : %d\n", &id, &access);
+		assert(id != 0 && "Corrupted offloadFunction.profile");
+		funcIdList.push_back(id);
+	}
+
+	fclose (profile);
+
+	set<Function *> setTargets;
+	for (std::vector<unsigned>::iterator it = funcIdList.begin ();
+			 it != funcIdList.end (); ++it) {
+		Function *fnTarget = loadNamer->getFunction (*pM, *it);
+		assert (fnTarget && "invalid function id");
+
+		setTargets.insert (fnTarget);
+	}
+
+	return setTargets;
+}
+
+
+void OffloadClient::buildRemoteFunctions (set<Function *> setTargets) {
+	for (set<Function *>::iterator itar = setTargets.begin ();
+			 itar != setTargets.end(); ++itar) {
+		Function *fnLocal = *itar;
+		string fnname = fnLocal->getName().str();
+
+		Function *fnOffEntry = Function::Create (fnLocal->getFunctionType (), 
+			GlobalValue::ExternalLinkage, "", pM);
+		fnOffEntry->copyAttributesFrom (fnLocal);
+		fnLocal->replaceAllUsesWith (fnOffEntry);
+
+		// create remote call function
+		string strRName = fnname + string ("_remote");
+		Type *tyRet = fnLocal->getReturnType ();
+		FunctionType *tyFnRemote = FunctionType::get (tyRet, false);
+		Function *fnRemote = Function::Create (tyFnRemote, GlobalValue::InternalLinkage, 
+			strRName, pM);
+		BasicBlock *bbRemote = BasicBlock::Create (*pC, "remote", fnRemote);
+
+		UnreachableInst *instTmpTerm = new UnreachableInst (*pC, bbRemote);
+
+		Constant *cnstPad = ConstantInt::get (Type::getInt32Ty (*pC), 4096);
+		new AllocaInst(Type::getInt8Ty(*pC), cnstPad, "", instTmpTerm);
+		CallInst::Create(cnstOffRunFn, "", instTmpTerm);
+		createConsumeGlobalVariable(instTmpTerm);
+		Instruction *instRet = createConsumeRet(fnLocal, instTmpTerm);
+
+		instTmpTerm->eraseFromParent ();
+		if (tyRet == Type::getVoidTy (*pC))
+			ReturnInst::Create (*pC, bbRemote);
+		else
+			ReturnInst::Create (*pC, instRet, bbRemote);
+
+
+		// create offloading entry function
+		BasicBlock *blkCond = BasicBlock::Create (*pC, "cond", fnOffEntry);
+		BasicBlock *blkLocalCall = BasicBlock::Create (*pC, "call.local", fnOffEntry);
+		BasicBlock *blkRemoteCall = BasicBlock::Create (*pC, "call.remote", fnOffEntry);
+		BasicBlock *blkJoin = BasicBlock::Create (*pC, "join", fnOffEntry);
+
+		/***
+		 * BasicBlock diagram
+		 * 	( BLK_COND ) -> BLK_LOCAL_CALL / BLK_REMOTE_CALL
+		 * 	( BLK_REMOTE_CALL ) -> BLK_JOIN
+		 * 	( BLK_LOCAL_CALL ) -> BLK_JOIN
+		 * 	( BLK_JOIN ) 
+		 **/
+
+		// create terminator instructions (except BLK_JOIN)
+		//		- BLK_LOCAL_CALL
+		vector<Value *> vecArgs;
+		for (Function::arg_iterator iarg = fnOffEntry->arg_begin ();
+				 iarg != fnOffEntry->arg_end (); iarg++)
+			vecArgs.push_back (&*iarg);
+
+		CallInst *instLocalCall = CallInst::Create (fnLocal, vecArgs, "", blkLocalCall);
+		BranchInst::Create (blkJoin, blkLocalCall);
+
+		// 		- BLK_REMOTE_CALL
+		TerminatorInst *instRCallTerm = BranchInst::Create (blkJoin, blkRemoteCall);
+
+		createProduceFID(fnLocal, instRCallTerm);
+		createProduceGlobalVariable(instRCallTerm);
+		createProduceFArgs(fnLocal, vecArgs, instRCallTerm);
+		Instruction *instRemoteCall = CallInst::Create (fnRemote, "", instRCallTerm);
+
+		// fill basic blocks
+		//		- BLK_COND w/ terminator
+		std::vector<Value *> vecWArgs;
+		vecWArgs.push_back (ConstantInt::get (Type::getInt32Ty (*pC), 
+				loadNamer->getFunctionId (*fnLocal)));
+		Instruction *instCond = CallInst::Create (cnstOffWorth, 
+				vecWArgs, "off.cond", blkCond);
+		BranchInst::Create (blkRemoteCall, blkLocalCall, instCond, blkCond);
+
+		// (if not void return) create & install PHINode for BLK_JOIN
+		if (fnLocal->getReturnType () != Type::getVoidTy (*pC)) {
+			PHINode *instJoinPhi = PHINode::Create (instLocalCall->getType (), 2, 
+					string ("join"), blkJoin);
+			
+			instJoinPhi->addIncoming (instLocalCall, blkLocalCall);
+			instJoinPhi->addIncoming (instRemoteCall, blkRemoteCall);
+
+			ReturnInst::Create (*pC, instJoinPhi, blkJoin);
+		}
+	 	else {
+			ReturnInst::Create (*pC, blkJoin);
+		}	
+
+		fnOffEntry->takeName (fnLocal);
+		fnLocal->setName (fnname + string ("_local"));
+	}
+}
+
+void OffloadClient::installInitFinal () {
+	std::vector<Type*> formals(0);
+	std::vector<Value*> actuals(0);
+	FunctionType *voidFcnVoidType = FunctionType::get(Type::getVoidTy(*pC), formals, false);
+
+	/* initialize */
+	Function* initForCtr = Function::Create( 
+			voidFcnVoidType, GlobalValue::InternalLinkage, "__constructor__", pM); 
+	BasicBlock* entry = BasicBlock::Create(*pC,"entry", initForCtr); 
+
+	actuals.resize(0);
+	CallInst::Create(cnstOffInit, actuals, "", entry); 
+	Instruction* termIni = ReturnInst::Create (*pC, NULL, entry);
+	
+	fcnptr->produceFunctionPointers(*pM, termIni, *loadNamer, *dataLayout);
+
+	//hoist->deployGlobalVariable(*pM, termIni, *dataLayout);
+	//hoist->hoistGlobalVariable(*pM, termIni, *dataLayout);	// global variable hoisting
+	hoist->initializeGlobalVariable(*pM, termIni, *dataLayout);
+	hoist->createClientInitializeGlobalVariable(termIni);
+
+#if 0
+	// XXX register debug signal handler
+	if (pM->getFunction ("offload_debugsig_handler")) {
+		Type *tyFnVoidVoid = FunctionType::get (Type::getVoidTy (pM->getContext ()), false);
+		Type *tyRegDsigHandlerArg = PointerType::get (tyFnVoidVoid, 0);
+
+		std::vector<Type *> vecArgTy;
+		vecArgTy.push_back (tyRegDsigHandlerArg);
+
+		FunctionType *tyRegDsigHandler = FunctionType::get (Type::getVoidTy (pM->getContext ()), 
+			vecArgTy, false);
+		Constant *fnRegDsigHandler = pM->getOrInsertFunction ("offloadClientRegisterDebugSigHandler",
+			tyRegDsigHandler);
+
+		std::vector<Value *> args;
+		args.push_back (pM->getFunction ("offload_debugsig_handler"));
+		CallInst::Create (fnRegDsigHandler, args, "", initBB);
+	}
+
+	ReturnInst::Create(*pC, 0, initBB);
+#endif
+
+#if 0
+	/* FIXME: To avoid static variable & class initialization problem,
+	 * __constructor__ must be called right after 'main' was called. */
+	Function *fnMain = pM->getFunction ("main");
+	if (!fnMain) fnMain = pM->getFunction ("h264ref_main");			// FIXME: only for encoder_demo
+#endif
+
+	// insert global initzer call
+	for (Module::iterator ifn = pM->begin (); ifn != pM->end (); ++ifn) {
+		if (ifn->getName().str().substr (0, 7) == "_GLOBAL") {
+			Function *fnGInitzer = &*ifn;
+			CallInst::Create (fnGInitzer, actuals, "", initForCtr->begin()->getFirstNonPHI ());
+			//CallInst::Create (fnGInitzer, actuals, "", fnMain->begin()->getFirstNonPHI ());
+			fnGInitzer->setAttributes (AttributeSet ());
+		}
+	}
+
+	// change llvm.global_ctors' name (!removing this causes error!)
+	if (GlobalVariable *gctor = pM->getGlobalVariable("llvm.global_ctors")) {
+		Constant *cnstArrCtor = gctor->getInitializer ();
+		ArrayType *tyArrCtor = dyn_cast<ArrayType> (cnstArrCtor->getType ());
+
+		for (unsigned i = 0; i < tyArrCtor->getNumElements (); i++) {
+			Constant *cnstOCtor = cnstArrCtor->getAggregateElement(i)->getAggregateElement (1);
+			CallInst::Create (cnstOCtor, "", initForCtr->begin()->getTerminator ());
+		}
+
+		gctor->setName ("global_ctors_deprecated");
+	}
+	
+	callBeforeMain(initForCtr, 65536);	
+	
+	/* finalize */
+	Function* finiForDtr = Function::Create(
+			voidFcnVoidType, GlobalValue::InternalLinkage, "__destructor__", pM);
+  BasicBlock* finiBB = BasicBlock::Create(*pC, "entry", finiForDtr);
+  BasicBlock* fini = BasicBlock::Create(*pC, "fini", finiForDtr);
+  actuals.resize(1);
+	actuals[0] = (Value*) ConstantInt::get(Type::getInt32Ty(*pC), 0); // end func
+#ifndef CLIENT_ONLY
+	CallInst::Create(cnstOffProduceFID, actuals, "", finiBB);
+#endif
+
+	actuals.resize(0);
+	Instruction* finalizer = CallInst::Create(cnstOffFinal, actuals, "", finiBB);
+	//hoist->freeHoistedGlobalVariable(*pM, finalizer, *dataLayout);
+  BranchInst::Create(fini, finiBB);
+  ReturnInst::Create(*pC, 0, fini);
+	callAfterMain(finiForDtr);
+	
+	return;
+}
+
+void OffloadClient::createExecYFunction () {
+	// exec function declarartion
+	std::vector<Type*> formals(0);
+	FunctionType* voidFcnVoidType = FunctionType::get(Type::getVoidTy(*pC), formals, false);
+	Function *fnYMain = Function::Create (voidFcnVoidType, GlobalValue::ExternalLinkage, 
+			"offloadClientYMain", pM); // create funciton
+
+	// Set basic blocks
+	BasicBlock* entry = BasicBlock::Create(*pC, "entry", fnYMain);
+	BasicBlock* loopEntry = BasicBlock::Create(*pC, "loop_entry", fnYMain);
+	BasicBlock* consumeGlobal = BasicBlock::Create(*pC, "consume_global", fnYMain);
+	BasicBlock* execExitCase = BasicBlock::Create(*pC, "exitCase", fnYMain);
+	BasicBlock* ret = BasicBlock::Create(*pC, "ret", fnYMain);
+	
+	std::vector<Value*> actuals(0);
+	Value* fId = (Value*) CallInst::Create(cnstOffConsumeYFID, actuals, "", loopEntry);
+
+	// Create base of switch instruction
+	SwitchInst* selectExec = SwitchInst::Create(fId, ret, 1, loopEntry);
+	ConstantInt* zero = ConstantInt::get(Type::getInt32Ty(*pC), 0); // case of exit
+	selectExec->addCase(zero, execExitCase);
+	selectExec->setDefaultDest(consumeGlobal);
+	selectExec = SwitchInst::Create(fId, ret, 1, consumeGlobal);
+
+	// Consume global variables for each function call
+	createConsumeGlobalVariable(selectExec);
+	BranchInst::Create(loopEntry, entry);
+	BranchInst::Create(ret, execExitCase);
+	ReturnInst::Create(*pC, 0, ret);
+
+	// for each functions, create the case to call itself with own id.
+	int function_num = 0;
+	for(Module::iterator fi = pM->begin(), fe = pM->end(); fi != fe; ++fi) {
+		Function* F = &*fi;
+		string fnname = F->getName().str ();
+
+		if (isOffLibOrLocalExtFn (fnname)) continue;
+		if (!F->isDeclaration ()) continue;
+		if (F->isIntrinsic ()) continue;
+		if (loadNamer->getFunctionId (*F) == 0) continue;
+		
+		int functionId = loadNamer->getFunctionId(*F);
+
+		function_num++;
+
+		// Branch instruction : add case and basic blocks.
+		BasicBlock *execFunc = BasicBlock::Create(*pC, "execCase", fnYMain);
+		selectExec->addCase(ConstantInt::get(Type::getInt32Ty(*pC), functionId), execFunc);
+		BranchInst::Create(ret, execFunc);
+		
+		// Get each argument type of function.
+		size_t argSize = F->arg_size();
+		Instruction* baseInst = execFunc->getFirstNonPHI();
+		std::vector<Value*> Args(argSize);
+		FunctionType* fcnType = F->getFunctionType(); 
+
+		// Get function args
+		for (size_t i= 0; i < argSize; ++i) {
+			actuals.resize(1);
+			Type* type = fcnType->getParamType(i);
+			const size_t sizeInBytes = dataLayout->getTypeAllocSize(type);
+			actuals[0] = ConstantInt::get(Type::getInt32Ty(*pC), sizeInBytes);
+			Value* arg = (Value*) CallInst::Create(cnstOffConsumeYFArgs, actuals, "", baseInst);
+			InstInsertPt out = InstInsertPt::Before(baseInst);
+			Value* temp = ConstantPointerNull::get(type->getPointerTo(0));
+			//Value* castedValue = Casting::castTo(arg, temp, out, dataLayout);
+			Value *castedValue = CastInst::CreateBitOrPointerCast (arg, type->getPointerTo (0), "", baseInst);
+			Value* loadedValue = new LoadInst(castedValue, "", baseInst);
+			Args[i] = loadedValue;
+		}
+		
+		// After all, call original function
+		actuals.resize(0);
+		CallInst::Create(cnstOffRunYFn, actuals, "", baseInst); 
+		CallInst* callInst = CallInst::Create(F, Args, "", baseInst);
+		Value* retVal = (Value*) callInst;
+
+#ifndef SPECULATIVE_YIELDING
+		// Produce the return value to client
+		Args.resize(2);
+		if (retVal->getType()->getTypeID() == Type::VoidTyID) {
+			Args[0] = ConstantPointerNull::get (Type::getInt8PtrTy(*pC)); // case of void type
+			Args[1] = ConstantInt::get (Type::getInt32Ty(*pC), 0);
+		}
+		else {
+			Type* type = retVal->getType();
+			const size_t sizeInBytes = dataLayout->getTypeAllocSize(type);
+			Value* one = ConstantInt::get(Type::getInt32Ty(*pC), 1);
+			AllocaInst* alloca = new AllocaInst(type, one, "", fnYMain->begin()->getFirstNonPHI());
+			new StoreInst(retVal, alloca, baseInst);
+			InstInsertPt outRet = InstInsertPt::Before(baseInst);
+			Value* tempRet = ConstantPointerNull::get(Type::getInt8PtrTy(*pC));
+			//Args[0] = Casting::castTo(alloca, tempRet, outRet, dataLayout);
+			Args[0] = CastInst::CreateBitOrPointerCast (alloca, Type::getInt8PtrTy (*pC), "", baseInst);
+			Args[1] = ConstantInt::get(Type::getInt32Ty(*pC), sizeInBytes);
+		}
+		CallInst::Create(cnstOffReturnYFn, "", baseInst);
+		createProduceGlobalVariable(baseInst);
+		CallInst::Create(cnstOffProduceYRet, Args, "", baseInst);
+#endif
+	}
+
+	return;
+}
+
+
+void OffloadClient::createProduceFID (Function* fn, Instruction* instBefore) {
+	vector<Value*> vecArgs;
+
+	Value* valFID = ConstantInt::get (Type::getInt32Ty(*pC), loadNamer->getFunctionId (*fn));
+	vecArgs.push_back (valFID);
+
+	CallInst::Create (cnstOffProduceFID, vecArgs, "", instBefore);
+
+	return;
+}
+
+void OffloadClient::createProduceFArgs (Function* fn, vector<Value *> vecArgs, Instruction *instBefore) {
+	size_t cntArgs = fn->arg_size();
+
+	// for each func args, add it arg list.
+	for (size_t i = 0; i < cntArgs; ++i) {
+		Value* valArg = vecArgs[i];
+		Type* tyArg = valArg->getType ();
+		const size_t tysize = dataLayout->getTypeAllocSize (tyArg);
+
+		AllocaInst* instAlloca = new AllocaInst (tyArg, "", instBefore);
+		new StoreInst (valArg, instAlloca, instBefore);
+
+		InstInsertPt iOut = InstInsertPt::Before (instBefore);
+		Value *valTemp = ConstantPointerNull::get (Type::getInt8PtrTy (*pC));
+		Value *valCast = Casting::castTo (instAlloca, valTemp, iOut, dataLayout);
+
+		vector<Value *> vecArgs;
+		vecArgs.push_back (valCast);
+		vecArgs.push_back (ConstantInt::get(Type::getInt32Ty(*pC), tysize));
+		CallInst::Create (cnstOffProduceFArgs, vecArgs, "", instBefore);
+	}
+
+	return;
+}
+
+Instruction* OffloadClient::createConsumeRet (Function* fn, Instruction* instBefore) {
+	vector<Value*> vecArgs(0);
+	Instruction *instRet = NULL;
+
+	Type* tyRet = fn->getReturnType();
+	if (tyRet->getTypeID () == Type::VoidTyID) {
+		vecArgs.push_back (ConstantInt::get (Type::getInt32Ty (*pC), 0));
+		CallInst::Create (cnstOffConsumeRet, vecArgs, "", instBefore);
+	}
+	else {
+		const size_t tysize = dataLayout->getTypeAllocSize (tyRet);
+		vecArgs.push_back (ConstantInt::get (Type::getInt32Ty (*pC), tysize));
+		CallInst* instCall = CallInst::Create (cnstOffConsumeRet, vecArgs, "", instBefore);
+
+		InstInsertPt iOut = InstInsertPt::Before (instBefore);
+		Value *valTemp = ConstantPointerNull::get (fn->getReturnType()->getPointerTo (0));
+		Instruction *instCast = dyn_cast<Instruction> (Casting::castTo (
+					instCall, valTemp, iOut, dataLayout));
+		LoadInst *instLoad = new LoadInst (instCast, "", instBefore);
+
+		instRet = instLoad;
+	}
+
+	return instRet;
+}
+			
+void OffloadClient::createProduceGlobalVariable (Instruction* instBefore) {
+	hoist->createClientProduceGlobalVariable (instBefore);
+	return;
+}
+
+void OffloadClient::createConsumeGlobalVariable (Instruction* instBefore) {
+	hoist->createClientConsumeGlobalVariable (instBefore);
+	return;
+}
+
+bool OffloadClient::isOffLibOrLocalExtFn (string fnname) {
+	static const char* arrOffLibFns[] = {
+		#define OFFLIB(x) #x,
+		#include "offlib_fn.dat"
+		#undef OFFLIB
+	};
+
+	static const char* arrLocalExtFns[] = {
+		#define LOCAL(x) #x,
+		#include "local_ext_fn.dat"
+		#undef LOCAL
+	};
+	
+	for (unsigned i = 0; i < sizeof(arrOffLibFns) / sizeof(const char *); ++i) {
+		if (string (arrOffLibFns[i]) == fnname)
+			return true;
+	}
+
+	for (unsigned i = 0; i < sizeof(arrLocalExtFns) / sizeof(const char *); ++i) {
+		if (string (arrLocalExtFns[i]) == fnname)
+			return true;
+	}
+
+	return false;
+}
