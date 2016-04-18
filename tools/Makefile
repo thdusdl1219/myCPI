@@ -11,5 +11,6 @@ LEVEL=..
 #
 DIRS=esperanto\
 		 dataQ\
+     uva
 
 include $(LEVEL)/Makefile.common

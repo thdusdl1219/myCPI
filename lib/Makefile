@@ -11,6 +11,7 @@ LEVEL=..
 
 DIRS=Utilities\
 		 Esperanto\
+     UVA
 
 
 include $(LEVEL)/Makefile.common
