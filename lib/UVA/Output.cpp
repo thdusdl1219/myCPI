@@ -194,7 +194,7 @@ void OutputReplServer::setDispatchers (OutputReplServer::PlatformType platform) 
 bool OutputReplServer::runOnModule(Module& M) {
 	// initialize
 	this->pM = &M;
-	this->pC = &getGlobalContext ();
+	this->pC = &M.getContext ();
 
 	// figuring out target
 	string strTarget = pM->getTargetTriple ();

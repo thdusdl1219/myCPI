@@ -11,6 +11,7 @@ LEVEL=..
 
 DIRS=Utilities\
 		 Esperanto\
+     Metadata\
      UVA
 
 

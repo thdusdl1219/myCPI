@@ -39,7 +39,7 @@
 namespace corelab {
 
 HoistVariables::HoistVariables(Module& M) {
-	LLVMContext &Context = getGlobalContext();
+	LLVMContext &Context = M.getContext();
 /*	Malloc = M.getOrInsertFunction(
 			"offload_malloc",
 			Type::getInt8PtrTy(Context),
@@ -433,7 +433,7 @@ void HoistVariables::distinguishGlobalVariables() {
 void HoistVariables::deployGlobalVariable(Module& M, Instruction* I, const DataLayout& dataLayout) {
 	fprintf(stderr, ">> Deploying Global Variable starts\n");
 	assert(Hoist.size() == subGlobalVar.size() && "global variable substitution vector size is not matching");
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = M.getContext();
 
 	// initialize new Gvs copying old ones
 	for (size_t i = 0; i < Hoist.size(); ++i) {
@@ -464,7 +464,7 @@ void HoistVariables::deployGlobalVariable(Module& M, Instruction* I, const DataL
 }
 
 void HoistVariables::initializeGlobalVariable(Module& M, Instruction* I, const DataLayout& dataLayout) {
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = M.getContext();
 	fprintf(stderr, ">> Initializing Global Variable starts\n");
 	for(uint32_t i = 0; i < InitNeeded.size(); ++i) {
 		GlobalVariable* gv = InitNeeded[i];
@@ -656,7 +656,7 @@ Value* HoistVariables::castConstant(Constant* c, Instruction* I, int& loadNeeded
 		fprintf(stderr, "  ");
 	}
 #endif
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = I->getContext();
 	if (isa<GlobalVariable>(c)) {
 #ifdef GLOBAL_DEBUG
 		fprintf(stderr, "[ConstGlobal]\n");
@@ -812,7 +812,7 @@ Value* HoistVariables::castConstant(Constant* c, Instruction* I, int& loadNeeded
 }
 
 void HoistVariables::hoistLocalVariable(Module& M, LoadNamer& loadNamer, const DataLayout& dataLayout) {
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = M.getContext();
 	fprintf(stderr, ">> Hoisting Local Variable starts\n");
 	typedef Module::iterator FI;
 	typedef Function::iterator BI;
@@ -952,7 +952,7 @@ void HoistVariables::hoistGlobalVariable(Module& M, Instruction* I, const DataLa
 
 					// case Instruction* target is phinode
 					if(isa<PHINode>(target)) {
-						LLVMContext& Context = getGlobalContext();
+						LLVMContext& Context = M.getContext();
 						BasicBlock* targetBlock = target->getParent();
 						Function* targetFunction = targetBlock->getParent();
 						BasicBlock* edgeBlock = BasicBlock::Create(Context, "edge", targetFunction);
@@ -1010,7 +1010,7 @@ void HoistVariables::hoistGlobalVariable(Module& M, Instruction* I, const DataLa
 
 void HoistVariables::freeHoistedGlobalVariable(Module& M, Instruction* I, const DataLayout& dataLayout) {
 	fprintf(stderr, ">> Freeing Global Variable starts\n");
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = M.getContext();
 	
 	for(size_t i = 0; i < Hoist.size(); ++i) {
 		GlobalVariable* target = subGlobalVar[i];
@@ -1084,7 +1084,7 @@ void HoistVariables::createGlobalVariableFunctions(const DataLayout& dataLayout)
 }
 
 void HoistVariables::createProduceFunction(Function* F, vector<GlobalVariable*>& gvVector, Mode mode, const DataLayout& dataLayout) {
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = F->getContext();
 	std::vector<Value*> actuals(0);
 	
 	BasicBlock* entry = BasicBlock::Create(Context, "entry", F);
@@ -1131,7 +1131,7 @@ void HoistVariables::createProduceFunction(Function* F, vector<GlobalVariable*>&
 }
 
 void HoistVariables::createConsumeFunction(Function* F, vector<GlobalVariable*>& gvVector, Mode mode, const DataLayout& dataLayout) {
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = F->getContext();
 	std::vector<Value*> actuals(0);
 	
 	BasicBlock* entry = BasicBlock::Create(Context, "entry", F);

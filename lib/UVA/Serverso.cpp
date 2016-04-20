@@ -25,7 +25,7 @@ bool UVAServer::runOnModule(Module& M) {
 }
 
 void UVAServer::setFunctions(Module& M) {
-  LLVMContext &Context = getGlobalContext();
+  LLVMContext &Context = M.getContext();
  
   UVAServerInit = M.getOrInsertFunction(
       "UVAServerInitialize",
@@ -39,7 +39,7 @@ void UVAServer::setFunctions(Module& M) {
 }
 
 void UVAServer::setIniFini(Module& M) {
-  LLVMContext &Context = getGlobalContext();
+  LLVMContext &Context = M.getContext();
   std::vector<Type*> formals(0);
 	std::vector<Value*> actuals(0);
   

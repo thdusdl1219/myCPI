@@ -14,7 +14,7 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/ADT/StringMap.h"
 
-#include "corelab/Utilities/FixedGlobalVariable.h"
+#include "corelab/UVA/FixedGlobalVariable.h"
 #include "corelab/UVA/FixedGlobal.h"
 #include "corelab/Utilities/GlobalCtors.h"
 

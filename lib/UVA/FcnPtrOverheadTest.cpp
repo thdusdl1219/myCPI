@@ -72,7 +72,7 @@ bool FcnPtrOverheadTest::runOnModule(Module& M) {
 }
 
 void FcnPtrOverheadTest::installRegistFcnPtr (Module& M, Instruction* I, LoadNamer& loadNamer, const DataLayout& dataLayout) {
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = M.getContext();
 
 	Constant *cnstRegistFnpt = M.getOrInsertFunction (
 		"offloadServerRegistSelfFunctionPointer",

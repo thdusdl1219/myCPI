@@ -28,7 +28,7 @@ using namespace corelab;
 using namespace std;
 
 void FunctionPointerTranslater::setFunctions(Module& M) {
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = M.getContext();
 	ProduceFptr = M.getOrInsertFunction(
 			"offloadClientProduceFunctionPointer",
 			Type::getVoidTy(Context),
@@ -76,7 +76,7 @@ void FunctionPointerTranslater::installBackTranslator(Module& M, LoadNamer& load
 	typedef std::pair<User *, Function *> UserToFnPtPair;
 	typedef std::map<Instruction *, std::vector<UserToFnPtPair> > BackTransMap;
 
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = M.getContext();
 	BackTransMap mapBackTrans;
 
 	for (FI fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
@@ -197,7 +197,7 @@ void FunctionPointerTranslater::installBackTranslator(Module& M, LoadNamer& load
 }	
 
 void FunctionPointerTranslater::installTranslator(Module& M, LoadNamer& loadNamer, const DataLayout& dataLayout) {
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = M.getContext();
 	std::vector<CallInst *> calls;
 	std::vector<Instruction *> subs;
 
@@ -272,7 +272,7 @@ void FunctionPointerTranslater::installTranslator(Module& M, LoadNamer& loadName
 }
 
 void FunctionPointerTranslater::produceFunctionPointers(Module& M, Instruction* I, LoadNamer& loadNamer, const DataLayout& dataLayout) {
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = M.getContext();
 	std::vector<Value*> actuals(0);
 	actuals.resize(2);
 	for (FI fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
@@ -306,7 +306,7 @@ void FunctionPointerTranslater::consumeFunctionPointers(Module& M, Instruction* 
 }
 
 void FunctionPointerTranslater::installToAddrRegisters(Module& M, Instruction* I, LoadNamer& loadNamer, const DataLayout& dataLayout) {
-	LLVMContext& Context = getGlobalContext();
+	LLVMContext& Context = M.getContext();
 	std::vector<Value*> actuals(0);
 
 	// Get remained function list

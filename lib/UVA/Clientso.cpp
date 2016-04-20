@@ -41,7 +41,7 @@ bool UVAClient::runOnModule(Module& M) {
 }
 
 void UVAClient::setFunctions(Module& M) {
-  LLVMContext &Context = getGlobalContext();
+  LLVMContext &Context = M.getContext();
  
   UVAClientInit = M.getOrInsertFunction(
       "UVAClientInitialize",
@@ -56,7 +56,7 @@ void UVAClient::setFunctions(Module& M) {
 }
 
 void UVAClient::setIniFini(Module& M) {
-  LLVMContext &Context = getGlobalContext();
+  LLVMContext &Context = M.getContext();
   std::vector<Type*> formals(0);
 	std::vector<Value*> actuals(0);
   

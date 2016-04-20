@@ -100,7 +100,7 @@ void MemoryManagerArm::getAnalysisUsage(AnalysisUsage &AU) const {
 //}
 
 void MemoryManagerX64::setFunctions(Module &M) {
-	LLVMContext &Context = getGlobalContext();
+	LLVMContext &Context = M.getContext();
 	voidTy = Type::getVoidTy(Context);
 	ptrTy = Type::getInt8PtrTy(Context);
 	intTy = Type::getInt64Ty(Context);
@@ -183,7 +183,7 @@ void MemoryManagerX64::setFunctions(Module &M) {
 }
 
 void MemoryManagerX64S::setFunctions(Module &M) {
-	LLVMContext &Context = getGlobalContext();
+	LLVMContext &Context = M.getContext();
 	voidTy = Type::getVoidTy(Context);
 	ptrTy = Type::getInt8PtrTy(Context);
 	intTy = Type::getInt64Ty(Context);
@@ -266,7 +266,7 @@ void MemoryManagerX64S::setFunctions(Module &M) {
 }
 
 void MemoryManagerArm::setFunctions(Module &M) {
-	LLVMContext &Context = getGlobalContext();
+	LLVMContext &Context = M.getContext();
 	voidTy = Type::getVoidTy(Context);
 	ptrTy = Type::getInt8PtrTy(Context);
 	intTy = Type::getInt32Ty(Context);
@@ -927,7 +927,7 @@ bool MemoryManagerArm::runOnFunction(Function *F) {
 static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, bool is32) {
   for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
     Function &F = *fi;
-    LLVMContext &Context = getGlobalContext();
+    LLVMContext &Context = M.getContext();
     const DataLayout &dataLayout = M.getDataLayout();
     std::vector<Value*> args(0);
     if (F.isDeclaration()) continue;
@@ -1112,7 +1112,7 @@ static bool isUseOfGetElementPtrInst(LoadInst *ld){
 
 static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout *dl)
 {
-  LLVMContext &Context = getGlobalContext();
+  LLVMContext &Context = from->getContext();
   const size_t fromSize = dl->getTypeSizeInBits( from->getType() );
   const size_t toSize = dl->getTypeSizeInBits( to->getType() );
 
