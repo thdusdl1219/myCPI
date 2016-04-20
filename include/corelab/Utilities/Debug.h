@@ -50,6 +50,8 @@
 #include <execinfo.h>
 #include <unistd.h>
 
+#include <stdarg.h> // BONGJUN: this is required on some machine. I don't know why.
+
 #define DEBUG_LEVEL_MAX 1024
 
 using namespace std;

@@ -7,6 +7,7 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/InstIterator.h"
 
+#include "corelab/Utilities/InstInsertPt.h"
 #include "corelab/Metadata/LoadNamer.h"
 #include "corelab/UVA/HoistVariables.h"
 
@@ -29,13 +30,19 @@ bool UVAClient::runOnModule(Module& M) {
   setFunctions(M);
 
   // Filter out gloabl vars using ptr and move up to global vars.
-  hoist = new HoistVariables(M);
-  hoist->getGlobalVariableList(M);
+  //hoist = new HoistVariables(M);
+  //hoist->getGlobalVariableList(M);
   //hoist->createGlobalVariableFunctions(M.getDataLayout());
 
-  hoist->distinguishGlobalVariables();
+  //hoist->distinguishGlobalVariables();
 
-  setIniFini(M);
+  if(M.getFunction("__constructor__") != NULL){
+    printf("ctor exists\n");
+    modifyIniFini(M);
+  } else {
+    printf("ctor don't exists\n");
+    setIniFini(M);
+  }
   return true;
 
 }
@@ -55,6 +62,7 @@ void UVAClient::setFunctions(Module& M) {
   
 }
 
+/* XXX: this is for UVA-only module XXX*/
 void UVAClient::setIniFini(Module& M) {
   LLVMContext &Context = M.getContext();
   std::vector<Type*> formals(0);
@@ -69,11 +77,12 @@ void UVAClient::setIniFini(Module& M) {
 
   CallInst::Create(UVAClientInit, actuals, "", entry); 
 	BranchInst::Create(initBB, entry); 
-	Instruction *termIni = ReturnInst::Create(Context, 0, initBB);
+	//Instruction *termIni = ReturnInst::Create(Context, 0, initBB);
+	ReturnInst::Create(Context, 0, initBB);
 
-  hoist->deployGlobalVariable(M, termIni, M.getDataLayout());
-  hoist->hoistGlobalVariable(M, termIni, M.getDataLayout());
-  hoist->initializeGlobalVariable(M, termIni, M.getDataLayout());
+  //hoist->deployGlobalVariable(M, termIni, M.getDataLayout());
+  //hoist->hoistGlobalVariable(M, termIni, M.getDataLayout());
+  //hoist->initializeGlobalVariable(M, termIni, M.getDataLayout());
 	callBeforeMain(initForCtr);
 	
 	/* finalize */
@@ -86,4 +95,35 @@ void UVAClient::setIniFini(Module& M) {
 	ReturnInst::Create(Context, 0, fini);
 	callAfterMain(finiForDtr);
 
+}
+
+/* XXX: this is for UVA in Esperanto XXX */
+void UVAClient::modifyIniFini(Module &M) {
+  LLVMContext &Context = M.getContext();
+  std::vector<Type*> formals(0);
+	std::vector<Value*> actuals(0);
+  
+  FunctionType *voidFcnVoidType = FunctionType::get(Type::getVoidTy(Context), formals, false); 
+
+  Function *ctor = M.getFunction("__constructor__");
+  Function *dtor = M.getFunction("__destructor__");
+  assert(ctor != NULL && "wrong");
+  assert(dtor != NULL && "wrong");
+  BasicBlock *bbOfCtor = &(ctor->front());
+  BasicBlock *bbOfDtor = &(dtor->front());
+  
+  Instruction *deviceInitCallInst;
+  for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
+    if(isa<CallInst>(&*I)) {
+      CallInst *tarFun = dyn_cast<CallInst>(&*I);
+      Function *callee = tarFun->getCalledFunction();
+      if(callee->getName() == "deviceInit") {
+        deviceInitCallInst = &*I;
+      }
+    }
+  }
+  InstInsertPt out = InstInsertPt::After(deviceInitCallInst);
+  
+  out << CallInst::Create(UVAClientInit, actuals, "");
+  CallInst::Create(UVAClientFinal, actuals, "", bbOfDtor->getFirstNonPHI());
 }

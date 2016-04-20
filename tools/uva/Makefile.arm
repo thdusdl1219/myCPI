@@ -4,17 +4,14 @@
 #
 # Don't compile here  !! 
 #
-# At first, you have to create "arm" directory in 
-#
-# "[path]/llvm-corelab-install/Debug+Asserts/lib/" 
-#
 # Copy this Makefile.arm into "[path]/llvm-corelab-install/tools/[your tool]/"
 #
-# and go to there, modify the some name, then type "make -f Makefile.arm"
+# and go to there, modify the "TOOL_NAME" variable, then type "make -f Makefile.arm"
 #
 ######################################################
 
-TOOLS=/home/$(USER)/corelab/src/llvm-corelab/tools/uva
+TOOL_NAME=uva
+TOOLS=$(CORELAB)/src/llvm-corelab/tools/$(TOOL_NAME)
 TARGET=arm
 LLVM_CXX=clang++
 LLVM_CC=clang
@@ -25,17 +22,18 @@ SOURCES=$(wildcard $(TOOLS)/*.cpp $(TOOLS)/*.c)
 OBJS=$(patsubst %.cpp,%.o,$(notdir $(SOURCES)))
 OBJS:=$(patsubst %.c,%.o,$(OBJS))
 OBJS_DIR=$(addprefix $(TARGET)/,$(notdir $(OBJS)))
-LIBNAME?=libuva_$(TARGET).a
+LIBNAME?=lib$(TOOL_NAME)_$(TARGET).a
 LIBDIR=../../Debug+Asserts/lib/$(TARGET)
 
 OBJS_DIR_SHARED=$(addprefix $(TARGET)-shared/,$(notdir $(OBJS)))
-LIBNAME_SHARED?=libuva_$(TARGET).so
+LIBNAME_SHARED?=lib$(TOOL_NAME)_$(TARGET).so
 
 XCFLAG = -target armv7l-unknown-linux-gnueabi \
 	-I/usr/arm-linux-gnueabi/include/c++/4.7.3/arm-linux-gnueabi \
   -I/usr/arm-linux-gnueabi/include/c++/4.7.3 \
   -I/usr/arm-linux-gnueabi/include \
-	-I/home/$(USER)/corelab/src/llvm-offload/include
+	-I$(CORELAB)/src/llvm-corelab/include \
+  -std=c++11
 
 DFLAGS=-DINFLATE_READ 
 #-DPRINT_MEMORY_TRANSFER_INFO 
@@ -45,6 +43,7 @@ DFLAGS=-DINFLATE_READ
 
 all : $(OBJS_DIR)
 	$(AR) -r $(LIBNAME) $(OBJS_DIR)
+	mkdir -p $(LIBDIR)
 	mv $(LIBNAME) $(LIBDIR)
 
 shared : $(OBJS_DIR_SHARED)

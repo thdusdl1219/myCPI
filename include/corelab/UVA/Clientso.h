@@ -33,6 +33,7 @@ namespace corelab {
 
       void setFunctions(Module &M);
       void setIniFini(Module &M);
+      void modifyIniFini(Module &M);
   };
 }
 
