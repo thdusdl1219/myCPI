@@ -1,0 +1,10 @@
+*.s
+*.a
+*.so
+*.exe
+*.bc
+*.ll
+*.profile
+*.log
+*.swp
+tags
