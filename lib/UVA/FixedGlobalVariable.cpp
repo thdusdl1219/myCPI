@@ -23,6 +23,8 @@
 #include <string>
 #include <list>
 
+#define DEBUG_HOIST
+
 using namespace llvm;
 using namespace corelab;
 using namespace std;
@@ -71,7 +73,7 @@ static BasicBlock *blkGInitzer;
 
 /* @detail Begin the IR transformation. 
  * 	Prepare the static manager before starting it. */
-void FixedGlobalFactory::begin (Module *module, void *base) {
+void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
 	/* Minor initializations */
 	mapFGvars.clear ();
 
@@ -85,6 +87,7 @@ void FixedGlobalFactory::begin (Module *module, void *base) {
 	blkGInitzer = NULL;
 
 	/* Create global initializer */
+  if (isFixGlbDuty){
 	FunctionType *tyFnVoidVoid = FunctionType::get (
 			Type::getVoidTy (pM->getContext ()), false);
 	fnGInitzer = Function::Create (tyFnVoidVoid, GlobalValue::InternalLinkage, 
@@ -92,6 +95,7 @@ void FixedGlobalFactory::begin (Module *module, void *base) {
 	blkGInitzer = BasicBlock::Create (pM->getContext (), "initzer", fnGInitzer);
 
 	callBeforeMain (fnGInitzer, 0);
+  }
 }
 
 
@@ -103,7 +107,7 @@ void FixedGlobalFactory::begin (Module *module, void *base) {
  *	The global constructor must be called the very first, even before
  *	other constructors are called, so that other codes cannot notice that
  *	FixedGlobalVariables are actually allocated at runtime.  */
-void FixedGlobalFactory::end () {
+void FixedGlobalFactory::end (bool isFixGlbDuty) {
 	LLVMContext *pC = &pM->getContext ();
 	Type *tyVoid = Type::getVoidTy (*pC);
 	Type *tyInt8Pt = Type::getInt8PtrTy (*pC);
@@ -111,6 +115,7 @@ void FixedGlobalFactory::end () {
 
 	size_t sizeAlloc = (sizeTotal + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
 
+  //if (isFixGlbDuty) {
 	/* Create MMAP call in the initializer */
 	BasicBlock *blkMmap = BasicBlock::Create (*pC, "mmap", fnGInitzer);
 	BasicBlock *blkExcept = BasicBlock::Create (*pC, "except", fnGInitzer);
@@ -146,7 +151,7 @@ void FixedGlobalFactory::end () {
 
 	/* Create a terminator of the initializer block. */
 	ReturnInst::Create (pM->getContext (), blkGInitzer);
-
+  //}
 	/* Reset fields */
 	tyUintPtr = NULL;
 	mapFGvars.clear ();
@@ -163,7 +168,7 @@ void FixedGlobalFactory::end () {
 /* @detail FixedGlobalVariable creator
  * @param[in] initzer Default zero initializer if null */
 FixedGlobalVariable* FixedGlobalFactory::create (Type *type, Constant *initzer,
-		const Twine &name) {
+		const Twine &name, bool isFixGlbDuty) {
 	if (!initzer) initzer = Constant::getNullValue (type);
 
 	assert (initzer && "The initializer should not be null after this point.");
@@ -178,7 +183,7 @@ FixedGlobalVariable* FixedGlobalFactory::create (Type *type, Constant *initzer,
 	FGInfo fginfo;
 	fginfo.uptVar = (uintptr_t)uptBase + sizeTotal;
 	fginfo.cnstInitzer = initzer;
-	createAndFillInitializers (initzer, fgvar, blkGInitzer, fginfo.lstInstInitzer);
+	if(isFixGlbDuty) createAndFillInitializers (initzer, fgvar, blkGInitzer, fginfo.lstInstInitzer);
 
 	mapFGvars.insert (pair<FixedGlobalVariable *, FGInfo> (fgvar, fginfo));
 
@@ -186,6 +191,9 @@ FixedGlobalVariable* FixedGlobalFactory::create (Type *type, Constant *initzer,
 	const DataLayout *dataLayout = &(pM->getDataLayout ());
 	sizeTotal += dataLayout->getTypeAllocSize (type);
 
+#ifdef DEBUG_HOIST
+  printf("FIXGLB: FixedGlobalFactory::create: name( %s ), size ( %d )\n", name.str().c_str(), dataLayout->getTypeAllocSize(type));
+#endif
 	return fgvar;
 }
 
@@ -253,6 +261,9 @@ void* FixedGlobalFactory::getFixedAddress (FixedGlobalVariable *fgvar) {
 static void createAndFillInitializers (Constant *initzer, Value *valPtr, 
 		BasicBlock *blkAtEnd, list<Instruction *> &lstInstInitzer) {
 	if (ConstantDataArray *cnstArrInitzer = dyn_cast<ConstantDataArray> (initzer)) {
+#ifdef DEBUG_HOIST
+    printf("FIXGLB: createAndFillInitializers: is ConstantDataArray initzer\n");
+#endif
 		// WORKAROUND: if INITZER is a constant array initializer,
 		// probably it may need splitting to avoid 'vector width exceeded' assertion.
 		Type *tyInt8 = Type::getInt8Ty (pM->getContext ());

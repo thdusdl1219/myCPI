@@ -6,7 +6,8 @@
 
 #include "client.h"
 #include "qsocket.h"
-#include "mm.h"
+#include "mm.h" // FIXME
+#include "uva_manager.h"
 
 #include "log.h"
 #include "hexdump.h"
@@ -32,7 +33,7 @@ namespace corelab {
         strcpy(ip,"127.0.0.1");
 #else
         LOG("UVA client : uva client init\n");
-        strcpy(ip,"192.168.11.2");
+        strcpy(ip,"141.223.196.25");
 #endif
 
 #if TEST
@@ -103,5 +104,12 @@ namespace corelab {
 				UVAManager::fetchIn (socket, addr);
 			}*/
 		}
+    extern "C" void uva_load(void *addr, size_t len) {
+      UVAManager::loadHandler(Msocket, addr, len);
+    }
+
+    extern "C" void uva_store(void *addr, size_t len, void *data) {
+      UVAManager::storeHandler(Msocket, addr, len, data);
+    }
   }
 }

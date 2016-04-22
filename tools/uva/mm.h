@@ -74,10 +74,6 @@ namespace corelab {
 			// Debug interface
 			void dumpRange (void *addr, size_t size);
 			void dumpFreeList ();
-      
-      // Load/Store handler
-      void loadHandler(void *addr, uint64_t typeLen);
-      void storeHandler(void *addr, uint64_t typeLen, void *data);
 		}
 	}
 }

@@ -307,7 +307,6 @@ namespace corelab {
 			return (HEAP_START_ADDR <= addr && addr < HEAP_MAX_ADDR);
 		}
 
-
 		/*** Get/Set interfaces ***/
 		void* XMemoryManager::getHeapStartAddr () {
 			return HEAP_START_ADDR;
@@ -392,73 +391,6 @@ namespace corelab {
 			}
 			return;
 		}
-
-    /* Handler Load Store instructions */
-    void XMemoryManager::loadHandler(void *addr, uint64_t typeLen) {
-      //LOG("[client] Load instr, addr %p, typeLen %lu\n", addr, typeLen); 
-      if(isHeapAddr(addr)) {
-        LOG("[client] Load : isHeapAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
-        socket->pushWordF(2); // mode 2 (client -> server : load request)
-        socket->pushWordF(sizeof(addr));
-        socket->pushWordF(typeLen); // type length
-        socket->pushRangeF(&addr, sizeof(addr));
-        socket->sendQue();
-
-        socket->receiveQue();
-        int mode = socket->takeWord();
-        //LOG("[client] mode : %d\n", mode); // should be 3
-        assert(mode == 3 && "wrong");
-        int len = socket->takeWord();
-        //LOG("[client] len : %d\n", len);
-        void *buf = malloc(len);
-
-        socket->takeRangeF(buf, len);
-        memcpy(addr, buf, len);
-        //LOG("[client] TEST loaded value : %d \n", *((int*)addr));
-        //for(int i=0; i<len; i++) {
-        //  printf("%02x", ((unsigned char*)buf)[i]);
-        //}
-        //printf("\n");
-        hexdump(addr, typeLen);
-        dumpRange(addr, typeLen);
-        LOG("[client] Load request END\n\n");
-      }
-    }
-
-    void XMemoryManager::storeHandler(void *addr, uint64_t typeLen, void *data) {
-      //LOG("[client] Store instr, addr %p, typeLen %lu, TEST val %d\n", addr, typeLen, *((int*)addr)); 
-      if (isHeapAddr(addr)) { 
-        LOG("[client] Store : isHeapAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
-        //LOG("[client] data : %d ", (int*)data);
-        //for(int i=0; i<typeLen; i++) {
-        //  printf("%02x", ((unsigned char*)data)[i]);
-        //}
-        //printf("\n");
-        socket->pushWordF(4);
-        socket->pushWordF(sizeof(addr));
-        socket->pushWordF(typeLen);
-        socket->pushRangeF(&addr, sizeof(addr));
-        socket->pushRangeF(&data, sizeof(data));
-        socket->sendQue();
-
-        socket->receiveQue();
-        int mode = socket->takeWord();
-        //LOG("[client] mode : %d\n", mode);
-        assert(mode == 5 && "wrong");
-        int len = socket->takeWord();
-        //LOG("[client] len : %d\n", len);
-        //void *buf = malloc(len);
-        if (len == 0) { // Normal ack
-          //memcpy(addr, &data, typeLen);
-          //LOG("[client] TEST stored value : %d\n", *((int*)addr));
-        } else if (len == -1) {
-          LOG("[client] store request fail\n"); // TODO: have to handler failure situation.
-        } else {
-          assert(0 && "error: undefined behavior");
-        }
-        LOG("[client] Store request END\n\n");
-      }
-    }
 
 		/*** Internals ***/
 		static inline void registerSlab (size_t size) {

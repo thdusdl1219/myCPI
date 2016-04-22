@@ -32,6 +32,8 @@
 #include <cstdlib>
 #include <cstdio>
 
+#define DEBUG_MM
+
 using namespace corelab;
 
 // Utils
@@ -945,6 +947,7 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
             temp = ConstantInt::get(Type::getInt32Ty(Context), 0);
           }
           InstInsertPt out = InstInsertPt::Before(ld);
+          ld->dump();
           addr = castTo(addr, temp, out, &dataLayout);
 
           //InstrID instrId = Namer::getInstrId(instruction);
@@ -993,6 +996,7 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
           temp = ConstantInt::get(Type::getInt32Ty(Context), 0);
         }
         InstInsertPt out = InstInsertPt::Before(st);
+        st->dump();
         addr = castTo(addr, temp, out, &dataLayout);
 
         //InstrID instrId = Namer::getInstrId(instruction);
@@ -1010,19 +1014,54 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
         //addr->getType()->dump();
         //st->getValueOperand()->getType()->dump();
         
-        unsigned int storeValueTypeSize = dataLayout.getTypeAllocSize(st->getValueOperand()->getType());
+        Value *valueOperand = st->getValueOperand();
+        unsigned int storeValueTypeSize = dataLayout.getTypeAllocSize(valueOperand->getType());
         Value *storeValueTypeSize_;
         if(!is32) {
           storeValueTypeSize_ = ConstantInt::get(Type::getInt64Ty(Context), storeValueTypeSize);
         } else {
           storeValueTypeSize_ = ConstantInt::get(Type::getInt32Ty(Context), storeValueTypeSize);
         }
-        Value *valueOperand = st->getValueOperand();
         if(!is32){
           temp = ConstantPointerNull::get(Type::getInt64PtrTy(Context));
         } else {
           temp = ConstantPointerNull::get(Type::getInt32PtrTy(Context));
         }
+
+#ifdef DEBUG_MM
+        if (ArrayType *tyArr = dyn_cast<ArrayType>(valueOperand->getType())){
+          printf("mm: valueOperand is Array type!, and type size is %d\n", storeValueTypeSize);
+          vector<Value*> vecGepIdx;
+          vecGepIdx.push_back(ConstantInt::get(Type::getInt32Ty(Context), 0));
+          
+          tyArr->dump();
+          st->getPointerOperand()->dump();
+          
+          GetElementPtrInst *gepInst = GetElementPtrInst::Create(tyArr, st->getPointerOperand(), vecGepIdx, "ty.arr.ptr", st); 
+          
+          printf("mm: store's operand (size:%d) :\n", storeValueTypeSize);
+          
+          valueOperand->dump();
+          printf("mm: type id is %d", valueOperand->getType()->getTypeID());
+          printf(" , ptr Ty ID is %d\n",valueOperand->getType()->getPointerTo()->getTypeID());
+
+          Value *arrOperand = castTo(gepInst, temp, out, &dataLayout);
+
+          args[0] = addr;
+          //args[1] = fullId_;
+          args[1] = storeValueTypeSize_;
+          args[2] = arrOperand;
+          CallInst::Create(Store, args, "", st);
+        } else {
+          valueOperand = castTo(valueOperand, temp, out, &dataLayout);
+
+          args[0] = addr;
+          //args[1] = fullId_;
+          args[1] = storeValueTypeSize_;
+          args[2] = valueOperand;
+          CallInst::Create(Store, args, "", st);
+        }
+#else
         valueOperand = castTo(valueOperand, temp, out, &dataLayout);
         
         args[0] = addr;
@@ -1030,6 +1069,7 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
         args[1] = storeValueTypeSize_;
         args[2] = valueOperand;
         CallInst::Create(Store, args, "", st);
+#endif
       }
     } // for
   } // for
@@ -1116,6 +1156,9 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
   const size_t fromSize = dl->getTypeSizeInBits( from->getType() );
   const size_t toSize = dl->getTypeSizeInBits( to->getType() );
 
+#ifdef DEBUG_MM
+  printf("mm: castTo: fromSize (%d), toSize (%d)\n", fromSize, toSize);
+#endif
   // First make it an integer
   if( ! from->getType()->isIntegerTy() ) {
     // cast to integer of same size of bits
@@ -1128,8 +1171,12 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
     }
     out << cast;
     from = cast;
+  } 
+#ifdef DEBUG_MM
+  else if (from->getType()->isIntegerTy()){
+    printf("mm: castTo: from is IntegerTy\n");
   }
-
+#endif
   // Next, make it have the same size
   if( fromSize < toSize ) {
     Type *integer = IntegerType::get(Context, toSize);
@@ -1142,20 +1189,29 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
     out << cast;
     from = cast;
   }
-
+#ifdef DEBUG_MM
+  printf("mm: castTo: AFTER making same size\n");
+#endif
   // possibly bitcast it to the approriate type
   if( to->getType() != from->getType() ) {
     Instruction *cast;
     if( to->getType()->getTypeID() == Type::PointerTyID )
       cast = new IntToPtrInst(from, to->getType() );
     else {
+#ifdef DEBUG_MM
+      printf("mm: castTo: to's typeID is NOT PointerTyID\n");
+      from->getType()->dump();
+      to->getType()->dump();
+#endif
       cast = new BitCastInst(from, to->getType() );
     }
 
     out << cast;
     from = cast;
   }
-
+#ifdef DEBUG_MM
+  printf("mm: castTo: end of castTo()\n\n");
+#endif
   return from;
 }
 

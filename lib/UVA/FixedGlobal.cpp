@@ -26,6 +26,8 @@
 #define FIXED_GLOBAL_BASE 			((void *)0x15000000)
 #define FIXED_CONST_GLOBAL_BASE ((void *)0x16000000)
 
+#define DEBUG_HOIST
+
 using namespace llvm;
 using namespace std;
 
@@ -38,8 +40,23 @@ namespace corelab {
 		AU.setPreservesAll ();
 	}
 
+  // command line argument
+  static cl::opt<string> FixGlbDuty("fix_global_duty", 
+      cl::desc("Specify Global variable fixing and initializer (1: initializer, 0: not)"), 
+      cl::value_desc("global initializer in charge"));
+
 	bool FixedGlobal::runOnModule (Module& M) {
 		this->pM = &M;
+    
+    /* FixGlbDuty : it decides who fix global variables and init.  Global
+     * variables are shared in multiple clients, thereby we need just only
+     * client in charge of fixing and initializing glbs.  Therefore,
+     * fix_global_duty value should be 1 only once.  
+     **/
+    if (FixGlbDuty == "1") 
+      this->isFixGlbDuty = true;
+    else
+      this->isFixGlbDuty = false;
 
 		/* Find all internal global variables. */
 		set<GlobalVariable *> setGvars;
@@ -52,9 +69,12 @@ namespace corelab {
 			if ((!gvar->hasExternalLinkage () || gvar->hasInitializer ()) &&
 					(gvar->getName().str().length () < 5 ||
 					 	gvar->getName().str().substr (0, 5) != string ("llvm."))) {
-				if (!gvar->isConstant ())
+				if (!gvar->isConstant ()) {
 					setGvars.insert (gvar);
-				else {
+#ifdef DEBUG_HOIST
+          printf("FIXGLB: runOnModule: no const (has init func): %s\n", gvar->getName().data());
+#endif
+        } else {
 					// WORKAROUND: If the global initializer takes functions,
 					// it breaks the rule where function pointers of the server
 					// must have a function's address of the client, ending
@@ -67,9 +87,16 @@ namespace corelab {
 					if (hasFunction (gvar->getInitializer ())) {
 						gvar->setConstant (false);
 						setGvars.insert (gvar);
-					}
-					else
+#ifdef DEBUG_HOIST
+          printf("FIXGLB: runOnModule: const (has init func): %s\n", gvar->getName().data());
+#endif
+          }	
+					else {
 						setConstGvars.insert (gvar);
+#ifdef DEBUG_HOIST
+          printf("FIXGLB: runOnModule: const (NO init func): %s\n",gvar->getName().data());
+#endif
+          }
 				}
 			}
 		}
@@ -82,6 +109,9 @@ namespace corelab {
 		uintptr_t uptConstGvarsBegin = (uintptr_t)FIXED_CONST_GLOBAL_BASE;
 		uintptr_t uptConstGvarsEnd = (uintptr_t)FIXED_CONST_GLOBAL_BASE + sizeConstGvars;
 	
+#ifdef DEBUG_HOIST
+    printf("FIXGLB: runOnModule: uptConstGvarsBegin~End %p ~ %p\n",uptConstGvarsBegin, uptConstGvarsEnd);
+#endif 
 		/* Set constant range */
 		FunctionType *tyFnVoidVoid = FunctionType::get (
 				Type::getVoidTy (pM->getContext ()), false);
@@ -94,7 +124,7 @@ namespace corelab {
 		Type *tyUintPtr = Type::getIntNTy (M.getContext (),
 				M.getDataLayout ().getPointerSizeInBits ());
 
-		Constant *cnstOffSetCRange = M.getOrInsertFunction ("offloadUtilSetConstantRange",
+		Constant *cnstOffSetCRange = M.getOrInsertFunction ("UVAUtilSetConstantRange",
 				tyVoid, tyInt8Pt, tyInt8Pt, NULL);
 
 		vector<Value *> vecSetCRangeArgs;
@@ -106,7 +136,8 @@ namespace corelab {
 
 		ReturnInst::Create (M.getContext (), blkDeclCRange);
 
-		callBeforeMain (fnDeclCRange, 0);
+    if (this->isFixGlbDuty)
+		  callBeforeMain (fnDeclCRange, 0);
 
 		/* Finalize */
 		list<GlobalVariable *> lstDispGvars;
@@ -133,7 +164,8 @@ namespace corelab {
 		typedef pair<GlobalVariable *, FixedGlobalVariable *> GlobalToFixedPair;
 		size_t sizeTotalGvars = 0;
 
-		FixedGlobalFactory::begin (pM, base);
+    //if (this->isFixGlbDuty)
+		  FixedGlobalFactory::begin (pM, base, isFixGlbDuty);
 
 		/* Replace them to fixed globals */
 		GlobalToFixedMap mapGlobalToFixed;
@@ -149,7 +181,7 @@ namespace corelab {
 				cnstInitzer = gvar->getInitializer ();
 
 			FixedGlobalVariable *fgvar = FixedGlobalFactory::create (gvar->getType()->getElementType (),
-					cnstInitzer, gname);
+					cnstInitzer, gname, isFixGlbDuty);
 			mapGlobalToFixed.insert (GlobalToFixedPair (gvar, fgvar));
 		}
 
@@ -163,7 +195,11 @@ namespace corelab {
 		}	
 
 		sizeTotalGvars = FixedGlobalFactory::getTotalGlobalSize ();
-		FixedGlobalFactory::end ();
+#ifdef DEBUG_HOIST
+    printf("FIXGLB: convertToFixedGlobals: sizeTotalGvars: %d\n", sizeTotalGvars);
+#endif
+    if (this->isFixGlbDuty)
+		  FixedGlobalFactory::end (isFixGlbDuty);
 
 		return sizeTotalGvars;
 	}

@@ -19,6 +19,7 @@
 #define NDEBUG // BONGJUN
 #include "debug.h"
 
+#include "hexdump.h" // BONGJUN
 
 #ifdef OVERHEAD_TEST
 #include "overhead.h"
@@ -53,9 +54,11 @@ namespace corelab {
 	}
 
 	void QSocket::pushWordF (QSocketWord word, int *clientID) {
+    //printf("pushWordF: sizeof(QSocketWord) = %d\n", sizeof(QSocketWord));
 		while (!pushToSendQue (&word, sizeof(QSocketWord), clientID)) {
 			sendQue (clientID);			// flush queue
 		}
+    //hexdump(&word, sizeof(QSocketWord));
 	}
 
 	bool QSocket::pushRange (const void *data, size_t size, int *clientID) {
@@ -97,8 +100,10 @@ DEBUG_STMT (fprintf (stderr, "direct_sendsize:%u\n", size));
 	// Receive queue interface
 	QSocketWord QSocket::takeWord (bool *hr, int* clientID) {
 		QSocketWord word;
+    //printf("takeWord: sizeof(QSocketWord) = %d\n", sizeof(QSocketWord));
 		bool _hr = takeFromRecvQue (&word, sizeof(QSocketWord), clientID);
 
+    //hexdump(&word, sizeof(QSocketWord));
 		if (hr != NULL) *hr = _hr;
 		return word;
 	}
@@ -106,6 +111,7 @@ DEBUG_STMT (fprintf (stderr, "direct_sendsize:%u\n", size));
 	QSocketWord QSocket::takeWordF (int* clientID) {
 		QSocketWord word;
 
+    //printf("takeWordF: sizeof(QSocketWord) = %d\n", sizeof(QSocketWord));
 		while (!takeFromRecvQue (&word, sizeof(QSocketWord), clientID)) {
 		  receiveQue (clientID);			// refill queue
 		}

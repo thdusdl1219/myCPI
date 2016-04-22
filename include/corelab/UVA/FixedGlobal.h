@@ -21,6 +21,7 @@ namespace corelab {
 
 		private:
 			Module *pM;
+      bool isFixGlbDuty;
 
 			size_t convertToFixedGlobals (set<GlobalVariable *> setGvars, void *base);
 			bool hasFunction (Constant *cnst);
