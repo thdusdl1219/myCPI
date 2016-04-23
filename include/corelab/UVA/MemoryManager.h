@@ -10,33 +10,11 @@ namespace corelab
 	using namespace llvm;
 	using namespace std;
 	
-	class MemoryManagerX86 : public ModulePass
-	{
-		public:
-			virtual bool runOnModule(Module& M);
-			virtual bool runOnFunction(Function *F);
-			virtual void getAnalysisUsage(AnalysisUsage &AU) const;
-			virtual void setFunctions(Module &M);
-
-			static char ID;
-			MemoryManagerX86() : ModulePass(ID) {}
-			const char *getPassName() const { return "MEMORY_MANAGER_X86"; }
-
-			protected:
-			Constant* Malloc;
-			Constant* Calloc;
-			Constant* Realloc;
-			Constant* Free;
-			Type* voidTy;
-			Type* ptrTy;
-			Type* intTy;
-	};
-
 	class MemoryManagerX64 : public ModulePass
 	{
 		public:
 			virtual bool runOnModule(Module& M);
-			virtual bool runOnFunction(Function *F);
+			virtual bool runOnFunction(Function *F, bool is32);
 			virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 			virtual void setFunctions(Module &M);
 
@@ -98,7 +76,7 @@ namespace corelab
 	{
 		public:
 			virtual bool runOnModule(Module& M);
-			virtual bool runOnFunction(Function *F);
+			virtual bool runOnFunction(Function *F, bool is32);
 			virtual void getAnalysisUsage(AnalysisUsage &AU) const;
 			virtual void setFunctions(Module &M);
 

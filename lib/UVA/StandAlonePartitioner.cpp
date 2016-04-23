@@ -46,7 +46,6 @@ bool StandAlonePartitioner::runOnModule(Module& M) {
       Instruction *instruction = &*I;
       if(isa<CallInst>(instruction)) {
         ci = dyn_cast<CallInst>(instruction);
-        ci->dump();
         Function *callee = getCalledFunction_aux(instruction);
         if(!callee){
           const Value *calledVal = getCalledValueOfIndCall(instruction);

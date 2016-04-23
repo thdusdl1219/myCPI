@@ -19,6 +19,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Constants.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/Passes.h"
@@ -144,9 +145,9 @@ void MemoryManagerX64::setFunctions(Module &M) {
 			ptrTy,
 			ptrTy,
 			intTy,
-			intTy,
-			intTy,
-			intTy,
+			Type::getInt32Ty(Context),
+			Type::getInt32Ty(Context),
+			Type::getInt32Ty(Context),
 			intTy,
 			(Type*)0);
 
@@ -402,7 +403,7 @@ bool MemoryManagerX64::runOnModule(Module& M) {
 		Function* F = &*fi;
 		if (F->isDeclaration())
 			continue;
-		runOnFunction(F);
+		runOnFunction(F, false);
 	}
   installLoadStoreHandler(M, Load, Store, false);
 
@@ -471,7 +472,7 @@ bool MemoryManagerArm::runOnModule(Module& M) {
 		Function* F = &*fi;
 		if (F->isDeclaration())
 			continue;
-		runOnFunction(F);
+		runOnFunction(F, true);
 	}
   installLoadStoreHandler(M, Load, Store, true);
   return false;
@@ -508,7 +509,7 @@ bool MemoryManagerArm::runOnModule(Module& M) {
 //	return false;
 //}
 
-bool MemoryManagerX64::runOnFunction(Function *F) {
+bool MemoryManagerX64::runOnFunction(Function *F, bool is32) {
 
 		for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
 			Instruction *instruction = &*I;
@@ -561,6 +562,43 @@ bool MemoryManagerX64::runOnFunction(Function *F) {
 							callInst->setCalledFunction(Free);
 						}
 					}
+          else if(callee->getName() == "mmap"){
+            printf("mmap !!!!!!!!!!!!!!!!!! \n");
+            Value *operand0 = instruction->getOperand(0);
+            
+            int intAddr = 0;
+            //if(ConstantInt *CI = dyn_cast<ConstantInt>(addr)) {
+            if(operand0->getType()->isPointerTy()) {
+              printf("mmap addr ptr ty\n");
+              if(ConstantExpr *constexp = dyn_cast<ConstantExpr>(operand0)) {
+                if(constexp->isCast()) {
+                  printf("mmap constant expr is cast\n");
+                  Value *addr = constexp->getAsInstruction()->getOperand(0);
+                  if(ConstantInt *CI = dyn_cast<ConstantInt>(addr)) {
+                    printf("get constant int type of first operand of mmap\n");
+                    if(CI->getBitWidth() <= 64) {
+                      intAddr = CI->getZExtValue();
+                    }
+                    printf("mmap addr (%d)(%p)\n", intAddr, (void*)intAddr);
+                    if (0x15000000 <= intAddr && intAddr <= 0x16000000) {
+                      printf("mmap addr (%p) is in fixed global address interval\n", (void*)intAddr);
+                      if(wasBitCasted){
+                        Value *changeTo = Builder.CreateBitCast(Mmap, ty);
+                        callInst->setCalledFunction(changeTo);
+                      } else {
+                        callInst->setCalledFunction(Mmap);
+                      }
+                      //instruction->getFunction()->dump();
+                    }
+                  }
+                  //inttoptrInst->eraseFromParent();
+                  if(constexp->use_empty()){
+                    printf("constexp use is empty\n");
+                  }
+                }
+              }
+            }
+          }
           else if(callee->getName() == "_Znwm"){
 						if(wasBitCasted){
 							Value *changeTo = Builder.CreateBitCast(Malloc, ty);
@@ -798,7 +836,7 @@ bool MemoryManagerX64S::runOnFunction(Function *F) {
   return false;
 }
 
-bool MemoryManagerArm::runOnFunction(Function *F) {
+bool MemoryManagerArm::runOnFunction(Function *F, bool is32) {
 
 		for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
 			Instruction *instruction = &*I;
@@ -843,6 +881,25 @@ bool MemoryManagerArm::runOnFunction(Function *F) {
 							callInst->setCalledFunction(Realloc);
 						}
 					}
+          else if(callee->getName() == "mmap"){
+            Value *addr = instruction->getOperand(0);
+            int intAddr = 0;
+            if(ConstantInt *CI = dyn_cast<ConstantInt>(addr)) {
+              if(CI->getBitWidth() <= 64) {
+                intAddr = CI->getZExtValue();
+              }
+                printf("mmap addr (%p)\n", (void*)intAddr);
+              if (0x15000000 < intAddr && intAddr <= 0x16000000) {
+                printf("mmap addr (%p) is in fixed global address interval\n", (void*)addr);
+                if(wasBitCasted){
+                  Value *changeTo = Builder.CreateBitCast(Mmap, ty);
+                  callInst->setCalledFunction(changeTo);
+                } else {
+                  callInst->setCalledFunction(Mmap);
+                }
+              }
+            }
+          }
 					else if(callee->getName() == "free"){
 						if(wasBitCasted){
 							Value *changeTo = Builder.CreateBitCast(Free, ty);
