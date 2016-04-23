@@ -32,7 +32,7 @@
 #include <cstdlib>
 #include <cstdio>
 
-#define DEBUG_MM
+//#define DEBUG_MM
 
 using namespace corelab;
 
@@ -947,30 +947,8 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
             temp = ConstantInt::get(Type::getInt32Ty(Context), 0);
           }
           InstInsertPt out = InstInsertPt::Before(ld);
-          ld->dump();
           addr = castTo(addr, temp, out, &dataLayout);
 
-          //InstrID instrId = Namer::getInstrId(instruction);
-          //Value *instructionId = ConstantInt::get(Type::getInt16Ty(Context), instrId);
-          //FullID fullId = Namer::getFullId(instruction);
-          //Value *fullId_ = ConstantInt::get(Type::getInt64Ty(Context), fullId);
-          //for debug
-          //errs()<<"<"<<instrId<<"> "<<*ld<<"\n";
-
-          //DEBUG(errs()<< "load instruction id %" << fullId << "\n");
-
-          // DEBUG(errs() << "load inst's type : ");
-          //printf("ld getType : ");
-          //ld->getType()->dump();
-          //DEBUG(errs() << "load inst's 1st operand type : ");
-          //printf("ld operand 0 type : ");
-          
-          //ld->getOperand(0)->getType()->dump();
-          //addr->getType()->dump();
-          //ld->getType()->dump();
-
-          //printf("load getTypeAllocSize : %lu\n", dataLayout.getTypeAllocSize(ld->getType()));
-          //printf("load length : %d\n", ld->getType()->getScalarSizeInBits());
           // LoadLength: means what type of value want to get. type is represented by bit length.
           uint64_t loadTypeSize = dataLayout.getTypeAllocSize(ld->getType());
           Value *loadTypeSize_;
@@ -980,7 +958,6 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
             loadTypeSize_ = ConstantInt::get(Type::getInt32Ty(Context), loadTypeSize);
           }
           args[0] = addr;
-          //args[1] = fullId_;
           args[1] = loadTypeSize_; 
           CallInst::Create(Load, args, "", ld);
         }
@@ -996,23 +973,7 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
           temp = ConstantInt::get(Type::getInt32Ty(Context), 0);
         }
         InstInsertPt out = InstInsertPt::Before(st);
-        st->dump();
         addr = castTo(addr, temp, out, &dataLayout);
-
-        //InstrID instrId = Namer::getInstrId(instruction);
-        //Value *instructionId = ConstantInt::get(Type::getInt16Ty(Context), instrId);
-        //FullID fullId = Namer::getFullId(instruction);
-        //Value *fullId_ = ConstantInt::get(Type::getInt64Ty(Context), fullId);
-
-        //DEBUG(errs()<< "store instruction id %" << fullId << "\n");
-
-        //DEBUG(errs() << "store inst's type : ");
-        //st->getType()->dump();
-        //DEBUG(errs() << "store inst's addr operand type : ");
-        //st->getOperand(0)->dump();
-        //printf("st operand 0 type : ");
-        //addr->getType()->dump();
-        //st->getValueOperand()->getType()->dump();
         
         Value *valueOperand = st->getValueOperand();
         unsigned int storeValueTypeSize = dataLayout.getTypeAllocSize(valueOperand->getType());
@@ -1028,27 +989,27 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
           temp = ConstantPointerNull::get(Type::getInt32PtrTy(Context));
         }
 
-#ifdef DEBUG_MM
         if (ArrayType *tyArr = dyn_cast<ArrayType>(valueOperand->getType())){
+#ifdef DEBUG_MM
           printf("mm: valueOperand is Array type!, and type size is %d\n", storeValueTypeSize);
+#endif
           vector<Value*> vecGepIdx;
           vecGepIdx.push_back(ConstantInt::get(Type::getInt32Ty(Context), 0));
-          
+#ifdef DEBUG_MM
           tyArr->dump();
           st->getPointerOperand()->dump();
-          
+#endif          
           GetElementPtrInst *gepInst = GetElementPtrInst::Create(tyArr, st->getPointerOperand(), vecGepIdx, "ty.arr.ptr", st); 
-          
+#ifdef DEBUG_MM
           printf("mm: store's operand (size:%d) :\n", storeValueTypeSize);
           
           valueOperand->dump();
           printf("mm: type id is %d", valueOperand->getType()->getTypeID());
           printf(" , ptr Ty ID is %d\n",valueOperand->getType()->getPointerTo()->getTypeID());
-
+#endif    
           Value *arrOperand = castTo(gepInst, temp, out, &dataLayout);
 
           args[0] = addr;
-          //args[1] = fullId_;
           args[1] = storeValueTypeSize_;
           args[2] = arrOperand;
           CallInst::Create(Store, args, "", st);
@@ -1056,20 +1017,10 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
           valueOperand = castTo(valueOperand, temp, out, &dataLayout);
 
           args[0] = addr;
-          //args[1] = fullId_;
           args[1] = storeValueTypeSize_;
           args[2] = valueOperand;
           CallInst::Create(Store, args, "", st);
         }
-#else
-        valueOperand = castTo(valueOperand, temp, out, &dataLayout);
-        
-        args[0] = addr;
-        //args[1] = fullId_;
-        args[1] = storeValueTypeSize_;
-        args[2] = valueOperand;
-        CallInst::Create(Store, args, "", st);
-#endif
       }
     } // for
   } // for

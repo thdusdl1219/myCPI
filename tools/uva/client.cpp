@@ -14,8 +14,9 @@
 
 #define GET_PAGE_ADDR(x) ((x) & 0xFFFFF000)
 
-#define TEST true 
-#define LOCALTEST false
+#define LOCALTEST 0
+#define CORELAB_SERVER_TEST 1
+
 #define FORKTEST 0
 
 namespace corelab {
@@ -29,22 +30,21 @@ namespace corelab {
       char ip[20];
       char port[10];
 
-#if LOCALTEST
-        strcpy(ip,"127.0.0.1");
-#else
-        LOG("UVA client : uva client init\n");
-        strcpy(ip,"141.223.196.25");
-#endif
-
-#if TEST
-        strcpy(port, "5959");
-#else
-        // printf("Server IP : ");
-        // scanf("%20s", ip);
-        printf("Server Port: ");
-        scanf("%10s", port);
-#endif
+      FILE *fdesc = NULL;
+      fdesc = fopen("server_desc", "r");
       
+      if (fdesc != NULL) {
+        fscanf(fdesc, "%20s %10s", ip, port);
+        fclose(fdesc);
+      } else {
+        printf("Server IP : ");
+        scanf("%20s", ip);
+        printf("Server Port : ");
+        scanf("%10s", port);
+      }
+      
+      printf("[CLIENT] ip (%s), port (%s)\n", ip, port);
+
 #if FORKTEST
       pid_t pid;
       pid = fork();
@@ -54,21 +54,25 @@ namespace corelab {
         printf("[CLIENT] child\n");
         Msocket = new QSocket();
         Msocket->connect(ip, port);
-      
-        XMemory::XMemoryManager::initialize(Msocket);
+  
+        //XMemory::XMemoryManager::initialize(Msocket);
+        UVAManager::initialize (Msocket);
       } else {
         printf("[CLIENT] parent\n");
         Msocket = new QSocket();
         Msocket->connect(ip, port);
       
-        XMemory::XMemoryManager::initialize(Msocket);
+        //XMemory::XMemoryManager::initialize(Msocket);
+        UVAManager::initialize (Msocket);
+
       }
 #else
       Msocket = new QSocket();
       Msocket->connect(ip, port);
 
-      XMemory::XMemoryManager::initialize(Msocket);
-			
+      //XMemory::XMemoryManager::initialize(Msocket);
+      UVAManager::initialize (Msocket);
+
       // segfault handler
 			segvAction.sa_flags = SA_SIGINFO | SA_NODEFER;
 			sigemptyset (&segvAction.sa_mask);

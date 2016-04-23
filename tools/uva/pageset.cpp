@@ -53,7 +53,7 @@ namespace corelab {
 			}
 
 			if (!org) count++;
-//fprintf (stderr, "inserted (count: %u)\n", count);
+fprintf (stderr, "inserted (count: %u)\n", count);
 		}
 
 		void PageSet::erase (XmemUintPtr addr) {
@@ -76,7 +76,7 @@ namespace corelab {
 			BITVEC_RESET_NTH (tblL2[tag], idx);
 
 			if (org) count--;
-//fprintf (stderr, "erased (count: %u)\n", count);
+fprintf (stderr, "erased (count: %u)\n", count);
 		}
 
 		void PageSet::clear () {
@@ -85,7 +85,7 @@ namespace corelab {
 
 			minaddr = PAGESET_END;
 			count = 0;
-//fprintf (stderr, "cleared (count: %u, &count: %p)\n", count, &count);
+fprintf (stderr, "cleared (count: %u, &count: %p)\n", count, (void*)&count);
 		}
 
 	

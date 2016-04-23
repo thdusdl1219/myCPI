@@ -4,6 +4,11 @@
 
 using namespace corelab::XMemory;
 
+/* Initializer BONGJUN */
+extern "C" void xmemInitialize(QSocket *socket) {
+  XMemoryManager::initialize(socket);
+}
+
 /* Page mapper */
 extern "C" void* xmemPagemap (void *addr, size_t size) {
 	return XMemoryManager::pagemap (addr, size);

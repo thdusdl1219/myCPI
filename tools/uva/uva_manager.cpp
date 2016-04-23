@@ -72,7 +72,8 @@ namespace corelab {
 
 
 		/*** Interfaces ***/
-		void UVAManager::initialize (UVAOwnership _uvaown) {
+		//void UVAManager::initialize (UVAOwnership _uvaown) {
+		void UVAManager::initialize (QSocket *socket) {
 			// XMemoryManager must not have an initializer,
 			// since we don't want to care about the order of 
 			// multiple initializers.
@@ -81,8 +82,12 @@ namespace corelab {
 
 			/* xmemInitialize (); */ 		// NOPE. We don't need this.
 
+      /* BONGJUN : for telling "socket" to XMemoryManager */
+      xmemInitialize(socket); // above from gwangmu implmentation. but I want to use
+
 			setMEPages.clear ();
-			uvaown = _uvaown;
+			//uvaown = _uvaown;
+      //socket = socket;
 
 			#ifdef INFLATE_READ
 			zInfStrm.zalloc = Z_NULL;
@@ -374,9 +379,12 @@ namespace corelab {
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
     void UVAManager::loadHandler(QSocket *socket, void *addr, size_t typeLen) {
-      //LOG("[client] Load instr, addr %p, typeLen %lu\n", addr, typeLen); 
-      if(xmemIsHeapAddr(addr)) {
-        LOG("[client] Load : isHeapAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
+      if(xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
+        if (xmemIsHeapAddr(addr)) {
+          LOG("[client] Load : isHeapAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
+        } else if (isFixedGlobalAddr(addr)) {
+          LOG("[client] Load : isFixedGlobalAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
+        }
         socket->pushWordF(2); // mode 2 (client -> server : load request)
         socket->pushWordF(sizeof(addr));
         socket->pushWordF(typeLen); // type length
@@ -393,11 +401,6 @@ namespace corelab {
 
         socket->takeRangeF(buf, len);
         memcpy(addr, buf, len);
-        //LOG("[client] TEST loaded value : %d \n", *((int*)addr));
-        //for(int i=0; i<len; i++) {
-        //  printf("%02x", ((unsigned char*)buf)[i]);
-        //}
-        //printf("\n");
         hexdump(addr, typeLen);
         xmemDumpRange(addr, typeLen);
         LOG("[client] Load request END\n\n");
@@ -480,6 +483,7 @@ namespace corelab {
 		/*** CallBack ***/
 		void UVAManager::pageMappedCallBack (XmemUintPtr paddr) {
 			/* set to MODIFIED/EXCLUSIVE state */
+      printf("UVAManger::pageMappedCallBack: paddr (%p)\n", paddr);
 			setMEPages.insert (paddr);
 		}
 

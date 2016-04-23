@@ -3,6 +3,7 @@
  *
  * Runtime UVA manager
  * written by: gwangmu
+ * modified by: bongjun
  *
  * **/
 
@@ -17,10 +18,11 @@ namespace corelab {
 				Defines UVA ownership.
 				There is no operational difference between Master/Slave ownership.
 				Be aware not to be misled by their literal meaning. */
+    /* UVAOwnership is deprecated (BONGJUN) */
 		enum UVAOwnership { OWN_MASTER, OWN_SLAVE };
 
 		namespace UVAManager {
-			void initialize (UVAOwnership uvaown);
+			void initialize (QSocket *socket);
 
 			// UVA Management
 			void synchIn (QSocket *socket);

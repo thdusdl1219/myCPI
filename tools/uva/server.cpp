@@ -71,7 +71,7 @@ namespace corelab {
             pthread_exit(&rval);
             fprintf(stderr, "[system] thread exit!");
             break;
-          case 0 :
+          case 0 : /*** allocate request ***/
             socket->takeRange(&lenbuf, datalen, clientId);
             fprintf(stderr, "[system] (takeRange) : (%d)\n", lenbuf);
             // memory operation
@@ -90,51 +90,55 @@ namespace corelab {
             socket->pushRangeF(&allocAddr, sizeof(allocAddr), clientId);
             socket->sendQue(clientId);
             break;
-          case 1 :
+          case 1 : /*** wrong request ***/
             assert(false && "something is strange!");
             break;
-          case 2 :
+          case 2 : /*** load request ***/
             LOG("[server] get Load request from client\n");
+
+            // receive type length (how much load in byte)
             lenType = socket->takeWordF(clientId);
-            LOG("[server] type length : %d\n", lenType);
+            LOG("[server] type length (how much): %d\n", lenType);
+
+            // receive requested addr (where)
             socket->takeRangeF(&requestedAddr, datalen, clientId);
-            LOG("[server] requestedAddr : (%p)\n", requestedAddr);
+            LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
             
-           
-            //valOfRequestedAddr = (char*)malloc(lenType);
-            //memcpy(valOfRequestedAddr, requestedAddr, lenType);
-            //LOG("[server] v[0]:%c, v[1]:%c\n", valOfRequestedAddr[0], valOfRequestedAddr[1]);
-            //LOG("[server] size %d, value %s\n", sizeof(valOfRequestedAddr), *requestedAddr); 
-            // load latest value from requested address
+            // send ack with value (what to load)
             socket->pushWordF(3, clientId);
             socket->pushWordF(lenType, clientId);
             socket->pushRangeF(requestedAddr, lenType, clientId);
-            LOG("[server] TEST loaded value : %d\n", *((int*)requestedAddr));
-            //LOG("[server] val of addr : ");
-            //for(int i=0; i<lenType; i++) {
-            //  printf("%02x", ((unsigned char*)requestedAddr)[i]);
-            //}
-            //printf("\n");
+            LOG("[server] TEST loaded value (what): %d\n", *((int*)requestedAddr));
             socket->sendQue(clientId);
             break;
-          case 3 :
+          case 3 : /*** wrong request ***/
             assert(false && "something is strange!");
             break;
-          case 4 :
+          case 4 : /*** store request ***/
             LOG("[server] get store request from client\n");
-            //lenType = sock
+
+            // get type length (how much store in byte)
             lenType = socket->takeWordF(clientId);
-            LOG("[server] type length : %d\n", lenType);
+            LOG("[server] type length (how much store in byte): %d\n", lenType);
+
+            // get requested addr (where)
             socket->takeRangeF(&requestedAddr, datalen, clientId);
-            LOG("[server] requestedAddr : (%p)\n", requestedAddr);
+            LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
+
+            // get value which client want to store (what to store)
             valueToStore = malloc(lenType);
             socket->takeRangeF(valueToStore, lenType, clientId);
-            LOG("[server] TEST stored value : %d\n", *((int*)valueToStore));
+            LOG("[server] TEST stored value (what): %d\n", *((int*)valueToStore));
             
+            // store value in UVA address.
             memcpy(requestedAddr, valueToStore, lenType);
+
+            // send ack
             socket->pushWordF(5, clientId);
             socket->pushWordF(0, clientId); // ACK ( 0: normal, -1: abnormal )
             socket->sendQue(clientId);
+
+            // test
             hexdump(requestedAddr, lenType);
             XMemory::XMemoryManager::dumpRange(requestedAddr, lenType);
             break;
