@@ -148,11 +148,11 @@ namespace corelab {
       return NULL;
     }
 
-    extern "C" void uva_server_load(void *addr, uint64_t len) {
+    extern "C" void uva_server_load(void *addr, size_t len) {
       LOG("[server] Load instr, addr %p, len %d\n", addr, len); 
     }
 
-    extern "C" void uva_server_store(void *addr, uint64_t len, void *data) {
+    extern "C" void uva_server_store(void *addr, size_t len, void *data) {
       LOG("[server] Store instr, addr %p, len %d\n", addr, len); 
     }
   }

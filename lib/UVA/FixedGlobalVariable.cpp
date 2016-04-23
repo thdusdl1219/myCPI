@@ -12,9 +12,11 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/IR/InstIterator.h"
 
 #include "corelab/UVA/FixedGlobalVariable.h"
 #include "corelab/Utilities/GlobalCtors.h"
+#include "corelab/Utilities/InstInsertPt.h"
 
 #include <cassert>
 #include <cstdlib>
@@ -86,15 +88,49 @@ void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
 	fnGInitzer = NULL;
 	blkGInitzer = NULL;
 
-	/* Create global initializer */
+	/* Create global initializer 
+   * Below are only for global initializer.
+   * find appropriate position where fnGInitzer inserts.
+   * finally, two fnGInitzer will be inserted after fnDeclCRange.
+  **/
   if (isFixGlbDuty){
-	FunctionType *tyFnVoidVoid = FunctionType::get (
-			Type::getVoidTy (pM->getContext ()), false);
-	fnGInitzer = Function::Create (tyFnVoidVoid, GlobalValue::InternalLinkage, 
-			"__fixed_global_initializer__", pM);
-	blkGInitzer = BasicBlock::Create (pM->getContext (), "initzer", fnGInitzer);
+    FunctionType *tyFnVoidVoid = FunctionType::get (
+        Type::getVoidTy (pM->getContext ()), false);
+    fnGInitzer = Function::Create (tyFnVoidVoid, GlobalValue::InternalLinkage, 
+        "__fixed_global_initializer__", pM);
+    blkGInitzer = BasicBlock::Create (pM->getContext (), "initzer", fnGInitzer);
 
-	callBeforeMain (fnGInitzer, 0);
+    //callBeforeMain (fnGInitzer, 0);
+
+    std::vector<Value*> actuals(0);
+
+    Function *ctor = module->getFunction("__constructor__"); 
+
+    Instruction *deviceInitCallInst;
+    Instruction *ealierFnGInitzerCallInst;
+    InstInsertPt out;
+    bool isExistEarlierCallInst;
+    for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
+      if(isa<CallInst>(&*I)) {
+        isExistEarlierCallInst = true;
+        CallInst *tarFun = dyn_cast<CallInst>(&*I);
+        Function *callee = tarFun->getCalledFunction();
+        if(callee->getName() == "deviceInit") { // Esperanto-aware
+          deviceInitCallInst = &*I;
+          out = InstInsertPt::After(deviceInitCallInst);
+        } else if(callee->getName().find("__fixed_global_initializer__") != std::string::npos) {
+          printf("Earlier fnGInitzer exists!\n");
+          ealierFnGInitzerCallInst = &*I;
+          out = InstInsertPt::After(ealierFnGInitzerCallInst);
+        }
+      }
+    }
+    if (isExistEarlierCallInst) {
+      out << CallInst::Create(fnGInitzer, actuals, "");
+    } else {
+      BasicBlock *bbOfCtor = &(ctor->front());
+      CallInst::Create(fnGInitzer, actuals, "", bbOfCtor->getFirstNonPHI());
+    }
   }
 }
 

@@ -12,11 +12,13 @@
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/ADT/StringMap.h"
 
 #include "corelab/UVA/FixedGlobalVariable.h"
 #include "corelab/UVA/FixedGlobal.h"
 #include "corelab/Utilities/GlobalCtors.h"
+#include "corelab/Utilities/InstInsertPt.h"
 
 #include <set>
 #include <list>
@@ -48,6 +50,34 @@ namespace corelab {
 	bool FixedGlobal::runOnModule (Module& M) {
 		this->pM = &M;
     
+    LLVMContext &Context = M.getContext(); 
+    if(M.getFunction("__constructor__") == NULL) { // UVA-only module
+      printf("FixedGlobal::runOnModule: ctor do not exist (may be UVA-only module)\n");
+      std::vector<Type*> formals(0);
+      std::vector<Value*> actuals(0);
+
+      FunctionType *voidFcnVoidType = FunctionType::get(Type::getVoidTy(Context), formals, false); 
+
+      Function *initForCtr = Function::Create(
+          voidFcnVoidType, GlobalValue::InternalLinkage, "__constructor__", &M);
+      BasicBlock *entry = BasicBlock::Create(Context, "entry", initForCtr);
+      BasicBlock *initBB = BasicBlock::Create(Context, "init", initForCtr); 
+
+      //CallInst::Create(fnGInitzer, actuals, "", entry); 
+      BranchInst::Create(initBB, entry); 
+      ReturnInst::Create(Context, 0, initBB);
+
+      callBeforeMain(initForCtr);
+
+      /* finalize */
+      Function *finiForDtr = Function::Create(voidFcnVoidType, GlobalValue::InternalLinkage, "__destructor__",&M);
+      BasicBlock *finiBB = BasicBlock::Create(Context, "entry", finiForDtr);
+      BasicBlock *fini = BasicBlock::Create(Context, "fini", finiForDtr);
+      actuals.resize(0);
+      BranchInst::Create(fini, finiBB);
+      ReturnInst::Create(Context, 0, fini);
+      callAfterMain(finiForDtr);
+    }
     /* FixGlbDuty : it decides who fix global variables and init.  Global
      * variables are shared in multiple clients, thereby we need just only
      * client in charge of fixing and initializing glbs.  Therefore,
@@ -136,8 +166,40 @@ namespace corelab {
 
 		ReturnInst::Create (M.getContext (), blkDeclCRange);
 
-    if (this->isFixGlbDuty)
-		  callBeforeMain (fnDeclCRange, 0);
+    if (this->isFixGlbDuty) {
+      //callBeforeMain (fnDeclCRange, 0);
+
+      Function *ctor = M.getFunction("__constructor__"); 
+      if (ctor != NULL) {
+        std::vector<Value*> actuals(0);
+        Instruction *deviceInitCallInst;
+        Instruction *fnGInitzerCallInst;
+        InstInsertPt out;
+        bool isExistEarlierCallInst;
+        for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
+          if(isa<CallInst>(&*I)) {
+            isExistEarlierCallInst = true;
+            CallInst *tarFun = dyn_cast<CallInst>(&*I);
+            Function *callee = tarFun->getCalledFunction();
+            if(callee->getName() == "deviceInit") { // Esperanto-aware
+              deviceInitCallInst = &*I;
+              out = InstInsertPt::After(deviceInitCallInst);
+            } else if(callee->getName().find("__fixed_global_initializer__") != std::string::npos) {
+              printf("fnGInitzer exists!\n");
+              fnGInitzerCallInst = &*I;
+              out = InstInsertPt::Before(fnGInitzerCallInst);
+              break;
+            }
+          }
+        }
+        if (isExistEarlierCallInst) {
+          out << CallInst::Create(fnDeclCRange, actuals, "");
+        } else {
+          BasicBlock *bbOfCtor = &(ctor->front());
+          CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
+        }
+      }
+    }
 
 		/* Finalize */
 		list<GlobalVariable *> lstDispGvars;

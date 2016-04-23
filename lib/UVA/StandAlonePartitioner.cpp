@@ -25,10 +25,19 @@ static cl::opt<string> ClientName("client_name",
     cl::desc("Specify part"), 
     cl::value_desc("global initializer in charge"));
 
+void StandAlonePartitioner::setFunctions(Module &M){
+	LLVMContext &Context = M.getContext();
+  
+  VoidFunc = M.getOrInsertFunction(
+      "void_func",
+      Type::getVoidTy(Context),
+      (Type*)0);
+}
 bool StandAlonePartitioner::runOnModule(Module& M) {
-  //setFunctions(M);
+  setFunctions(M);
 
   std::vector<Instruction*> listToErase;
+  CallInst *ci;
   for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
     Function* F = &*fi;
     if (F->isDeclaration())
@@ -36,6 +45,8 @@ bool StandAlonePartitioner::runOnModule(Module& M) {
     for (inst_iterator I = inst_begin(F); I != inst_end(F); ++I) {
       Instruction *instruction = &*I;
       if(isa<CallInst>(instruction)) {
+        ci = dyn_cast<CallInst>(instruction);
+        ci->dump();
         Function *callee = getCalledFunction_aux(instruction);
         if(!callee){
           const Value *calledVal = getCalledValueOfIndCall(instruction);
@@ -43,27 +54,18 @@ bool StandAlonePartitioner::runOnModule(Module& M) {
             callee = const_cast<Function *>(tarFun);
           }
         }
-
+        if (!callee) continue;
+        //if (callee->isDeclaration() == false) continue;
         if (callee->getName().find(ClientName) != std::string::npos) {
           printf("This callee (%s) belongs to (%s)\n", F->getName().data(), ClientName.data());
-        } else {
-          listToErase.push_back(instruction);
+        } else if (callee->getName().find("device") != std::string::npos) {
+          ci->setCalledFunction(VoidFunc);
         }
       }
     }
   }
   
-  for(auto i : listToErase) {
-    //for(auto ui = *i->user_begin(); ui != *ui->user_end(); ++ui) {
-    //  Instruction *uii = dyn_cast<Instruction *>(*ui);
-    //  uii->eraseFromParent();
-    //
-    i->dropAllReferences();
-    *i->eraseFromParent();
-  }
-  //setIniFini(M);
   return true;
-
 }
 
 //TODO:: where to put this useful function?

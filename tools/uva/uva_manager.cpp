@@ -379,6 +379,7 @@ namespace corelab {
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
     void UVAManager::loadHandler(QSocket *socket, void *addr, size_t typeLen) {
+      LOG("[client] Load : loadHandler start\n");
       if(xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
         if (xmemIsHeapAddr(addr)) {
           LOG("[client] Load : isHeapAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
@@ -403,14 +404,19 @@ namespace corelab {
         memcpy(addr, buf, len);
         hexdump(addr, typeLen);
         xmemDumpRange(addr, typeLen);
-        LOG("[client] Load request END\n\n");
       }
+      LOG("[client] Load request END\n\n");
     }
 
     void UVAManager::storeHandler(QSocket *socket, void *addr, size_t typeLen, void *data) {
       //LOG("[client] Store instr, addr %p, typeLen %lu, TEST val %d\n", addr, typeLen, *((int*)addr)); 
-      if (xmemIsHeapAddr(addr)) { 
-        LOG("[client] Store : isHeapAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
+      LOG("[client] Store : storeHandler start\n");
+      if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
+        if (xmemIsHeapAddr(addr)) {
+          LOG("[client] Store : isHeapAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
+        } else if (isFixedGlobalAddr(addr)) {
+          LOG("[client] Store : isFixedGlobalAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
+        }
         //LOG("[client] data : %d ", (int*)data);
         //for(int i=0; i<typeLen; i++) {
         //  printf("%02x", ((unsigned char*)data)[i]);
@@ -440,8 +446,8 @@ namespace corelab {
         } else {
           assert(0 && "error: undefined behavior");
         }
-        LOG("[client] Store request END\n\n");
       }
+      LOG("[client] Store request END\n\n");
     }
 
 
@@ -476,8 +482,14 @@ namespace corelab {
 		
     // XXX: by BONGJUN for fixed global
     bool UVAManager::isFixedGlobalAddr (void *addr) {
-      printf("UVAManager::isFixedGlobalAddr: ptConstBegin (%p) ~ ptConstEnd (%p) / addr (%p)\n", ptConstBegin, ptConstEnd, addr);
-      return (ptConstBegin <= addr && addr < ptConstEnd);
+      if ((void*)0x15000000 <= addr && addr < (void*)0x16000000) {
+        printf("UVAManager::isFixedGlobalAddr: (%p) ~ (%p) / addr (%0)\n", (void*)0x15000000, (void*)0x16000000, addr); 
+        return true;
+      } else if (ptConstBegin <= addr && addr < ptConstEnd) {
+        printf("UVAManager::isFixedGlobalAddr: (%p) ~ (%p) / addr (%p)\n", ptConstBegin, ptConstEnd, addr);
+        return true;
+      } else 
+        return false;
     }
 
 		/*** CallBack ***/

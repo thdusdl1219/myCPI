@@ -18,6 +18,10 @@ namespace corelab {
       const char* getPassName () const { return "STAND_ALONE_PARTITIONER"; }
 
       bool runOnModule(Module &M);
+
+      void setFunctions(Module &M);
+    private:
+      Constant *VoidFunc;
   };
 }
 
