@@ -17,7 +17,7 @@ public:
 	
 private:
 	std::vector<DataQElem*>* dataQ;
-	pthread_mutex_t lock;	
+	pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;	
 };
 
 #endif

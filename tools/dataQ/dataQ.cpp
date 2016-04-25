@@ -15,11 +15,13 @@ int DataQ::getSize(){
 }
 
 void DataQ::produce(DataQElem* data) {
+	printf("address of elem : %p\n",data);	
 	pthread_mutex_lock(&lock);
-	//printf("address of elem : %p\n",data);	
+	printf("address of elem : %p\n",data);	
 	//printf("address of dataQ = %p\n",dataQ);
 	dataQ->push_back(data);
 	pthread_mutex_unlock(&lock);
+	printf("address of elem : %p\n",data);	
 }
 
 DataQElem* DataQ::consume() {

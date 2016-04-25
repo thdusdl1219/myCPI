@@ -153,7 +153,7 @@ namespace corelab {
 		uintptr_t uptConstGvarsEnd = (uintptr_t)FIXED_CONST_GLOBAL_BASE + sizeConstGvars;
 	
 #ifdef DEBUG_FIXGLB
-    printf("FIXGLB: runOnModule: FIXED_GLOBAL_BASE~bound (%p ~ %p) / uptConstGvarsBegin~End (%p ~ %p)\n", FIXED_GLOBAL_BASE, FIXED_GLOBAL_BASE + sizeGvars, uptConstGvarsBegin, uptConstGvarsEnd);
+    printf("FIXGLB: runOnModule: FIXED_GLOBAL_BASE~bound (%p ~ %p) / uptConstGvarsBegin~End (%p ~ %p)\n", FIXED_GLOBAL_BASE, (uintptr_t)FIXED_GLOBAL_BASE + sizeGvars, uptConstGvarsBegin, uptConstGvarsEnd);
 #endif 
 		/* Set constant range */
 		FunctionType *tyFnVoidVoid = FunctionType::get (

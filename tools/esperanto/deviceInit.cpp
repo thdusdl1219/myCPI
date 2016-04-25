@@ -280,6 +280,36 @@ void produceFunctionArgs(int jobID, void* buf, int size){
 }
 
 extern "C"
+void registerDevice(void* addr){
+	LOG("Address of device is %p\n",addr);
+  uint32_t temp;
+  memcpy(&temp,&addr,4);
+  hexdump("register",&addr,sizeof(addr));
+  hexdump("register temp",&temp,sizeof(temp));
+  DataQElem* elem = new DataQElem();
+  elem->setIsFunctionCall(false);
+  char* info = (char*)malloc(8);
+  //sprintf(info,"%zu%d",temp,deviceID);
+  memcpy(info,&temp,4);
+  memcpy(info+4,&deviceID,4);
+  hexdump("info",(void*)info,8);
+  elem->setArgs(NULL,0);
+  elem->setFunctionID(-1);
+  elem->setJobID(-1);
+  elem->setRetVal((void*)info,8);
+  LOG("before insert\n");
+  dqm->insertElementToSendQ(elem);
+  LOG("after insert\n");
+
+  pthread_mutex_lock(&sendQHandleLock);
+  LOG("sendQHandle is on\n");
+  sendQHandling = true;
+  pthread_mutex_unlock(&sendQHandleLock);
+  LOG("register device to send q\n");
+
+}
+
+extern "C"
 void* consumeFunctionArgs(int jobID){	
 	
 		LOG("consume function args\n");
@@ -309,10 +339,7 @@ void* consumeReturn(int jobID){
 	return ret;
 }
 
-extern "C"
-void registerDevice(void* addr){
-	LOG("Address of device is %p\n",addr);
-}
+
 
 /*--------------------------------------------------------------------*/
 /* ---------------------------DEVICE-------------------------- */
@@ -421,13 +448,15 @@ void* sendQHandlerFunction(void* arg){
 	char ack = 1;
 	while(1){
 		int sendQSize = 0;
+
+		pthread_mutex_lock(&sendQHandleLock);
 		if(sendQHandling){
 			sendQSize = dqm->getSendQSize();
-
-			pthread_mutex_lock(&sendQHandleLock);
+      LOG("sendQsize is %d\n",sendQSize);
 			sendQHandling = false;
-			pthread_mutex_unlock(&sendQHandleLock);
 		}
+
+		pthread_mutex_unlock(&sendQHandleLock);
 		if(sendQSize>0){
 			LOG("send Q is handling\n");
 			//pthread_mutex_lock(&sendQLock);
@@ -481,26 +510,48 @@ void* sendQHandlerFunction(void* arg){
 			}
 			else{
 				//LOG("DEBUG :: send Q handle return value\n");
-				int localJobID = sendElem->getJobID();
-				int sourceJobID = drm->getSourceJobID(localJobID);
-				int retSize = sendElem->getRetSize();
-				header[0] = 'R';
-				memcpy(header+1,&sourceJobID,4);
-				memcpy(header+5,&retSize,4);
-				//sprintf(header,"%c%d%d",'R',sourceJobID,);
-				payload = (char*)malloc(sendElem->getRetSize());
-				memcpy(payload,(char*)sendElem->getRetVal(),sendElem->getRetSize());
-				//sprintf(payload,"%s",(char*)sendElem->getRetVal());
-				sendComplete(sendSocket,header,9);
-				read(sendSocket,&ack,1);
-				if(sendElem->getRetSize() >0)
-					sendComplete(sendSocket,payload,sendElem->getRetSize());
-				LOG("-------------------------------------------------------------------------------------\n");
-				LOG("Send return value (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);
-				hexdump("Return",sendElem->getRetVal(),retSize);
-				LOG("-------------------------------------------------------------------------------------\n");
+        int localJobID = sendElem->getJobID();
+        if(localJobID != -1){
+          int sourceJobID = drm->getSourceJobID(localJobID);
+          int retSize = sendElem->getRetSize();
+          header[0] = 'R';
+          memcpy(header+1,&sourceJobID,4);
+          memcpy(header+5,&retSize,4);
+          //sprintf(header,"%c%d%d",'R',sourceJobID,);
+          payload = (char*)malloc(sendElem->getRetSize());
+          memcpy(payload,(char*)sendElem->getRetVal(),sendElem->getRetSize());
+          //sprintf(payload,"%s",(char*)sendElem->getRetVal());
+          sendComplete(sendSocket,header,9);
+          read(sendSocket,&ack,1);
+          if(sendElem->getRetSize() >0)
+            sendComplete(sendSocket,payload,sendElem->getRetSize());
+          LOG("-------------------------------------------------------------------------------------\n");
+          LOG("Send return value (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);
+          hexdump("Return",sendElem->getRetVal(),retSize);
+          LOG("-------------------------------------------------------------------------------------\n");
 
-				drm->deleteJobIDMapping(localJobID);
+          drm->deleteJobIDMapping(localJobID);
+        } // send return value 
+        else{
+          int sourceJobID = -1;
+          int retSize = sendElem->getRetSize();
+          header[0] = 'D';
+          memcpy(header+1,&sourceJobID,4);
+          memcpy(header+5,&retSize,4);
+
+          payload = (char*)malloc(retSize);
+          memcpy(payload,(char*)sendElem->getRetVal(),retSize);
+          sendComplete(sendSocket,header,9);
+          read(sendSocket,&ack,1);
+          //LOG("register device : %lu, %d\n",sendElem->getRetVal(),sendElem->getRetVal()+4);
+          sendComplete(sendSocket,payload,retSize);
+          LOG("-------------------------------------------------------------------------------------\n");
+          LOG("Send register device (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);
+          hexdump("Register",sendElem->getRetVal(),retSize);
+          LOG("-------------------------------------------------------------------------------------\n");
+
+
+        } // for device registration
 			}
 		}
 	}
@@ -521,13 +572,15 @@ void* localQHandlerFunction(void* arg){
 	pthread_barrier_wait(&barrier);
 	while(1){
 		int localQSize = 0;
+
+			pthread_mutex_lock(&localQHandleLock);
 		if(localQHandling){
 			localQSize = dqm->getLocalQSize();
 
-			pthread_mutex_lock(&localQHandleLock);
 			localQHandling = false;
-			pthread_mutex_unlock(&localQHandleLock);
 		}
+
+			pthread_mutex_unlock(&localQHandleLock);
 		if(localQSize>0){
 			//LOG("local Q is handling / tid : %u / pid : %u\n",(unsigned int)pthread_self(),(unsigned int)getpid());
 			
@@ -602,30 +655,7 @@ tryConnect(void* arg){
 	//pthread_exit(NULL);
 }
 
-/* broadcastListener: Listen broadcasting from gateway */
-/*void* 
-broadcastListener(void* arg){
-	pthread_t ct = *(pthread_t*)arg;
-	UDPCommHandler udpHandler;
-	BroadcastHeader *message = (BroadcastHeader*)malloc(sizeof(BroadcastHeader));
 
-	udpHandler.createServerSocket(BROADCAST_PORT); 
-	udpHandler.recv((char*)message, sizeof(BroadcastHeader));
-
-	LOG("DEBUG :: received message ip : %s, port : %d\n",message->ip,message->port);
-	//LOG("DEBUG :: before create tryConnect function\n");
-	pthread_create(&ct, NULL, &tryConnect, (void*)message);
-	//pthread_join(ct,NULL);
-	//while(1){
-	pthread_barrier_wait(&commBarrier);
-	pthread_exit(NULL);
-	return NULL;	
-	//}	
-	//pthread_join(ct, NULL);
-	//pthread_exit(NULL);
-	//LOG("DEBUG :: after create tryConnect function\n");
-}
-*/
 extern "C"
 void deviceInit(ApiCallback fcn, int id){
 	callback = fcn;
@@ -641,7 +671,7 @@ void deviceInit(ApiCallback fcn, int id){
 	initMutex();*/
 	ConnectionInfo* server = (ConnectionInfo*)malloc(sizeof(ConnectionInfo));
   FILE* server_desc = fopen("server_desc","r");
-  fscanf(server_desc,"%s %d",server->ip,server->port);
+  fscanf(server_desc,"%s %d",server->ip,&(server->port));
 	//sprintf(server->ip,"%s","141.223.197.224");
 	//server->port = 20000;
   LOG("server ip = %s, port = %d\n",server->ip,server->port);
