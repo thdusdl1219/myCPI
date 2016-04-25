@@ -10,6 +10,7 @@
 #include "server.h"
 #include "log.h"
 #include "hexdump.h"
+#include "xmem_info.h"
 
 #define TEST 1
 
@@ -17,6 +18,14 @@ using namespace corelab::XMemory;
 namespace corelab {
   namespace UVA {
 
+    enum {
+      THREAD_EXIT = -1,
+      HEAP_ALLOC_REQ = 0,
+      LOAD_REQ = 2,
+      STORE_REQ = 4,
+      MMAP_REQ = 6,
+      GLOBAL_SEGFAULT_REQ = 8
+    };
     static QSocket* socket;
     pthread_t openThread; 
 
@@ -52,37 +61,47 @@ namespace corelab {
       int mode;
       int datalen;
       int rval = 0;
-      void* HeapTop;
-      void * allocAddr = NULL;
+      void *HeapTop;
+      void *allocAddr = NULL;
       char *valOfRequestedAddr = NULL;
+
+      void *ptNoConstBegin;
+      void *ptNoConstEnd;
+      void *ptConstBegin;
+      void *ptConstEnd;
+
+      uintptr_t target;
 
       while(true) {
         pthread_mutex_lock(&mutex);
         socket->receiveQue(clientId);
         mode = socket->takeWordF(clientId);
-        datalen = socket->takeWordF(clientId);
-        fprintf(stderr, "[system] (mode, datalen) : (%d , %d)\n", mode, datalen);
+        LOG("[server] *** Receive message from client (id: %d, mode %d) ***\n", *clientId, mode);  
         int lenbuf;
-        uint64_t lenType;
+        size_t lenType;
+        size_t sizeOfLength;
+        size_t lenMmap;
         void *requestedAddr;
         void *valueToStore;
         switch(mode) {
-          case -1 :
+          case THREAD_EXIT:
             pthread_exit(&rval);
-            fprintf(stderr, "[system] thread exit!");
+            LOG("[server] thread exit!");
             break;
-          case 0 :
+          case HEAP_ALLOC_REQ: /*** heap allocate request ***/
+            datalen = socket->takeWordF(clientId);
+            LOG("[server] (datalen) : (%d)\n", datalen);
             socket->takeRange(&lenbuf, datalen, clientId);
-            fprintf(stderr, "[system] (takeRange) : (%d)\n", lenbuf);
+            LOG("[server] (takeRange) : (%d)\n", lenbuf);
             // memory operation
             
             HeapTop = XMemoryManager::getHeapTop(); 
-            fprintf(stderr, "[system] heapTop : %p\n", HeapTop);
+            LOG("[server] old heapTop : %p\n", HeapTop);
             // allocAddr = XMemoryManager::allocate(lenbuf, true);
             allocAddr = XMemoryManager::allocateServer(HeapTop, lenbuf);
             HeapTop = XMemoryManager::getHeapTop(); 
-            fprintf(stderr, "[system] allocAddr : (%p)\n", allocAddr);
-            fprintf(stderr, "[system] heapTop : %p\n", HeapTop);
+            LOG("[server] allocAddr : (%p)\n", allocAddr);
+            LOG("[server] new heapTop : %p\n", HeapTop);
             
             // memory operation end
             socket->pushWordF(1, clientId);
@@ -90,58 +109,111 @@ namespace corelab {
             socket->pushRangeF(&allocAddr, sizeof(allocAddr), clientId);
             socket->sendQue(clientId);
             break;
-          case 1 :
-            assert(false && "something is strange!");
-            break;
-          case 2 :
-            LOG("[server] get Load request from client\n");
+          case LOAD_REQ: /*** load request ***/
+            datalen = socket->takeWordF(clientId);
+            LOG("[server] (datalen) : (%d)\n", datalen);
+            LOG("[server] get Load request from client (id: %d)\n", *clientId);
+
+            // receive type length (how much load in byte)
             lenType = socket->takeWordF(clientId);
-            LOG("[server] type length : %d\n", lenType);
+            LOG("[server] type length (how much): %d\n", lenType);
+
+            // receive requested addr (where)
             socket->takeRangeF(&requestedAddr, datalen, clientId);
-            LOG("[server] requestedAddr : (%p)\n", requestedAddr);
+            LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
             
-           
-            //valOfRequestedAddr = (char*)malloc(lenType);
-            //memcpy(valOfRequestedAddr, requestedAddr, lenType);
-            //LOG("[server] v[0]:%c, v[1]:%c\n", valOfRequestedAddr[0], valOfRequestedAddr[1]);
-            //LOG("[server] size %d, value %s\n", sizeof(valOfRequestedAddr), *requestedAddr); 
-            // load latest value from requested address
+            // send ack with value (what to load)
             socket->pushWordF(3, clientId);
             socket->pushWordF(lenType, clientId);
             socket->pushRangeF(requestedAddr, lenType, clientId);
-            LOG("[server] TEST loaded value : %d\n", *((int*)requestedAddr));
-            //LOG("[server] val of addr : ");
-            //for(int i=0; i<lenType; i++) {
-            //  printf("%02x", ((unsigned char*)requestedAddr)[i]);
-            //}
-            //printf("\n");
+            LOG("[server] TEST loaded value (what): %d\n", *((int*)requestedAddr));
             socket->sendQue(clientId);
             break;
-          case 3 :
-            assert(false && "something is strange!");
-            break;
-          case 4 :
+          case STORE_REQ: /*** store request ***/
+            datalen = socket->takeWordF(clientId);
+            LOG("[server] (datalen) : (%d)\n", datalen);
             LOG("[server] get store request from client\n");
-            //lenType = sock
+
+            // get type length (how much store in byte)
             lenType = socket->takeWordF(clientId);
-            LOG("[server] type length : %d\n", lenType);
+            LOG("[server] type length (how much store in byte): %d\n", lenType);
+
+            // get requested addr (where)
             socket->takeRangeF(&requestedAddr, datalen, clientId);
-            LOG("[server] requestedAddr : (%p)\n", requestedAddr);
+            LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
+
+            // get value which client want to store (what to store)
             valueToStore = malloc(lenType);
             socket->takeRangeF(valueToStore, lenType, clientId);
-            LOG("[server] TEST stored value : %d\n", *((int*)valueToStore));
+            LOG("[server] TEST stored value (what): %d\n", *((int*)valueToStore));
             
+            // store value in UVA address.
             memcpy(requestedAddr, valueToStore, lenType);
-            socket->pushWordF(5, clientId);
+
+            // send ack
+            socket->pushWordF(5, clientId); // ACK
             socket->pushWordF(0, clientId); // ACK ( 0: normal, -1: abnormal )
             socket->sendQue(clientId);
-            hexdump(requestedAddr, lenType);
-            XMemory::XMemoryManager::dumpRange(requestedAddr, lenType);
+
+            // test
+            //hexdump(requestedAddr, lenType);
+            xmemDumpRange(requestedAddr, lenType);
+            break;
+          case MMAP_REQ: /*** mmap request ***/
+            datalen = socket->takeWordF(clientId);
+            LOG("[server] (datalen) : (%d)\n", datalen);
+            LOG("[server] get mmap request from client\n");
+
+            // get requested addr (where)
+            socket->takeRangeF(&requestedAddr, datalen, clientId);
+            LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
+            
+            // get size variable's length (32 or 64 bits)
+            sizeOfLength = socket->takeWordF(clientId);
+
+            // get length (how much mmap)
+            socket->takeRangeF(&lenMmap, sizeOfLength, clientId);
+            LOG("[server] mmap length (how much mmap in byte): %d\n", lenMmap);
+    
+            allocAddr = xmemPagemap(requestedAddr, lenMmap, true);
+            
+            assert(allocAddr != NULL && "mmap alloc failed in server");
+
+            socket->pushWordF(7, clientId); // ACK
+            socket->pushWordF(0, clientId); // ACK (0: normal, -1:abnormal)
+            socket->sendQue(clientId);
+            break;
+          case GLOBAL_SEGFAULT_REQ:
+            LOG("[server] get GLOBAL_SEGFALUT_REQ from client (%d)\n", *clientId);
+            socket->takeRangeF(&ptNoConstBegin, sizeof(void*), clientId);
+            target = (uintptr_t)(&ptNoConstBegin);
+            LOG("[server] TEST ptConstBegin (%p)\n", (void*)(*((uintptr_t *)target)));
+            socket->takeRangeF(&ptNoConstEnd, sizeof(void*), clientId);
+            //socket->takeRangeF(&ptConstBegin, sizeof(void*), clientId);
+            //socket->takeRangeF(&ptConstEnd, sizeof(void*), clientId);
+            
+            socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptNoConstBegin))),
+                (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, clientId);
+            //socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptConstBegin))), (uintptr_t)ptConstEnd - (uintptr_t)ptConstBegin, clientId);
+            socket->sendQue(clientId);
+            LOG("[server] GLOBAL_SEGFALUT_REQ process end (%d)\n", *clientId);
+            break;
+          default:
+            assert(0 && "wrong request mode");
             break;
         }
         pthread_mutex_unlock(&mutex);
       }
       return NULL;
+    }
+
+    // These two function may not be used.
+    extern "C" void uva_server_load(void *addr, size_t len) {
+      LOG("[server] Load instr, addr %p, len %d\n", addr, len); 
+    }
+
+    extern "C" void uva_server_store(void *addr, size_t len, void *data) {
+      LOG("[server] Store instr, addr %p, len %d\n", addr, len); 
     }
   }
 }

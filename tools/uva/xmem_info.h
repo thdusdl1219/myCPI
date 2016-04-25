@@ -3,6 +3,7 @@
  *
  * Declares XMemoryManager information interfaces
  * written by: gwangmu
+ * modified by: bongjun
  *
  * **/
 
@@ -12,8 +13,11 @@
 #include <stddef.h>
 #include <inttypes.h>
 #include "xmem_spec.h"
+#include "qsocket.h" // BONGJUN
 
 #define XSINFO_SIZE 	160
+
+using namespace corelab;
 
 /* XXX MUST BE CONSISTENT WITH OTHER DECLARATIONS */
 typedef void (*XmemPageMappedCallBack) (XmemUintPtr);
@@ -22,8 +26,11 @@ struct XmemStateInfo {
 	char e[XSINFO_SIZE];
 };
 
+/* initializer BONGJUN */
+extern "C" void xmemInitialize (QSocket *socket);
+
 /* Page mapper */
-extern "C" void* xmemPagemap (void *addr, size_t size);
+extern "C" void* xmemPagemap (void *addr, size_t size, bool isServer);
 extern "C" void xmemPageUnmap (void *addr, size_t size);
 
 /* Manipulator */

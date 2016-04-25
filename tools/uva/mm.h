@@ -38,7 +38,7 @@ namespace corelab {
 			void initialize (QSocket* Msocket);
 
 			// Allocator/Deallocator
-			void* pagemap (void *addr, size_t size);
+			void* pagemap (void *addr, size_t size, bool isServer);
 			void* allocateServer (void *addr, size_t size);
 			void pageumap (void *addr, size_t size);
 			void* allocate (size_t size, bool server);
@@ -74,10 +74,6 @@ namespace corelab {
 			// Debug interface
 			void dumpRange (void *addr, size_t size);
 			void dumpFreeList ();
-      
-      // Load/Store handler
-      void loadHandler(void *addr, uint64_t typeLen);
-      void storeHandler(void *addr, uint64_t typeLen, void *data);
 		}
 	}
 }

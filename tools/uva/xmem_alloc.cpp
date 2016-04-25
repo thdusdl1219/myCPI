@@ -44,7 +44,8 @@ extern "C" void* uva_mmap (void *addr, size_t length, int prot,
 	assert (fd == -1 && "devices/files cannot be mmaped.");
 	assert (offset == 0 && "no offset options allowed.");
 
-	return XMemoryManager::pagemap (addr, length);
+  printf("[xmem_alloc] uva_mmap called! addr (%p) / length (%d)\n", addr, length);
+	return XMemoryManager::pagemap (addr, length, false);
 }
 
 extern "C" void* uva_server_mmap (void *addr, size_t length, int prot, 
@@ -54,7 +55,7 @@ extern "C" void* uva_server_mmap (void *addr, size_t length, int prot,
 	assert (fd == -1 && "devices/files cannot be mmaped.");
 	assert (offset == 0 && "no offset options allowed.");
 
-	return XMemoryManager::pagemap (addr, length);
+	return XMemoryManager::pagemap (addr, length, false); /* XXX FIXME actually unused func */
 }
 
 extern "C" char* uva_strdup (const char *str) {
@@ -81,20 +82,4 @@ extern "C" void* uva_memcpy(void* dest, const void* source, size_t num){
 
 extern "C" void* uva_memmove(void* dest, const void* source, size_t num){
 	return uva_memmove(dest,source,num);
-}
-
-extern "C" void uva_load(void *addr, uint64_t len) {
-  XMemoryManager::loadHandler(addr, len);
-}
-
-extern "C" void uva_store(void *addr, uint64_t len, void *data) {
-  XMemoryManager::storeHandler(addr, len, data);
-}
-
-extern "C" void uva_server_load(void *addr, uint64_t len) {
-  LOG("[server] Load instr, addr %p, len %d\n", addr, len); 
-}
-
-extern "C" void uva_server_store(void *addr, uint64_t len, void *data) {
-  LOG("[server] Store instr, addr %p, len %d\n", addr, len); 
 }

@@ -108,22 +108,40 @@ void UVAClient::modifyIniFini(Module &M) {
   Function *ctor = M.getFunction("__constructor__");
   Function *dtor = M.getFunction("__destructor__");
   assert(ctor != NULL && "wrong");
-  assert(dtor != NULL && "wrong");
+  //assert(dtor != NULL && "wrong");
   BasicBlock *bbOfCtor = &(ctor->front());
   BasicBlock *bbOfDtor = &(dtor->front());
-  
-  Instruction *deviceInitCallInst;
+
+  Instruction *targetCallInst;
+  InstInsertPt out;
+  bool isExistEariler = false;
   for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
     if(isa<CallInst>(&*I)) {
       CallInst *tarFun = dyn_cast<CallInst>(&*I);
       Function *callee = tarFun->getCalledFunction();
       if(callee->getName() == "deviceInit") {
-        deviceInitCallInst = &*I;
+        targetCallInst = &*I;
+        out = InstInsertPt::After(targetCallInst);
+        isExistEariler = true;
+        break;
+      } else if(callee->getName().find("__decl_const_global_range__") != std::string::npos) {
+        printf("UVAClient::modifyIniFini: fnDeclCRange exists!\n");
+        targetCallInst = &*I;
+        out = InstInsertPt::Before(targetCallInst);
+        isExistEariler = true;
+        break;
       }
     }
   }
-  InstInsertPt out = InstInsertPt::After(deviceInitCallInst);
-  
-  out << CallInst::Create(UVAClientInit, actuals, "");
-  CallInst::Create(UVAClientFinal, actuals, "", bbOfDtor->getFirstNonPHI());
+  if (isExistEariler) {
+    out << CallInst::Create(UVAClientInit, actuals, "");
+  } else {
+    CallInst::Create(UVAClientInit, actuals, "", bbOfCtor->getFirstNonPHI());
+  }
+
+  if (bbOfDtor->getFirstNonPHI() != NULL) {
+    CallInst::Create(UVAClientFinal, actuals, "", bbOfDtor->getFirstNonPHI());
+  } else {
+    CallInst::Create(UVAClientFinal, actuals, "");
+  }
 }

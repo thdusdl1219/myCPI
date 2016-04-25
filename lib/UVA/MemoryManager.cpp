@@ -19,6 +19,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Constants.h"
 
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/Passes.h"
@@ -32,6 +33,8 @@
 #include <cstdlib>
 #include <cstdio>
 
+//#define DEBUG_MM
+
 using namespace corelab;
 
 // Utils
@@ -39,6 +42,7 @@ static bool isUseOfGetElementPtrInst(LoadInst *ld);
 static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout *dl);
 static Function *getCalledFunction_aux(Instruction* indCall); // From AliasAnalysis/IndirectCallAnal.cpp
 static const Value *getCalledValueOfIndCall(const Instruction* indCall);
+static const User *isGEP(const Value *V);
 
 static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, bool is32);
 
@@ -142,9 +146,9 @@ void MemoryManagerX64::setFunctions(Module &M) {
 			ptrTy,
 			ptrTy,
 			intTy,
-			intTy,
-			intTy,
-			intTy,
+			Type::getInt32Ty(Context),
+			Type::getInt32Ty(Context),
+			Type::getInt32Ty(Context),
 			intTy,
 			(Type*)0);
 
@@ -400,7 +404,7 @@ bool MemoryManagerX64::runOnModule(Module& M) {
 		Function* F = &*fi;
 		if (F->isDeclaration())
 			continue;
-		runOnFunction(F);
+		runOnFunction(F, false);
 	}
   installLoadStoreHandler(M, Load, Store, false);
 
@@ -469,7 +473,7 @@ bool MemoryManagerArm::runOnModule(Module& M) {
 		Function* F = &*fi;
 		if (F->isDeclaration())
 			continue;
-		runOnFunction(F);
+		runOnFunction(F, true);
 	}
   installLoadStoreHandler(M, Load, Store, true);
   return false;
@@ -505,11 +509,21 @@ bool MemoryManagerArm::runOnModule(Module& M) {
 //	}
 //	return false;
 //}
-
-bool MemoryManagerX64::runOnFunction(Function *F) {
+bool MemoryManagerX64::runOnFunction(Function *F, bool is32) {
 
 		for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
 			Instruction *instruction = &*I;
+      /*if(isGEP(instruction)) {
+        printf("************************gep\n");
+        instruction->dump();
+      } else {
+        for (auto Op = I->op_begin(); Op != I->op_end(); ++Op) {
+          if(isGEP(*Op)) {
+            printf("@@@@@@@@@@@@@@@@@@@@@@@gep\n");
+            instruction->dump();
+          }
+        }
+      }*/
 			bool wasBitCasted = false;
 			Type *ty;
 			IRBuilder<> Builder(instruction);
@@ -559,6 +573,39 @@ bool MemoryManagerX64::runOnFunction(Function *F) {
 							callInst->setCalledFunction(Free);
 						}
 					}
+          /* @SPECIAL CASE: [converting "mmap" to "uva_mmap"]
+           *  This mmap transformation is a special case.  When a client want
+           *  to initialize global variables in fixed address space
+           *  (0x15000000~some point), he "mmap" first. But server have to know
+           *  and initialize too. That's why we change "mmap" to "uva_mmap".
+           *  TLDR; global variable initialization in initial time should be
+           *  synchronized with server.
+           **/
+          else if(callee->getName() == "mmap"){
+            int intAddr = 0;
+            if(ConstantExpr *constexp = dyn_cast<ConstantExpr>(instruction->getOperand(0))) {
+              if(constexp->isCast()) {
+                Instruction *inttoptrInst = constexp->getAsInstruction();
+                Value *addr = inttoptrInst->getOperand(0);
+                if(ConstantInt *CI = dyn_cast<ConstantInt>(addr)) {
+                  if(CI->getBitWidth() <= 64) {
+                    intAddr = CI->getZExtValue();
+                  }
+                  if (0x15000000 <= intAddr && intAddr <= 0x16000000) {
+                    printf("mmap addr (%p) is in fixed global address interval\n", (void*)intAddr);
+                    if(wasBitCasted){
+                      Value *changeTo = Builder.CreateBitCast(Mmap, ty);
+                      callInst->setCalledFunction(changeTo);
+                    } else {
+                      callInst->setCalledFunction(Mmap);
+                    }
+                    inttoptrInst->insertBefore(instruction);
+                    instruction->setOperand(0,inttoptrInst);
+                  }
+                }
+              }
+            }
+          }
           else if(callee->getName() == "_Znwm"){
 						if(wasBitCasted){
 							Value *changeTo = Builder.CreateBitCast(Malloc, ty);
@@ -796,7 +843,7 @@ bool MemoryManagerX64S::runOnFunction(Function *F) {
   return false;
 }
 
-bool MemoryManagerArm::runOnFunction(Function *F) {
+bool MemoryManagerArm::runOnFunction(Function *F, bool is32) {
 
 		for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
 			Instruction *instruction = &*I;
@@ -841,6 +888,25 @@ bool MemoryManagerArm::runOnFunction(Function *F) {
 							callInst->setCalledFunction(Realloc);
 						}
 					}
+          else if(callee->getName() == "mmap"){
+            Value *addr = instruction->getOperand(0);
+            int intAddr = 0;
+            if(ConstantInt *CI = dyn_cast<ConstantInt>(addr)) {
+              if(CI->getBitWidth() <= 64) {
+                intAddr = CI->getZExtValue();
+              }
+                printf("mmap addr (%p)\n", (void*)intAddr);
+              if (0x15000000 < intAddr && intAddr <= 0x16000000) {
+                printf("mmap addr (%p) is in fixed global address interval\n", (void*)addr);
+                if(wasBitCasted){
+                  Value *changeTo = Builder.CreateBitCast(Mmap, ty);
+                  callInst->setCalledFunction(changeTo);
+                } else {
+                  callInst->setCalledFunction(Mmap);
+                }
+              }
+            }
+          }
 					else if(callee->getName() == "free"){
 						if(wasBitCasted){
 							Value *changeTo = Builder.CreateBitCast(Free, ty);
@@ -947,27 +1013,6 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
           InstInsertPt out = InstInsertPt::Before(ld);
           addr = castTo(addr, temp, out, &dataLayout);
 
-          //InstrID instrId = Namer::getInstrId(instruction);
-          //Value *instructionId = ConstantInt::get(Type::getInt16Ty(Context), instrId);
-          //FullID fullId = Namer::getFullId(instruction);
-          //Value *fullId_ = ConstantInt::get(Type::getInt64Ty(Context), fullId);
-          //for debug
-          //errs()<<"<"<<instrId<<"> "<<*ld<<"\n";
-
-          //DEBUG(errs()<< "load instruction id %" << fullId << "\n");
-
-          // DEBUG(errs() << "load inst's type : ");
-          //printf("ld getType : ");
-          //ld->getType()->dump();
-          //DEBUG(errs() << "load inst's 1st operand type : ");
-          //printf("ld operand 0 type : ");
-          
-          //ld->getOperand(0)->getType()->dump();
-          //addr->getType()->dump();
-          //ld->getType()->dump();
-
-          //printf("load getTypeAllocSize : %lu\n", dataLayout.getTypeAllocSize(ld->getType()));
-          //printf("load length : %d\n", ld->getType()->getScalarSizeInBits());
           // LoadLength: means what type of value want to get. type is represented by bit length.
           uint64_t loadTypeSize = dataLayout.getTypeAllocSize(ld->getType());
           Value *loadTypeSize_;
@@ -977,7 +1022,6 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
             loadTypeSize_ = ConstantInt::get(Type::getInt32Ty(Context), loadTypeSize);
           }
           args[0] = addr;
-          //args[1] = fullId_;
           args[1] = loadTypeSize_; 
           CallInst::Create(Load, args, "", ld);
         }
@@ -994,42 +1038,54 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
         }
         InstInsertPt out = InstInsertPt::Before(st);
         addr = castTo(addr, temp, out, &dataLayout);
-
-        //InstrID instrId = Namer::getInstrId(instruction);
-        //Value *instructionId = ConstantInt::get(Type::getInt16Ty(Context), instrId);
-        //FullID fullId = Namer::getFullId(instruction);
-        //Value *fullId_ = ConstantInt::get(Type::getInt64Ty(Context), fullId);
-
-        //DEBUG(errs()<< "store instruction id %" << fullId << "\n");
-
-        //DEBUG(errs() << "store inst's type : ");
-        //st->getType()->dump();
-        //DEBUG(errs() << "store inst's addr operand type : ");
-        //st->getOperand(0)->dump();
-        //printf("st operand 0 type : ");
-        //addr->getType()->dump();
-        //st->getValueOperand()->getType()->dump();
         
-        unsigned int storeValueTypeSize = dataLayout.getTypeAllocSize(st->getValueOperand()->getType());
+        Value *valueOperand = st->getValueOperand();
+        unsigned int storeValueTypeSize = dataLayout.getTypeAllocSize(valueOperand->getType());
         Value *storeValueTypeSize_;
         if(!is32) {
           storeValueTypeSize_ = ConstantInt::get(Type::getInt64Ty(Context), storeValueTypeSize);
         } else {
           storeValueTypeSize_ = ConstantInt::get(Type::getInt32Ty(Context), storeValueTypeSize);
         }
-        Value *valueOperand = st->getValueOperand();
         if(!is32){
           temp = ConstantPointerNull::get(Type::getInt64PtrTy(Context));
         } else {
           temp = ConstantPointerNull::get(Type::getInt32PtrTy(Context));
         }
-        valueOperand = castTo(valueOperand, temp, out, &dataLayout);
-        
-        args[0] = addr;
-        //args[1] = fullId_;
-        args[1] = storeValueTypeSize_;
-        args[2] = valueOperand;
-        CallInst::Create(Store, args, "", st);
+
+        if (ArrayType *tyArr = dyn_cast<ArrayType>(valueOperand->getType())){
+#ifdef DEBUG_MM
+          printf("mm: valueOperand is Array type!, and type size is %d\n", storeValueTypeSize);
+#endif
+          vector<Value*> vecGepIdx;
+          vecGepIdx.push_back(ConstantInt::get(Type::getInt32Ty(Context), 0));
+#ifdef DEBUG_MM
+          tyArr->dump();
+          st->getPointerOperand()->dump();
+#endif          
+          GetElementPtrInst *gepInst = GetElementPtrInst::Create(tyArr, st->getPointerOperand(), vecGepIdx, "ty.arr.ptr", st); 
+#ifdef DEBUG_MM
+          unsigned int arrElemTypeSize = dataLayout.getTypeAllocSize(valueOperand->getType()->getArrayElementType());
+          printf("mm: store's operand (size:%d) (elem:%d) (total:%d):\n", storeValueTypeSize, arrElemTypeSize, storeValueTypeSize*arrElemTypeSize);
+          
+          valueOperand->dump();
+          printf("mm: type id is %d", valueOperand->getType()->getTypeID());
+          printf(" , ptr Ty ID is %d\n",valueOperand->getType()->getPointerTo()->getTypeID());
+#endif    
+          Value *arrOperand = castTo(gepInst, temp, out, &dataLayout);
+
+          args[0] = addr;
+          args[1] = storeValueTypeSize_;
+          args[2] = arrOperand;
+          CallInst::Create(Store, args, "", st);
+        } else {
+          valueOperand = castTo(valueOperand, temp, out, &dataLayout);
+
+          args[0] = addr;
+          args[1] = storeValueTypeSize_;
+          args[2] = valueOperand;
+          CallInst::Create(Store, args, "", st);
+        }
       }
     } // for
   } // for
@@ -1116,6 +1172,9 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
   const size_t fromSize = dl->getTypeSizeInBits( from->getType() );
   const size_t toSize = dl->getTypeSizeInBits( to->getType() );
 
+#ifdef DEBUG_MM
+  printf("mm: castTo: fromSize (%d), toSize (%d)\n", fromSize, toSize);
+#endif
   // First make it an integer
   if( ! from->getType()->isIntegerTy() ) {
     // cast to integer of same size of bits
@@ -1128,8 +1187,12 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
     }
     out << cast;
     from = cast;
+  } 
+#ifdef DEBUG_MM
+  else if (from->getType()->isIntegerTy()){
+    printf("mm: castTo: from is IntegerTy\n");
   }
-
+#endif
   // Next, make it have the same size
   if( fromSize < toSize ) {
     Type *integer = IntegerType::get(Context, toSize);
@@ -1142,20 +1205,29 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
     out << cast;
     from = cast;
   }
-
+#ifdef DEBUG_MM
+  printf("mm: castTo: AFTER making same size\n");
+#endif
   // possibly bitcast it to the approriate type
   if( to->getType() != from->getType() ) {
     Instruction *cast;
     if( to->getType()->getTypeID() == Type::PointerTyID )
       cast = new IntToPtrInst(from, to->getType() );
     else {
+#ifdef DEBUG_MM
+      printf("mm: castTo: to's typeID is NOT PointerTyID\n");
+      from->getType()->dump();
+      to->getType()->dump();
+#endif
       cast = new BitCastInst(from, to->getType() );
     }
 
     out << cast;
     from = cast;
   }
-
+#ifdef DEBUG_MM
+  printf("mm: castTo: end of castTo()\n\n");
+#endif
   return from;
 }
 
@@ -1184,3 +1256,23 @@ static Function *getCalledFunction_aux(Instruction* indCall){
   else
     assert(0 && "WTF??");
 }
+
+// This is from old version of llvm/lib/Analysis/BasicAliasAnalysis.cpp
+static const User *isGEP(const Value *V) {
+  if (isa<GetElementPtrInst>(V) ||
+      (isa<ConstantExpr>(V) &&
+       cast<ConstantExpr>(V)->getOpcode() == Instruction::GetElementPtr))
+    return cast<User>(V);
+  return 0;
+}
+/*
+static const User *isGEP_(const Value *V) {
+  if (isa<GetElementPtrInst(V))
+    return cast<User>(V);
+  if (Operator *Op = dyn_cast<Operator>(V)) {
+    if (Op->getOpcode() == Instruction::BitCast ||
+        Op->getOpcode() == Instruction::AddrSpaceCast) {
+
+    }
+  }
+}*/

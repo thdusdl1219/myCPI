@@ -30,11 +30,11 @@ namespace corelab {
 		// User may explicitly 'begins' and 'ends' the transformation
 		// by calling the following interfaces.
 		// They prepares and post-processes the IR, respectively.
-		void begin (Module *module, void *base);
-		void end ();	
+		void begin (Module *module, void *base, bool isFixGlbDuty);
+		void end (bool isFixGlbDuty);	
 		
 		// Creator method, as in factory pattern.
-		FixedGlobalVariable *create (Type *type, Constant *initzer, const Twine &name);
+		FixedGlobalVariable *create (Type *type, Constant *initzer, const Twine &name, bool isFixGlbDuty);
 		void erase (FixedGlobalVariable *fgvar);
 
 		// Factory getter, setter, tester. 
