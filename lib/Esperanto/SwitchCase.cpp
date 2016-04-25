@@ -191,7 +191,7 @@ namespace corelab {
         Value *argPtr = Casting::castTo(bufAddress, tempPtr, out, &dataLayout);
         //Value *argPtr = EspUtils::insertCastingBefore(bufAddress, tempPtr, &dataLayout, execCase->getTerminator());
 
-        if(argIndex == 0 && ai->getName().equals("this")){
+        /*if(argIndex == 0 && ai->getName().equals("this")){
 					if(instMarker.LFManager.isExist(fp)){
 						LocalFunctionInfo info = instMarker.LFManager.getLocalFunctionInfo(fp);
 						
@@ -200,7 +200,7 @@ namespace corelab {
 						//actuals[0] = new LoadInst(allocatedAddress,"",execCase);
 						actuals[0] = new LoadInst((Value*)classAddress,"",execCase);
 						argIndex++;
-					}
+					}*/
           /*std::map<StringRef, GlobalVariable*>::iterator it;
           for(it = remoteCall.classMatching.begin() ; it != remoteCall.classMatching.end(); it++){
             if(esperantoNamer.getClassNameInFunction(fi->getName()) == it->first.str()){
@@ -210,17 +210,17 @@ namespace corelab {
               break;
             }
           }*/
-        }
+        //}
         /*else if(!classMember){
             actuals[0] = new LoadInst(argptr, "", execCase);
             addressSum += argSize;
           }
           argIndex++;
         }*/ 
-        else {
+        //else {
           actuals[argIndex++] = new LoadInst(argPtr, "", execCase);
           addressSum += argSize;
-        }
+        //}
       }
 
       /**** Insert Function Call ****/

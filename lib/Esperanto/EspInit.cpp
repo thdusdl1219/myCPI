@@ -210,7 +210,13 @@ namespace corelab {
 			temp = (char*)malloc(100);
 			strcpy(temp,readBuffer);
 			StringRef* metadataType = new StringRef(temp);
-			if(strcmp(readBuffer,"EspDevDecl") == 0){
+      if(strcmp(readBuffer,"EspAsync") ==0 ){
+        c = fscanf(metadataFile,"%s",readBuffer);
+        temp = (char*)malloc(100);
+        strcpy(temp,readBuffer);
+        async_functions.push_back(StringRef(temp));
+      }
+      else if(strcmp(readBuffer,"EspDevDecl") == 0){
 				struct MetadataInfo mi;
 				c = fscanf(metadataFile,"%s",readBuffer);
 				printf("DeviceName : %s\n",readBuffer);

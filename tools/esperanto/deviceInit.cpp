@@ -223,6 +223,21 @@ int generateJobId(int functionID){
 	return jobID;
 }
 
+extern "C" 
+void produceAsyncFunctionArgs(int functionID, void* buf, int size){
+  LOG("Async function call fid = %d\n",functionID);
+  DataQElem* elem = new DataQElem();
+  elem->setIsFunctionCall(true);
+  elem->setArgs(buf,size);
+  elem->setFunctionID(functionID);
+  elem->setJobID(-1);
+  elem->setRetVal(NULL,0);
+  dqm->insertElementToSendQ(elem);
+  pthread_mutex_lock(&sendQHandleLock);
+  sendQHandling = true;
+  pthread_mutex_unlock(&sendQHandleLock);
+}
+
 extern "C"
 void produceReturn(int jobID, void* buf, int size){
 	DataQElem* elem = new DataQElem();
@@ -262,7 +277,6 @@ void produceFunctionArgs(int jobID, void* buf, int size){
 		sendQHandling = true;
 		pthread_mutex_unlock(&sendQHandleLock);
 		LOG("produce function args to send q\n");
-
 }
 
 extern "C"
@@ -626,8 +640,11 @@ void deviceInit(ApiCallback fcn, int id){
 	}
 	initMutex();*/
 	ConnectionInfo* server = (ConnectionInfo*)malloc(sizeof(ConnectionInfo));
-	sprintf(server->ip,"%s","141.223.197.224");
-	server->port = 20000;
+  FILE* server_desc = fopen("server_desc","r");
+  fscanf(server_desc,"%s %d",server->ip,server->port);
+	//sprintf(server->ip,"%s","141.223.197.224");
+	//server->port = 20000;
+  LOG("server ip = %s, port = %d\n",server->ip,server->port);
 	//int k = dqm->getSendQSize();
 	//LOG("sendQ : %d\n",k);
 

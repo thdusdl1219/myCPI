@@ -214,6 +214,7 @@ namespace corelab
 
 			//std::map<StringRef*,struct MetadataInfo> metadataTable;
 			std::map<StringRef*,struct DriverClassInfo> driverTable;
+      std::vector<StringRef> async_functions;
 			ProtocolTable PTable;	
 			DeviceInfoTable DITable;
 			MetadataTable MDTable;

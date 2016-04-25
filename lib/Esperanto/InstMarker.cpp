@@ -5,6 +5,7 @@
  * which is printed by "corelab/Metadata/Namer.h".
  * 
  * */
+#define DEBUG_TYPE "inst_marker"
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/CallSite.h"
@@ -48,6 +49,7 @@ namespace corelab {
 	bool InstMarker::runOnModule(Module& M)
 	{
 		//LLVMContext &Context = getGlobalContext();
+    handleAsyncFcn(M);
 		markClassInst(M);
 		markFunctionInst(M);
 		removeMarkedRegion(M);
@@ -55,6 +57,43 @@ namespace corelab {
 		//buildDriverTable();
 		return false;
 	}
+
+  void InstMarker::handleAsyncFcn(Module& M){
+    typedef Module::iterator FF;
+		typedef Function::iterator BB;
+		typedef BasicBlock::iterator II;
+
+		EspInitializer& database = getAnalysis< EspInitializer >();
+
+		for(FF FI = M.begin(),FE = M.end();FI !=FE; ++FI){
+			Function* F = (Function*) &*FI;
+			if (F->isDeclaration()) continue;
+
+			for(BB BI = F->begin(),BE = F->end();BI != BE; ++BI){
+				BasicBlock* B = (BasicBlock*) &*BI;
+				for(II Ii = B->begin(),IE = B->end();Ii != IE; ++Ii){
+					Instruction* inst = (Instruction*) &*Ii;
+					if(!isa<CallInst>(inst)) continue;
+					CallInst* callInst = cast<CallInst>(inst);
+					Function* calledFunction = callInst->getCalledFunction();
+					if(calledFunction != nullptr){
+						StringRef functionName = getFunctionNameInFunction(calledFunction->getName());
+
+						if(functionName.size() ==0) continue;
+            if(strcmp(functionName.data(),"EspAsyncFcn") != 0) continue;
+            DEBUG(errs() << "async function name is " << functionName.data() << "\n");
+            for(int i=0;i<callInst->getNumArgOperands();i++){
+
+callInst->getArgOperand(i)->dump();
+              DEBUG(errs() << "type of argument is " << callInst->getArgOperand(i)->getType()->getTypeID() << "\n");
+            }
+					}
+					
+				}
+			}
+		}
+
+  }
 
 	void InstMarker::makeMetadata(Instruction* instruction, int Id) {
 		LLVMContext &context = instruction->getModule()->getContext();

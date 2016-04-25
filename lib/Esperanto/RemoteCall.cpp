@@ -74,6 +74,15 @@ void RemoteCall::setFunctions(Module &M) {
 			Type::getInt32Ty(Context),
 			(Type*)0);
 
+  // void produceAsyncFunctionArgs(int functionID, void* buf, int size);
+  ProduceAsyncFunctionArgument = M.getOrInsertFunction(
+      "produceAsyncFunctionArgs",
+      Type::getVoidTy(Context),
+      Type::getInt32Ty(Context),
+			Type::getInt8PtrTy(Context),
+			Type::getInt32Ty(Context),
+			(Type*)0);
+
 	// void produceFunctionArgument(int jobId, void* buf, int size);
 	ProduceFunctionArgument = M.getOrInsertFunction(
 			"produceFunctionArgs",
@@ -209,7 +218,7 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
 		std::string className = iMarker.getClassNameInFunction(f->getName());
 		if(className.size() != 0)
 			isClassMember = true;
-		if(isClassMember && i==0) continue;
+		// if(isClassMember && i==0) continue;
 		Type* type = argValue->getType(); // original type
 		const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type); // allocation type size
 		sum += (int)sizeInBits;

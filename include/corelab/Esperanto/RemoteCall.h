@@ -22,6 +22,7 @@ namespace corelab {
 			std::map<Function*,bool> localFunctionTable;
 		private:
 			Constant* GenerateJobId;
+      Constant* ProduceAsyncFunctionArgument;
 			Constant* ProduceFunctionArgument;
 			Constant* ConsumeReturn;
 			void getClassPointer(Module& M);

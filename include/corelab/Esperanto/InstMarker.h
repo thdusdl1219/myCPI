@@ -59,6 +59,7 @@ namespace corelab
 		public:
 
 			bool runOnModule(Module& M);
+      void handleAsyncFcn(Module& M);
 			void markInstruction();		
 			void markClassInst(Module& M);	
 			void markFunctionInst(Module& M);
@@ -74,6 +75,9 @@ namespace corelab
 			void getAnalysisUsage(AnalysisUsage& AU) const;
 			static char ID;
 			InstMarker() : ModulePass(ID) {}
+
+
+      std::vector<CallInst*> async_fcn_list;
 
 	};
 }
