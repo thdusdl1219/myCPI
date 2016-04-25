@@ -40,10 +40,14 @@ namespace corelab {
 		static UVAOwnership uvaown;
 		static PageSet setMEPages;
 
+    // BONGJUN
+    static void *ptNoConstBegin;
+    static void *ptNoConstEnd;
+
 		// The range of constant pages. [ptConstBegin, ptConstEnd).
 		// We assume constant pages are in both the client and the server.
-		static void *ptConstBegin;
-		static void *ptConstEnd;
+		//static void *ptConstBegin;
+		//static void *ptConstEnd;
 
 		#ifdef INFLATE_READ
 		static char bufInf[MEMORY_TRANSFER_UNIT * 2];
@@ -196,12 +200,12 @@ namespace corelab {
 		void UVAManager::fetchIn (QSocket *socket, void *addr) {
 			void *paddr = truncToPageAddr (addr);
 
-			assert ((paddr < ptConstBegin || paddr >= ptConstEnd) && "constant pages cannot be fetched");
+			//assert ((paddr < ptConstBegin || paddr >= ptConstEnd) && "constant pages cannot be fetched");
 
 			assert (addr != NULL && "null demanded page");
 			DEBUG_STMT (fprintf (stderr, "demanded_page:%p\n", (void *)paddr));
 
-			void *res = xmemPagemap (paddr, XMEM_PAGE_SIZE);
+			void *res = xmemPagemap (paddr, XMEM_PAGE_SIZE, false);
 			assert (res != (void *)0xFFFFFFFF && 
 				"UVAManager::fetchIn() page mapping failed");
 
@@ -221,8 +225,8 @@ namespace corelab {
 		void UVAManager::fetchOut (QSocket *socket, void *addr) {
 			void *paddr = truncToPageAddr (addr);
 
-			assert ((paddr < ptConstBegin || paddr >= ptConstEnd) && 
-					"constant pages cannot be fetched");
+			//assert ((paddr < ptConstBegin || paddr >= ptConstEnd) && 
+			//		"constant pages cannot be fetched");
 
 			DEBUG_STMT (fprintf (stderr, "page_requested:%p\n", paddr));
 			socket->sendRange (paddr, XMEM_PAGE_SIZE);
@@ -262,7 +266,7 @@ namespace corelab {
 					"UVAManager::flushIn() received un-aligned pages size");
 
 				/* change state to SHARED */
-				xmemPagemap (ptStart, sizePages);
+				xmemPagemap (ptStart, sizePages, false);
 				for (size_t off = 0; off < sizePages; off += XMEM_PAGE_SIZE) {
 					setMEPages.erase ((XmemUintPtr)ptStart + off);
 				}
@@ -379,7 +383,7 @@ namespace corelab {
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
     void UVAManager::loadHandler(QSocket *socket, void *addr, size_t typeLen) {
-      LOG("[client] Load : loadHandler start\n");
+      LOG("[client] Load : loadHandler start (%p)\n", addr);
       if(xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
         if (xmemIsHeapAddr(addr)) {
           LOG("[client] Load : isHeapAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
@@ -389,6 +393,7 @@ namespace corelab {
         socket->pushWordF(2); // mode 2 (client -> server : load request)
         socket->pushWordF(sizeof(addr));
         socket->pushWordF(typeLen); // type length
+        //LOG("[client] DEBUG : may be before segfault?\n");
         socket->pushRangeF(&addr, sizeof(addr));
         socket->sendQue();
 
@@ -402,15 +407,15 @@ namespace corelab {
 
         socket->takeRangeF(buf, len);
         memcpy(addr, buf, len);
-        hexdump(addr, typeLen);
+        //hexdump(addr, typeLen);
         xmemDumpRange(addr, typeLen);
       }
-      LOG("[client] Load request END\n\n");
+      LOG("[client] Load : loadHandler END\n\n");
     }
 
     void UVAManager::storeHandler(QSocket *socket, void *addr, size_t typeLen, void *data) {
       //LOG("[client] Store instr, addr %p, typeLen %lu, TEST val %d\n", addr, typeLen, *((int*)addr)); 
-      LOG("[client] Store : storeHandler start\n");
+      LOG("[client] Store : storeHandler start (%p)\n", addr);
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
         if (xmemIsHeapAddr(addr)) {
           LOG("[client] Store : isHeapAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
@@ -430,7 +435,7 @@ namespace corelab {
         socket->sendQue();
         LOG("[client] Store : sizeof(addr) %d, data length %d\n", sizeof(addr), typeLen);
 
-        hexdump(&data, typeLen);
+        //hexdump(&data, typeLen);
         socket->receiveQue();
         int mode = socket->takeWord();
         LOG("[client] mode : %d\n", mode);
@@ -447,28 +452,31 @@ namespace corelab {
           assert(0 && "error: undefined behavior");
         }
       }
-      LOG("[client] Store request END\n\n");
+      LOG("[client] Store : storeHandler END\n\n");
     }
 
 
 		/*** Get/Set Interfaces ***/
-		void UVAManager::setConstantRange (void *begin, void *end) {
-			ptConstBegin = truncToPageAddr (begin);
-			ptConstEnd = truncToPageAddr ((void *)((XmemUintPtr)end + XMEM_PAGE_SIZE - 1));
+		void UVAManager::setConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/) { /* FIXME */
+      ptNoConstBegin = truncToPageAddr (begin_noconst);
+      ptNoConstEnd = truncToPageAddr ((void *)((XmemUintPtr)end_noconst + XMEM_PAGE_SIZE - 1));
+			//ptConstBegin = truncToPageAddr (begin_const);
+			//ptConstEnd = truncToPageAddr ((void *)((XmemUintPtr)end_const + XMEM_PAGE_SIZE - 1));
 
+      printf("UVAManager::setConstantRange: ptNoConst (%p~%p) \n", ptNoConstBegin, ptNoConstEnd/*, ptConstBegin, ptConstEnd*/);
 			// FIXME: To enforce the constantness of the given range,
 			// 	We should rule out pages in the range from the EXCLUSIVE set
 			// 	whenever consistency operations (such as 'synch', 'flush') are done.
 			// 	But for the sake of the performance, it would be better to
 			// 	rule out the pages just once (i.e. when this function is called),
 			// 	and believe that the constantness will not be harmed.
-			bool turnaround_guard = false;
+			/*bool turnaround_guard = false;
 			for (XmemUintPtr upt = (XmemUintPtr)ptConstBegin; upt < (XmemUintPtr)ptConstEnd; upt += XMEM_PAGE_SIZE) {
 				if (upt == NULL && turnaround_guard) break;
 				turnaround_guard = true;
 			
 				setMEPages.erase (upt);
-			}
+			}*/
 		}
 
 		size_t UVAManager::getHeapSize () {
@@ -482,14 +490,21 @@ namespace corelab {
 		
     // XXX: by BONGJUN for fixed global
     bool UVAManager::isFixedGlobalAddr (void *addr) {
-      if ((void*)0x15000000 <= addr && addr < (void*)0x16000000) {
-        printf("UVAManager::isFixedGlobalAddr: (%p) ~ (%p) / addr (%0)\n", (void*)0x15000000, (void*)0x16000000, addr); 
+      if ((void*)0x15000000 <= addr && addr < (void*)0x16000000) /* FIXME: upper bound should be ptConstEnd. and below elseif should be erased. */{
+        //printf("UVAManager::isFixedGlobalAddr: (%p) ~ (%p) / addr (%p)\n", (void*)0x15000000, ptConstEnd, addr); 
         return true;
-      } else if (ptConstBegin <= addr && addr < ptConstEnd) {
+      /*} else if (ptConstBegin <= addr && addr < ptConstEnd) {
         printf("UVAManager::isFixedGlobalAddr: (%p) ~ (%p) / addr (%p)\n", ptConstBegin, ptConstEnd, addr);
-        return true;
+        return true;*/
       } else 
         return false;
+    }
+
+    void UVAManager::getFixedGlobalAddrRange (void **begin_noconst, void **end_noconst/*, void **begin_const, void **end_const*/) {
+      *begin_noconst = ptNoConstBegin;
+      *end_noconst = ptNoConstEnd;
+      //*begin_const = ptConstBegin;
+      //*end_const = ptConstEnd;
     }
 
 		/*** CallBack ***/

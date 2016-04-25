@@ -10,8 +10,8 @@ extern "C" void xmemInitialize(QSocket *socket) {
 }
 
 /* Page mapper */
-extern "C" void* xmemPagemap (void *addr, size_t size) {
-	return XMemoryManager::pagemap (addr, size);
+extern "C" void* xmemPagemap (void *addr, size_t size, bool isServer) {
+	return XMemoryManager::pagemap (addr, size, isServer);
 }
 
 extern "C" void xmemPageUnmap (void *addr, size_t size) {

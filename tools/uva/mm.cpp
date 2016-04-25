@@ -18,7 +18,7 @@
 #include "mmapset.h"
 #include "xmem_log.h"
 #include "log.h"
-#include "hexdump.h"
+//#include "hexdump.h"
 
 #define getAlignedSize(s) (((s-1)/UNIT_SIZE + 1)*UNIT_SIZE)
 #define getAlignedPage(s) (((s-1)/PAGE_SIZE + 1)*PAGE_SIZE)
@@ -70,7 +70,7 @@ namespace corelab {
 		static unsigned protAutoHeapMask;
 
 		static inline void registerSlab (size_t size);
-		static inline void* allocatePage (void *addr, size_t size, unsigned protmode, bool mmap);
+		static inline void* allocatePage (void *addr, size_t size, unsigned protmode, bool mmap, bool isServer);
 		static inline void deallocatePage (void *addr, size_t size);
 		static inline void* askMoreMemory (size_t size, bool server);
 		static inline mchunk getMoreMemory (size_t reqSize, uint64_t *binInx, bool server);
@@ -100,7 +100,7 @@ namespace corelab {
 
 
 		/*** Allocator/Deallocator ***/
-		void* XMemoryManager::pagemap (void *addr, size_t size) {
+		void* XMemoryManager::pagemap (void *addr, size_t size, bool isServer) {
       // don't use server because I don't send mmap information to server
 			#ifdef XMEM_NO_APPLEVEL_MMAP
 			if (addr < HEAP_START_ADDR) {
@@ -109,7 +109,7 @@ namespace corelab {
 			}
 			#endif
 
-			return allocatePage (addr, size, EXPLICIT_PROT_MODE, true);
+			return allocatePage (addr, size, EXPLICIT_PROT_MODE, true, isServer);
 		}
 
 		void* XMemoryManager::allocateServer (void *addr, size_t size) {
@@ -121,7 +121,7 @@ namespace corelab {
 			}
 			#endif
       sizeHeap += size;
-			return allocatePage (addr, size, EXPLICIT_PROT_MODE, true);
+			return allocatePage (addr, size, EXPLICIT_PROT_MODE, false ,true);
 		}
 
 		void XMemoryManager::pageumap (void *addr, size_t size) {
@@ -419,10 +419,12 @@ namespace corelab {
 			}
 		}
 
-		static inline void* allocatePage (void *addr, size_t size, unsigned protmode, bool isMmap) {
+		static inline void* allocatePage (void *addr, size_t size, unsigned protmode, bool isMmap, bool isServer) {
 
-      if(!isMmap) {
+      printf("[mm] allocatePage: addr (%p) / size (%d) / protmode (%d) / isMmap (%d) / isServer (%d)\n", addr, size, protmode, isMmap, isServer);
+      if(!isMmap && !isServer) {
 
+        // [client side] just send size he want and get addr allocated
         socket->pushWordF(0);
         socket->pushWordF(4);
         socket->pushWordF(size);
@@ -440,6 +442,30 @@ namespace corelab {
         memcpy(&addr, buf, len);
         fprintf(stderr, "mapAddr : %p\n", addr);
 
+
+      } else if (isMmap && !isServer && protmode == 3) { /* XXX: is it safe ? */
+        printf("[mm] [client] mmap allocatePage\n");
+
+        // [client side] just send size and addr
+        socket->pushWordF(6); // mmap request mode
+        socket->pushWordF(sizeof(addr));
+        socket->pushRangeF(&addr, sizeof(addr));
+        socket->pushWordF(sizeof(size));
+        socket->pushRangeF(&size, sizeof(size)); // send size
+        socket->sendQue();
+        
+        socket->receiveQue();
+        int mode = socket->takeWord();
+        fprintf(stderr, "mode : %d\n", mode);
+        assert(mode == 7);
+        int ack = socket->takeWord();
+        assert(ack == 0);
+        //fprintf(stderr, "len : %d\n", len);
+        //char buf[len];
+
+        //socket->takeRange(buf, len);
+        //memcpy(&addr, buf, len);
+        //fprintf(stderr, "mmapAddr : %p\n", addr);
 
       }
 
@@ -486,7 +512,7 @@ fprintf (stderr, "while allocating '%p'..\n", addr);
 
 			ptMem = XMemoryManager::getHeapTop ();
 			sizeHeap += size;
-			res = allocatePage (ptMem, size, protAutoHeapMask ^ EXPLICIT_PROT_MODE, server);
+			res = allocatePage (ptMem, size, protAutoHeapMask ^ EXPLICIT_PROT_MODE, false, server);
 
 			if(res == MAP_FAILED) {
 				fprintf (stderr, "askMoreMemory failed: addr: %p size: %zu\n", ptMem, size);

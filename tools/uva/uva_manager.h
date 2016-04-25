@@ -38,7 +38,8 @@ namespace corelab {
       void storeHandler(QSocket *socket, void *addr, size_t typeLen, void *data);
 			
       // Get/Set/Test interfaces
-			void setConstantRange (void *begin, void *end);
+			void setConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/);
+      void getFixedGlobalAddrRange (void **begin_noconst, void **end_noconst/*, void **begin_const, void **end_const*/);
 			size_t getHeapSize ();
 			bool hasPage (void *addr);
       bool isFixedGlobalAddr (void *addr); // by BONGJUN

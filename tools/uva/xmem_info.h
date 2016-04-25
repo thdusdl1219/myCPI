@@ -30,7 +30,7 @@ struct XmemStateInfo {
 extern "C" void xmemInitialize (QSocket *socket);
 
 /* Page mapper */
-extern "C" void* xmemPagemap (void *addr, size_t size);
+extern "C" void* xmemPagemap (void *addr, size_t size, bool isServer);
 extern "C" void xmemPageUnmap (void *addr, size_t size);
 
 /* Manipulator */

@@ -28,7 +28,7 @@
 #define FIXED_GLOBAL_BASE 			((void *)0x15000000)
 #define FIXED_CONST_GLOBAL_BASE ((void *)0x16000000)
 
-#define DEBUG_HOIST
+#define DEBUG_FIXGLB
 
 using namespace llvm;
 using namespace std;
@@ -101,7 +101,7 @@ namespace corelab {
 					 	gvar->getName().str().substr (0, 5) != string ("llvm."))) {
 				if (!gvar->isConstant ()) {
 					setGvars.insert (gvar);
-#ifdef DEBUG_HOIST
+#ifdef DEBUG_FIXGLB
           printf("FIXGLB: runOnModule: no const (has init func): %s\n", gvar->getName().data());
 #endif
         } else {
@@ -117,13 +117,13 @@ namespace corelab {
 					if (hasFunction (gvar->getInitializer ())) {
 						gvar->setConstant (false);
 						setGvars.insert (gvar);
-#ifdef DEBUG_HOIST
+#ifdef DEBUG_FIXGLB
           printf("FIXGLB: runOnModule: const (has init func): %s\n", gvar->getName().data());
 #endif
           }	
 					else {
 						setConstGvars.insert (gvar);
-#ifdef DEBUG_HOIST
+#ifdef DEBUG_FIXGLB
           printf("FIXGLB: runOnModule: const (NO init func): %s\n",gvar->getName().data());
 #endif
           }
@@ -132,15 +132,28 @@ namespace corelab {
 		}
 
 		/* Convert non-constant globals */
-		convertToFixedGlobals (setGvars, FIXED_GLOBAL_BASE);
+		size_t sizeGvars = convertToFixedGlobals (setGvars, FIXED_GLOBAL_BASE);
+#ifdef DEBUG_FIXGLB
+    printf("FIXGLB: sizeGvars is %d\n", sizeGvars);
+#endif
 
 		/* Convert constant globals */
-		size_t sizeConstGvars = convertToFixedGlobals (setConstGvars, FIXED_CONST_GLOBAL_BASE);
+
+    /* XXX XXX XXX XXX XXX XXX XXX 
+     *
+     * I decided that we don't fix "constant" globals. Only "No constant"
+     *
+     * by bongjun
+     *
+     * XXX XXX XXX XXX XXX XXX XXX
+    **/
+		//size_t sizeConstGvars = convertToFixedGlobals (setConstGvars, FIXED_CONST_GLOBAL_BASE);
+    size_t sizeConstGvars = 0;
 		uintptr_t uptConstGvarsBegin = (uintptr_t)FIXED_CONST_GLOBAL_BASE;
 		uintptr_t uptConstGvarsEnd = (uintptr_t)FIXED_CONST_GLOBAL_BASE + sizeConstGvars;
 	
-#ifdef DEBUG_HOIST
-    printf("FIXGLB: runOnModule: uptConstGvarsBegin~End %p ~ %p\n",uptConstGvarsBegin, uptConstGvarsEnd);
+#ifdef DEBUG_FIXGLB
+    printf("FIXGLB: runOnModule: FIXED_GLOBAL_BASE~bound (%p ~ %p) / uptConstGvarsBegin~End (%p ~ %p)\n", FIXED_GLOBAL_BASE, FIXED_GLOBAL_BASE + sizeGvars, uptConstGvarsBegin, uptConstGvarsEnd);
 #endif 
 		/* Set constant range */
 		FunctionType *tyFnVoidVoid = FunctionType::get (
@@ -155,13 +168,17 @@ namespace corelab {
 				M.getDataLayout ().getPointerSizeInBits ());
 
 		Constant *cnstOffSetCRange = M.getOrInsertFunction ("UVAUtilSetConstantRange",
-				tyVoid, tyInt8Pt, tyInt8Pt, NULL);
+				tyVoid, tyInt8Pt, tyInt8Pt/*, tyInt8Pt, tyInt8Pt*/, NULL);
 
 		vector<Value *> vecSetCRangeArgs;
 		vecSetCRangeArgs.push_back (ConstantExpr::getCast (Instruction::IntToPtr,
-					ConstantInt::get (tyUintPtr, uptConstGvarsBegin), tyInt8Pt));
+					ConstantInt::get (tyUintPtr, (uintptr_t)FIXED_GLOBAL_BASE), tyInt8Pt));
 		vecSetCRangeArgs.push_back (ConstantExpr::getCast (Instruction::IntToPtr,
-					ConstantInt::get (tyUintPtr, uptConstGvarsEnd), tyInt8Pt));
+					ConstantInt::get (tyUintPtr, (uintptr_t)FIXED_GLOBAL_BASE + sizeGvars), tyInt8Pt));
+		//vecSetCRangeArgs.push_back (ConstantExpr::getCast (Instruction::IntToPtr,
+		//			ConstantInt::get (tyUintPtr, uptConstGvarsBegin), tyInt8Pt));
+		//vecSetCRangeArgs.push_back (ConstantExpr::getCast (Instruction::IntToPtr,
+		//			ConstantInt::get (tyUintPtr, uptConstGvarsEnd), tyInt8Pt));
 		CallInst::Create (cnstOffSetCRange, vecSetCRangeArgs, "", blkDeclCRange);
 
 		ReturnInst::Create (M.getContext (), blkDeclCRange);
@@ -199,16 +216,45 @@ namespace corelab {
           CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
         }
       }
+    } else { // client who have no duty to initalize fixed global variables. But have to call fnDeclCRange.
+      Function *ctor = M.getFunction("__constructor__");
+      if (ctor != NULL) {
+        std::vector<Value*> actuals(0);
+        Instruction *deviceInitCallInst;
+        Instruction *fnGInitzerCallInst;
+        InstInsertPt out;
+        bool isExistEarlierCallInst;
+        for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
+          if(isa<CallInst>(&*I)) {
+            isExistEarlierCallInst = true;
+            CallInst *tarFun = dyn_cast<CallInst>(&*I);
+            Function *callee = tarFun->getCalledFunction();
+            if(callee->getName() == "deviceInit") { // Esperanto-aware
+              deviceInitCallInst = &*I;
+              out = InstInsertPt::After(deviceInitCallInst);
+              break;
+            }
+          }
+        }
+        if (isExistEarlierCallInst) {
+          out << CallInst::Create(fnDeclCRange, actuals, "");
+        } else {
+          BasicBlock *bbOfCtor = &(ctor->front());
+          CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
+        }
+        
+      }
     }
 
 		/* Finalize */
 		list<GlobalVariable *> lstDispGvars;
 		lstDispGvars.insert (lstDispGvars.begin (), setGvars.begin (), setGvars.end ());
-		lstDispGvars.insert (lstDispGvars.begin (), setConstGvars.begin (), setConstGvars.end ());
+		//lstDispGvars.insert (lstDispGvars.begin (), setConstGvars.begin (), setConstGvars.end ());
 
 		while (!lstDispGvars.empty ()) {
 			GlobalVariable *gvar = lstDispGvars.front ();
 			lstDispGvars.pop_front ();
+      gvar->dump();
 
 			if (!gvar->user_empty ()) {
 				lstDispGvars.push_back (gvar);
@@ -257,7 +303,7 @@ namespace corelab {
 		}	
 
 		sizeTotalGvars = FixedGlobalFactory::getTotalGlobalSize ();
-#ifdef DEBUG_HOIST
+#ifdef DEBUG_FIXGLB
     printf("FIXGLB: convertToFixedGlobals: sizeTotalGvars: %d\n", sizeTotalGvars);
 #endif
     if (this->isFixGlbDuty)

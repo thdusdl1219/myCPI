@@ -112,7 +112,9 @@ void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
     bool isExistEarlierCallInst;
     for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
       if(isa<CallInst>(&*I)) {
+        printf("in begin (FixedGlobalFactory) : found callinst\n");
         isExistEarlierCallInst = true;
+        I->dump();
         CallInst *tarFun = dyn_cast<CallInst>(&*I);
         Function *callee = tarFun->getCalledFunction();
         if(callee->getName() == "deviceInit") { // Esperanto-aware

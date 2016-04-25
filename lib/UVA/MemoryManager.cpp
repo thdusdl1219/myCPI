@@ -42,6 +42,7 @@ static bool isUseOfGetElementPtrInst(LoadInst *ld);
 static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout *dl);
 static Function *getCalledFunction_aux(Instruction* indCall); // From AliasAnalysis/IndirectCallAnal.cpp
 static const Value *getCalledValueOfIndCall(const Instruction* indCall);
+static const User *isGEP(const Value *V);
 
 static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, bool is32);
 
@@ -508,11 +509,21 @@ bool MemoryManagerArm::runOnModule(Module& M) {
 //	}
 //	return false;
 //}
-
 bool MemoryManagerX64::runOnFunction(Function *F, bool is32) {
 
 		for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
 			Instruction *instruction = &*I;
+      /*if(isGEP(instruction)) {
+        printf("************************gep\n");
+        instruction->dump();
+      } else {
+        for (auto Op = I->op_begin(); Op != I->op_end(); ++Op) {
+          if(isGEP(*Op)) {
+            printf("@@@@@@@@@@@@@@@@@@@@@@@gep\n");
+            instruction->dump();
+          }
+        }
+      }*/
 			bool wasBitCasted = false;
 			Type *ty;
 			IRBuilder<> Builder(instruction);
@@ -562,38 +573,34 @@ bool MemoryManagerX64::runOnFunction(Function *F, bool is32) {
 							callInst->setCalledFunction(Free);
 						}
 					}
+          /* @SPECIAL CASE: [converting "mmap" to "uva_mmap"]
+           *  This mmap transformation is a special case.  When a client want
+           *  to initialize global variables in fixed address space
+           *  (0x15000000~some point), he "mmap" first. But server have to know
+           *  and initialize too. That's why we change "mmap" to "uva_mmap".
+           *  TLDR; global variable initialization in initial time should be
+           *  synchronized with server.
+           **/
           else if(callee->getName() == "mmap"){
-            printf("mmap !!!!!!!!!!!!!!!!!! \n");
-            Value *operand0 = instruction->getOperand(0);
-            
             int intAddr = 0;
-            //if(ConstantInt *CI = dyn_cast<ConstantInt>(addr)) {
-            if(operand0->getType()->isPointerTy()) {
-              printf("mmap addr ptr ty\n");
-              if(ConstantExpr *constexp = dyn_cast<ConstantExpr>(operand0)) {
-                if(constexp->isCast()) {
-                  printf("mmap constant expr is cast\n");
-                  Value *addr = constexp->getAsInstruction()->getOperand(0);
-                  if(ConstantInt *CI = dyn_cast<ConstantInt>(addr)) {
-                    printf("get constant int type of first operand of mmap\n");
-                    if(CI->getBitWidth() <= 64) {
-                      intAddr = CI->getZExtValue();
-                    }
-                    printf("mmap addr (%d)(%p)\n", intAddr, (void*)intAddr);
-                    if (0x15000000 <= intAddr && intAddr <= 0x16000000) {
-                      printf("mmap addr (%p) is in fixed global address interval\n", (void*)intAddr);
-                      if(wasBitCasted){
-                        Value *changeTo = Builder.CreateBitCast(Mmap, ty);
-                        callInst->setCalledFunction(changeTo);
-                      } else {
-                        callInst->setCalledFunction(Mmap);
-                      }
-                      //instruction->getFunction()->dump();
-                    }
+            if(ConstantExpr *constexp = dyn_cast<ConstantExpr>(instruction->getOperand(0))) {
+              if(constexp->isCast()) {
+                Instruction *inttoptrInst = constexp->getAsInstruction();
+                Value *addr = inttoptrInst->getOperand(0);
+                if(ConstantInt *CI = dyn_cast<ConstantInt>(addr)) {
+                  if(CI->getBitWidth() <= 64) {
+                    intAddr = CI->getZExtValue();
                   }
-                  //inttoptrInst->eraseFromParent();
-                  if(constexp->use_empty()){
-                    printf("constexp use is empty\n");
+                  if (0x15000000 <= intAddr && intAddr <= 0x16000000) {
+                    printf("mmap addr (%p) is in fixed global address interval\n", (void*)intAddr);
+                    if(wasBitCasted){
+                      Value *changeTo = Builder.CreateBitCast(Mmap, ty);
+                      callInst->setCalledFunction(changeTo);
+                    } else {
+                      callInst->setCalledFunction(Mmap);
+                    }
+                    inttoptrInst->insertBefore(instruction);
+                    instruction->setOperand(0,inttoptrInst);
                   }
                 }
               }
@@ -1058,7 +1065,8 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
 #endif          
           GetElementPtrInst *gepInst = GetElementPtrInst::Create(tyArr, st->getPointerOperand(), vecGepIdx, "ty.arr.ptr", st); 
 #ifdef DEBUG_MM
-          printf("mm: store's operand (size:%d) :\n", storeValueTypeSize);
+          unsigned int arrElemTypeSize = dataLayout.getTypeAllocSize(valueOperand->getType()->getArrayElementType());
+          printf("mm: store's operand (size:%d) (elem:%d) (total:%d):\n", storeValueTypeSize, arrElemTypeSize, storeValueTypeSize*arrElemTypeSize);
           
           valueOperand->dump();
           printf("mm: type id is %d", valueOperand->getType()->getTypeID());
@@ -1248,3 +1256,23 @@ static Function *getCalledFunction_aux(Instruction* indCall){
   else
     assert(0 && "WTF??");
 }
+
+// This is from old version of llvm/lib/Analysis/BasicAliasAnalysis.cpp
+static const User *isGEP(const Value *V) {
+  if (isa<GetElementPtrInst>(V) ||
+      (isa<ConstantExpr>(V) &&
+       cast<ConstantExpr>(V)->getOpcode() == Instruction::GetElementPtr))
+    return cast<User>(V);
+  return 0;
+}
+/*
+static const User *isGEP_(const Value *V) {
+  if (isa<GetElementPtrInst(V))
+    return cast<User>(V);
+  if (Operator *Op = dyn_cast<Operator>(V)) {
+    if (Op->getOpcode() == Instruction::BitCast ||
+        Op->getOpcode() == Instruction::AddrSpaceCast) {
+
+    }
+  }
+}*/
