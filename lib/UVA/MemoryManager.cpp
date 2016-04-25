@@ -352,106 +352,15 @@ void MemoryManagerArm::setFunctions(Module &M) {
 
 	return;
 }
-//bool MemoryManagerX86::runOnModule(Module& M) {
-//	setFunctions(M);
-//	for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
-//		Function* F = &*fi;
-//
-//		if (F->isDeclaration())
-//			continue;
-//		runOnFunction(F);
-//	}
-//	
-//	for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
-//		Function* F = &*fi;
-//		// case of use
-//		StringRef ma("malloc");
-//		StringRef fr("free");
-//		StringRef ca("calloc");
-//		StringRef re("realloc");
-//
-//		if(F->getName().equals(ma)) {
-//			FunctionType* ftype = F->getFunctionType();
-//			Constant* Ma = M.getOrInsertFunction(
-//					"offload_malloc", ftype);
-//			F->replaceAllUsesWith(Ma);
-//		}
-//		if(F->getName().equals(fr)) {
-//			FunctionType* ftype = F->getFunctionType();
-//			Constant* Fr = M.getOrInsertFunction(
-//					"offload_free", ftype);
-//			F->replaceAllUsesWith(Fr);
-//		}
-//		if(F->getName().equals(ca)) {
-//			FunctionType* ftype = F->getFunctionType();
-//			Constant* Ca = M.getOrInsertFunction(
-//					"offload_calloc", ftype);
-//			F->replaceAllUsesWith(Ca);
-//		}
-//		if(F->getName().equals(re)) {
-//			FunctionType* ftype = F->getFunctionType();
-//			Constant* Re = M.getOrInsertFunction(
-//					"offload_realloc", ftype);
-//			F->replaceAllUsesWith(Re);
-//		}
-//	}
-//	return false;
-//}
 
 bool MemoryManagerX64::runOnModule(Module& M) {
 	setFunctions(M);
 	for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
 		Function* F = &*fi;
-		if (F->isDeclaration())
-			continue;
+		if (F->isDeclaration()) continue;
 		runOnFunction(F, false);
 	}
   installLoadStoreHandler(M, Load, Store, false);
-
-
-#if 0
-	for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
-		Function* F = &*fi;
-		// case of use
-		StringRef ma("malloc");
-		StringRef fr("free");
-		StringRef ca("calloc");
-		StringRef re("realloc");
-		StringRef du("strdup"); 
-
-		if(F->getName().equals(ma) || isCppNewOperator(F)) {
-			FunctionType* ftype = F->getFunctionType();
-			Constant* Ma = M.getOrInsertFunction(
-					"offload_malloc", ftype);
-			F->replaceAllUsesWith(Ma);
-		}
-		else if(F->getName().equals(fr) || isCppDeleteOperator(F)) {
-			FunctionType* ftype = F->getFunctionType();
-			Constant* Fr = M.getOrInsertFunction(
-					"offload_free", ftype);
-			F->replaceAllUsesWith(Fr);
-		}
-		else if(F->getName().equals(ca)) {
-			FunctionType* ftype = F->getFunctionType();
-			Constant* Ca = M.getOrInsertFunction(
-					"offload_calloc", ftype);
-			F->replaceAllUsesWith(Ca);
-		}
-		else if(F->getName().equals(re)) {
-			FunctionType* ftype = F->getFunctionType();
-			Constant* Re = M.getOrInsertFunction(
-					"offload_realloc", ftype);
-			F->replaceAllUsesWith(Re);
-		}
-		else if(F->getName().equals(du)) {
-			FunctionType* ftype = F->getFunctionType();
-			Constant* Du = M.getOrInsertFunction(
-					"offload_strdup", ftype);
-			F->replaceAllUsesWith(Du);
-		}
-	}
-#endif
-		
 	return false;
 }
 
@@ -459,8 +368,7 @@ bool MemoryManagerX64S::runOnModule(Module& M) {
 	setFunctions(M);
 	for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
 		Function* F = &*fi;
-		if (F->isDeclaration())
-			continue;
+		if (F->isDeclaration()) continue;
 		runOnFunction(F);
 	}
   installLoadStoreHandler(M, Load, Store, false);
@@ -471,59 +379,17 @@ bool MemoryManagerArm::runOnModule(Module& M) {
 	setFunctions(M);
 	for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
 		Function* F = &*fi;
-		if (F->isDeclaration())
-			continue;
+		if (F->isDeclaration()) continue;
 		runOnFunction(F, true);
 	}
   installLoadStoreHandler(M, Load, Store, true);
   return false;
 }
-//bool MemoryManagerX86::runOnFunction(Function *F) {
-//	StringRef ma("malloc");
-//	StringRef fr("free");
-//	StringRef ca("calloc");
-//	StringRef re("realloc");
-//
-//	// Set up the call Instructions for each instructions
-//	for (Function::iterator fi = F->begin(), fe = F->end(); fi != fe; ++fi) {
-//		for (BasicBlock::iterator ii = fi->begin(), ie = fi->end(); ii != ie; ++ii) {
-//			Instruction *instruction = &*ii;
-//	
-//			// swap the memory function to mine version
-//			if (instruction->getOpcode() == Instruction::Call) {
-//				CallInst *cd = (CallInst*)instruction;
-//
-//				Function* f = cd->getCalledFunction();
-//				if (f != NULL) {
-//					if (f->getName().equals(ma))
-//						cd->setCalledFunction(Malloc);
-//					else if (f->getName().equals(fr))
-//						cd->setCalledFunction(Free);	
-//					else if (f->getName().equals(ca))
-//						cd->setCalledFunction(Calloc);	
-//					else if (f->getName().equals(re))
-//						cd->setCalledFunction(Realloc);	
-//				}
-//			}
-//		}
-//	}
-//	return false;
-//}
+
 bool MemoryManagerX64::runOnFunction(Function *F, bool is32) {
 
 		for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
 			Instruction *instruction = &*I;
-      /*if(isGEP(instruction)) {
-        printf("************************gep\n");
-        instruction->dump();
-      } else {
-        for (auto Op = I->op_begin(); Op != I->op_end(); ++Op) {
-          if(isGEP(*Op)) {
-            printf("@@@@@@@@@@@@@@@@@@@@@@@gep\n");
-            instruction->dump();
-          }
-        }
-      }*/
 			bool wasBitCasted = false;
 			Type *ty;
 			IRBuilder<> Builder(instruction);
@@ -888,21 +754,35 @@ bool MemoryManagerArm::runOnFunction(Function *F, bool is32) {
 							callInst->setCalledFunction(Realloc);
 						}
 					}
+          /* @SPECIAL CASE: [converting "mmap" to "uva_mmap"]
+           *  This mmap transformation is a special case.  When a client want
+           *  to initialize global variables in fixed address space
+           *  (0x15000000~some point), he "mmap" first. But server have to know
+           *  and initialize too. That's why we change "mmap" to "uva_mmap".
+           *  TLDR; global variable initialization in initial time should be
+           *  synchronized with server.
+           **/
           else if(callee->getName() == "mmap"){
-            Value *addr = instruction->getOperand(0);
             int intAddr = 0;
-            if(ConstantInt *CI = dyn_cast<ConstantInt>(addr)) {
-              if(CI->getBitWidth() <= 64) {
-                intAddr = CI->getZExtValue();
-              }
-                printf("mmap addr (%p)\n", (void*)intAddr);
-              if (0x15000000 < intAddr && intAddr <= 0x16000000) {
-                printf("mmap addr (%p) is in fixed global address interval\n", (void*)addr);
-                if(wasBitCasted){
-                  Value *changeTo = Builder.CreateBitCast(Mmap, ty);
-                  callInst->setCalledFunction(changeTo);
-                } else {
-                  callInst->setCalledFunction(Mmap);
+            if(ConstantExpr *constexp = dyn_cast<ConstantExpr>(instruction->getOperand(0))) {
+              if(constexp->isCast()) {
+                Instruction *inttoptrInst = constexp->getAsInstruction();
+                Value *addr = inttoptrInst->getOperand(0);
+                if(ConstantInt *CI = dyn_cast<ConstantInt>(addr)) {
+                  if(CI->getBitWidth() <= 64) {
+                    intAddr = CI->getZExtValue();
+                  }
+                  if (0x15000000 <= intAddr && intAddr <= 0x16000000) {
+                    printf("mmap addr (%p) is in fixed global address interval\n", (void*)intAddr);
+                    if(wasBitCasted){
+                      Value *changeTo = Builder.CreateBitCast(Mmap, ty);
+                      callInst->setCalledFunction(changeTo);
+                    } else {
+                      callInst->setCalledFunction(Mmap);
+                    }
+                    inttoptrInst->insertBefore(instruction);
+                    instruction->setOperand(0,inttoptrInst);
+                  }
                 }
               }
             }
