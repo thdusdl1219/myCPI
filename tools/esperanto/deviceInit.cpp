@@ -673,8 +673,10 @@ void deviceInit(ApiCallback fcn, int id){
   FILE* server_desc = fopen("server_desc","r");
   fscanf(server_desc,"%s %d",server->ip,&(server->port));
 	//sprintf(server->ip,"%s","141.223.197.224");
+  server->port += 1000;
 	//server->port = 20000;
   LOG("server ip = %s, port = %d\n",server->ip,server->port);
+  
 	//int k = dqm->getSendQSize();
 	//LOG("sendQ : %d\n",k);
 
