@@ -25,8 +25,15 @@
 #include "overhead.h"
 #endif
 
-#if defined (INFLATE_READ) || defined (DEFLATE_WRITE)
-#include "zlib/zlib.h"
+#ifdef INFLATE_READ
+  #ifdef DEFLATE_WRITE
+    #include "zlib/zlib.h"
+  #endif
+    #include "zlib/zlib.h"
+#else
+  #ifdef DEFLATE_WRITE
+    #include "zlib/zlib.h"
+  #endif
 #endif
 
 //using namespace std;
