@@ -12,7 +12,7 @@ LEVEL=..
 DIRS=Utilities\
 		 Esperanto\
      Metadata\
-     UVA
+     UVA\
 
 
 include $(LEVEL)/Makefile.common

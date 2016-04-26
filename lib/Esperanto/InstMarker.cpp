@@ -364,16 +364,16 @@ callInst->getArgOperand(i)->dump();
 						//firstArg->dump();
 						if(strcmp("this",calledFunction->arg_begin()->getName().data()) == 0){
 							if(!LFManager.isExist(calledFunction)){
-								Type* type = firstArg->getType();
+								//Type* type = firstArg->getType();
 								//Value* one = ConstantInt::get(Type::getInt32Ty(Context),1);
 								//AllocaInst* alloca = new AllocaInst(type,one,"",callInst);
 								//new StoreInst(firstArg,alloca,callInst);
-								Constant* init = Constant::getNullValue(type);
-								GlobalVariable* globalPointer = new GlobalVariable(M, type,false,GlobalValue::CommonLinkage,init,"");
-								StoreInst* store = new StoreInst(firstArg,globalPointer);
-								store->insertBefore(callInst);
-								printf("Function %s store first arg\n",calledFunction->getName().data());
-								LFManager.insertLocalFunction(calledFunction,false,globalPointer);
+								//Constant* init = Constant::getNullValue(type);
+								//GlobalVariable* globalPointer = new GlobalVariable(M, type,false,GlobalValue::CommonLinkage,init,"");
+								//StoreInst* store = new StoreInst(firstArg,globalPointer);
+								//store->insertBefore(callInst);
+								//printf("Function %s store first arg\n",calledFunction->getName().data());
+								LFManager.insertLocalFunction(calledFunction,false,NULL);
 							}
 						}
 						else{

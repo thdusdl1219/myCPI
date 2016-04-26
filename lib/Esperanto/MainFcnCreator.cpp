@@ -121,6 +121,9 @@ namespace corelab {
 
 		//set constructor
 		StringRef constructorName = espInit.MDTable.getConstructorName(DeviceName);
+    
+		DEBUG(errs() << "devicename is " << DeviceName.data() << "\n");
+		DEBUG(errs() << "origin constructor name is " << constructorName.data() << "\n");
 		DEBUG(errs() << "constructor name is " << getRealNameofFunction(constructorName) << "\n");
 		constructor = M.getFunction(getRealNameofFunction(constructorName));
 		
