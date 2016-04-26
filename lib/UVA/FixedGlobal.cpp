@@ -135,7 +135,7 @@ namespace corelab {
 		/* Convert non-constant globals */
 		size_t sizeGvars = convertToFixedGlobals (setGvars, FIXED_GLOBAL_BASE);
 #ifdef DEBUG_FIXGLB
-    printf("FIXGLB: sizeGvars is %d\n", sizeGvars);
+    printf("FIXGLB: sizeGvars is %ld\n", sizeGvars);
 #endif
 
 		/* Convert constant globals */
@@ -149,12 +149,12 @@ namespace corelab {
      * XXX XXX XXX XXX XXX XXX XXX
     **/
 		//size_t sizeConstGvars = convertToFixedGlobals (setConstGvars, FIXED_CONST_GLOBAL_BASE);
-    size_t sizeConstGvars = 0;
-		uintptr_t uptConstGvarsBegin = (uintptr_t)FIXED_CONST_GLOBAL_BASE;
-		uintptr_t uptConstGvarsEnd = (uintptr_t)FIXED_CONST_GLOBAL_BASE + sizeConstGvars;
+    //size_t sizeConstGvars = 0;
+		//uintptr_t uptConstGvarsBegin = (uintptr_t)FIXED_CONST_GLOBAL_BASE;
+		//uintptr_t uptConstGvarsEnd = (uintptr_t)FIXED_CONST_GLOBAL_BASE + sizeConstGvars;
 	
 #ifdef DEBUG_FIXGLB
-    printf("FIXGLB: runOnModule: FIXED_GLOBAL_BASE~bound (%p ~ %p) / uptConstGvarsBegin~End (%p ~ %p)\n", FIXED_GLOBAL_BASE, (uintptr_t)FIXED_GLOBAL_BASE + sizeGvars, uptConstGvarsBegin, uptConstGvarsEnd);
+    printf("FIXGLB: runOnModule: FIXED_GLOBAL_BASE~bound (%p ~ %p)\n", (void*)FIXED_GLOBAL_BASE, (void*)((uintptr_t)FIXED_GLOBAL_BASE + sizeGvars));
 #endif 
 		/* Set constant range */
 		FunctionType *tyFnVoidVoid = FunctionType::get (
@@ -222,7 +222,7 @@ namespace corelab {
       if (ctor != NULL) {
         std::vector<Value*> actuals(0);
         Instruction *deviceInitCallInst;
-        Instruction *fnGInitzerCallInst;
+        //Instruction *fnGInitzerCallInst;
         InstInsertPt out;
         bool isExistEarlierCallInst;
         for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
@@ -268,21 +268,21 @@ namespace corelab {
 		return false;
 	}
 
-  static void findAllUsesRecursively (Value *V) {
+  static void findAndInsertLoadInstForAllUsesRecursively (Value *V) {
     if (V->user_empty()) return;
     for (auto U : V->users()) {
       if (Instruction *I = dyn_cast<Instruction>(U)) {
         if(isa<LoadInst>(I)) continue;
         I->dump();
         Value *LI = new LoadInst(V, "load.glb", I);
-        for (int i = 0; i < I->getNumOperands(); i++) {
+        for (unsigned int i = 0; i < I->getNumOperands(); i++) {
           if (I->getOperand(i)->getType() == LI->getType()) {
-            printf("in user, this operand (%d)(type:%s) should be replaced\n", i);
+            printf("in user, this operand (%d) should be replaced\n", i);
             I->getOperand(i)->dump();
             I->setOperand(i, LI);
           }
         }
-        findAllUsesRecursively(I);
+        findAndInsertLoadInstForAllUsesRecursively(I);
       }
     }
   }
@@ -318,15 +318,13 @@ namespace corelab {
 			GlobalVariable *gvar = it->first;
 			FixedGlobalVariable *fgvar = it->second;
 			
-      printf("\n\nFIXGLB::convertToFixedGlobals: (%s)->replaceAllUsesWith(%s)\n", gvar->getName().data(), fgvar->getName().data());
 			gvar->replaceAllUsesWith (fgvar);
-      findAllUsesRecursively(fgvar);
-      printf("\n\n...........................................................\n");
+      findAndInsertLoadInstForAllUsesRecursively(fgvar);
 		}	
 
 		sizeTotalGvars = FixedGlobalFactory::getTotalGlobalSize ();
 #ifdef DEBUG_FIXGLB
-    printf("FIXGLB: convertToFixedGlobals: sizeTotalGvars: %d\n", sizeTotalGvars);
+    printf("FIXGLB: convertToFixedGlobals: sizeTotalGvars: %ld\n", sizeTotalGvars);
 #endif
     if (this->isFixGlbDuty)
 		  FixedGlobalFactory::end (isFixGlbDuty);
