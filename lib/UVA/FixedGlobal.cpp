@@ -272,7 +272,7 @@ namespace corelab {
     if (V->user_empty()) return;
     for (auto U : V->users()) {
       if (Instruction *I = dyn_cast<Instruction>(U)) {
-        if(isa<LoadInst>(I)) continue;
+        if(isa<LoadInst>(I) || isa<StoreInst>(I)) continue;
         I->dump();
         Value *LI = new LoadInst(V, "load.glb", I);
         for (unsigned int i = 0; i < I->getNumOperands(); i++) {
@@ -282,7 +282,7 @@ namespace corelab {
             I->setOperand(i, LI);
           }
         }
-        findAndInsertLoadInstForAllUsesRecursively(I);
+        //findAndInsertLoadInstForAllUsesRecursively(I);
       }
     }
   }
@@ -319,7 +319,7 @@ namespace corelab {
 			FixedGlobalVariable *fgvar = it->second;
 			
 			gvar->replaceAllUsesWith (fgvar);
-      findAndInsertLoadInstForAllUsesRecursively(fgvar);
+      //findAndInsertLoadInstForAllUsesRecursively(fgvar);
 		}	
 
 		sizeTotalGvars = FixedGlobalFactory::getTotalGlobalSize ();
