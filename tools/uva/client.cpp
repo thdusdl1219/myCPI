@@ -109,6 +109,7 @@ namespace corelab {
           PROT_WRITE | PROT_READ,
           MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, (off_t) 0);
       LOG("[client] segfaultHandler | mmap page_addr : %p, mmap size: %d | handling  complete\n", (void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), PAGE_SIZE);
+      if (fault_addr < (void*)0x15000000) assert(0);
       void *ptNoConstBegin;
       void *ptNoConstEnd;
       //void *ptConstBegin;
