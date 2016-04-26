@@ -7,6 +7,7 @@
  *
  * **/
 
+#include "llvm/IR/Value.h"
 #include "llvm/IR/TypeFinder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -267,6 +268,24 @@ namespace corelab {
 		return false;
 	}
 
+  static void findAllUsesRecursively (Value *V) {
+    if (V->user_empty()) return;
+    for (auto U : V->users()) {
+      if (Instruction *I = dyn_cast<Instruction>(U)) {
+        if(isa<LoadInst>(I)) continue;
+        I->dump();
+        Value *LI = new LoadInst(V, "load.glb", I);
+        for (int i = 0; i < I->getNumOperands(); i++) {
+          if (I->getOperand(i)->getType() == LI->getType()) {
+            printf("in user, this operand (%d)(type:%s) should be replaced\n", i);
+            I->getOperand(i)->dump();
+            I->setOperand(i, LI);
+          }
+        }
+        findAllUsesRecursively(I);
+      }
+    }
+  }
 	size_t FixedGlobal::convertToFixedGlobals (set<GlobalVariable *> setGvars, void *base) {
 		typedef map<GlobalVariable *, FixedGlobalVariable *> GlobalToFixedMap;
 		typedef pair<GlobalVariable *, FixedGlobalVariable *> GlobalToFixedPair;
@@ -299,7 +318,10 @@ namespace corelab {
 			GlobalVariable *gvar = it->first;
 			FixedGlobalVariable *fgvar = it->second;
 			
+      printf("\n\nFIXGLB::convertToFixedGlobals: (%s)->replaceAllUsesWith(%s)\n", gvar->getName().data(), fgvar->getName().data());
 			gvar->replaceAllUsesWith (fgvar);
+      findAllUsesRecursively(fgvar);
+      printf("\n\n...........................................................\n");
 		}	
 
 		sizeTotalGvars = FixedGlobalFactory::getTotalGlobalSize ();

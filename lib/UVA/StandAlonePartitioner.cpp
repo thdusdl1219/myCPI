@@ -57,7 +57,8 @@ bool StandAlonePartitioner::runOnModule(Module& M) {
         //if (callee->isDeclaration() == false) continue;
         if (callee->getName().find(ClientName) != std::string::npos) {
           printf("This callee (%s) belongs to (%s)\n", F->getName().data(), ClientName.data());
-        } else if (callee->getName().find("device") != std::string::npos) {
+        } else if (callee->getName().find("device") != std::string::npos && 
+            ci->getNumArgOperands() == 0) {
           ci->setCalledFunction(VoidFunc);
         }
       }
