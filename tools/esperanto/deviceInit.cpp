@@ -230,7 +230,7 @@ void produceAsyncFunctionArgs(int functionID, void* buf, int size){
   elem->setIsFunctionCall(true);
   elem->setArgs(buf,size);
   elem->setFunctionID(functionID);
-  elem->setJobID(-1);
+  elem->setJobID(-2);
   elem->setRetVal(NULL,0);
   dqm->insertElementToSendQ(elem);
   pthread_mutex_lock(&sendQHandleLock);
@@ -240,6 +240,8 @@ void produceAsyncFunctionArgs(int functionID, void* buf, int size){
 
 extern "C"
 void produceReturn(int jobID, void* buf, int size){
+  if(jobID == -2)
+    return;
 	DataQElem* elem = new DataQElem();
 	void* ret = (void*)malloc(size);
 	memcpy(ret,buf,size);
@@ -380,7 +382,7 @@ void* listenerFunction(void* arg){
 			char* buffer = (char*)malloc(payloadSize);
 			DataQElem* elem = new DataQElem();
 			write(recvSocket,&ack,1);
-			if(type == 'F'){
+			if(type == 'F' || type == 'A'){
 				recvComplete(recvSocket,buffer,payloadSize);
 				int FID = *(int*)buffer;
 				void* args;
@@ -389,7 +391,11 @@ void* listenerFunction(void* arg){
 				else 
 					args = NULL;
 				
-				int localJobID = drm->getJobID();
+				int localJobID;
+        if(type != 'A')
+          localJobID = drm->getJobID();
+        else
+          localJobID = -2;
 				LOG("-------------------------------------------------------------------------------------\n");
 				LOG("Recv function call (DEVICE) -> localJobID = %d, sourceJobID = %d, functionID = %d\n",localJobID, sourceJobID, FID);
 				hexdump("Args",args,payloadSize-4);
@@ -469,11 +475,15 @@ void* sendQHandlerFunction(void* arg){
 			int argSize = sendElem->getArgsSize();
 			if(sendElem->getIsFunctionCall()){
 				//LOG("DEBUG :: send Q handle function call\n");
-				drm->insertConsumeWait(sendElem->getJobID());
+        if(jobID != -2)
+				  drm->insertConsumeWait(sendElem->getJobID());
 				argSize += 4;
 				memcpy(header+1,&jobID,4);
 				memcpy(header+5,&argSize,4);
-				header[0] = 'F';
+        if(jobID != -2)
+				  header[0] = 'F';
+        else 
+          header[0] = 'A';
 				//sprintf(header,"%c%d%d",'F',sendElem->getJobID(),sendElem->getArgsSize()+4);
 				//LOG("send job ID = %d, send arg size = %d\n",sendElem->getJobID(),sendElem->getArgsSize());
 				//hexdump("send header",header,9);
@@ -507,6 +517,7 @@ void* sendQHandlerFunction(void* arg){
 				LOG("-------------------------------------------------------------------------------------\n");
 				//hexdump("send argument",payload+4,4);
 				//LOG("DEBUG :: send Q function call is ended with %d\n",payloadSize);
+        
 			}
 			else{
 				//LOG("DEBUG :: send Q handle return value\n");

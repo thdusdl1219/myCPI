@@ -53,6 +53,9 @@ namespace corelab {
 		markClassInst(M);
 		markFunctionInst(M);
 		removeMarkedRegion(M);
+
+    for(auto ci : async_fcn_list)
+      DEBUG(errs() << "async function is " << ci->getCalledFunction()->getName().data() << "\n");
 		//buildMetadataTable();
 		//buildDriverTable();
 		return false;
@@ -78,15 +81,30 @@ namespace corelab {
 					Function* calledFunction = callInst->getCalledFunction();
 					if(calledFunction != nullptr){
 						StringRef functionName = getFunctionNameInFunction(calledFunction->getName());
-
+            StringRef className = getClassNameInFunction(calledFunction->getName());
+            if(className.size() != 0)
+            DEBUG(errs() << "Names " << className.data() << " - " << functionName.data() << "\n");
 						if(functionName.size() ==0) continue;
-            if(strcmp(functionName.data(),"EspAsyncFcn") != 0) continue;
+            if(className.size() == 0) continue;
+            //DEBUG(errs() << "async function size is " << database.async_functions.size() << "\n");
+            for(int i=0;i<database.async_functions.size();i++){
+
+              if(strcmp(className.data(),(database.async_functions[i].className)->data()) != 0) continue;
+              if(strcmp(functionName.data(),(database.async_functions[i].funcName)->data()) != 0) continue;
+              async_fcn_list.push_back(callInst);
+              DEBUG(errs() << "matching -----------------------------------\n");
+
+              DEBUG(errs() << "classNames " << className.data() << " - " << (database.async_functions[i].className)->data() << "\n");
+
+              DEBUG(errs() << "function Names " << functionName.data() << " - " << (database.async_functions[i].funcName)->data() << "\n");
+            }
+            /*if(strcmp(functionName.data(),"EspAsyncFcn") != 0) continue;
             DEBUG(errs() << "async function name is " << functionName.data() << "\n");
             for(int i=0;i<callInst->getNumArgOperands();i++){
 
 callInst->getArgOperand(i)->dump();
               DEBUG(errs() << "type of argument is " << callInst->getArgOperand(i)->getType()->getTypeID() << "\n");
-            }
+            }*/
 					}
 					
 				}
@@ -112,6 +130,7 @@ callInst->getArgOperand(i)->dump();
 	}
 
 	StringRef InstMarker::getFunctionNameInFunction(StringRef functionName){
+    //printf("\nfunction name is : %s\n",functionName.data());
 		if(functionName.size() <= 2){
 			return functionName;
 		}
@@ -132,18 +151,38 @@ callInst->getArgOperand(i)->dump();
 			}
 		}
 
-		if(functionName.data()[0] == '_' && functionName.data()[1] == 'Z'){	// cplusplus function
-			if(functionName.data()[2] == 'N')
-				return StringRef("");
+    if(functionName.data()[0] == '_' && functionName.data()[1] == 'Z'){	// cplusplus function
+      int classRegion = 0;
+
+      int count_ = 0;
+      if(functionName.data()[2] == 'N'){
+        int classNameLen = 0;
+        for(int i=0;i<(int)(functionName.size()-3);i++){
+          if(47 < functionName[i+3] && functionName[i+3] <58){
+            //printf("%c : %d\n",functionName[i],functionName[i]);
+            classNameLen *= 10;
+            //printf("className length *10 = %d\n",classNameLen);
+            classNameLen += (int)(functionName[i+3]-48);
+            //printf("className length = %d\n",classNameLen);
+            count_++;
+          }
+          else
+            break;
+        }
+        classRegion = 3 + count_ + classNameLen;
+        //printf("class Region length : %d\n",classRegion);
+      }
 			StringRef tempName = functionName.substr(2,functionName.size()-2);
-			//printf("temp name :%s\n",tempName.data());
+      if(count_ > 0)
+        tempName = functionName.substr(classRegion,functionName.size()-classRegion);
+			printf("temp name :%s\n",tempName.data());
 			std::string ret = "";
 			int classNameLength=0;
 			int count = 0;
 			bool isNum = true;
 			for(int i=0;i<(int)tempName.size();i++){
 				if(47 < tempName[i] && tempName[i] <58){
-					//printf("%c : %d\n",fName[i],fName[i]);
+					//printf("%c : %d\n",tempName[i],tempName[i]);
 					classNameLength *= 10;
 					//printf("className length *10 = %d\n",classNameLength);
 					classNameLength += (int)(tempName[i]-48);
@@ -161,7 +200,10 @@ callInst->getArgOperand(i)->dump();
 					//printf("className length : %d\n",i);
 					ret.push_back(tempName[count+i]);
 				}
-				return StringRef(ret);
+        char* ret_temp = (char*)malloc(classNameLength);
+        strcpy(ret_temp,ret.c_str());
+        printf("function name is %s\n",ret_temp);
+				return StringRef(ret_temp);
 			}
 			else{
 				if(!isNum){

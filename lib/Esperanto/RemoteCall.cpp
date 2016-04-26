@@ -105,6 +105,7 @@ void RemoteCall::setFunctions(Module &M) {
 void RemoteCall::substituteRemoteCall(Module& M) {
 	//LoadNamer& loadNamer = getAnalysis< LoadNamer >();
 	EspInitializer& esp = getAnalysis< EspInitializer >();
+  InstMarker& im = getAnalysis< InstMarker >();
 	typedef Module::iterator FF;
 	typedef Function::iterator BB;
 	typedef BasicBlock::iterator II;
@@ -165,9 +166,19 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 				}
 				localFunctionTable[calledFunction] = false;	
 
-				Instruction* jobId = createJobId(calledFunction, targetInstruction);
-				createProduceFArgs(calledFunction, targetInstruction, (Value*)jobId, targetInstruction);
-				createConsumeReturn(calledFunction, (Value*)jobId, targetInstruction);
+        bool isAsync = false;
+        for(auto async_ci : im.async_fcn_list){
+          if(ci == async_ci)
+            isAsync = true;
+        }
+        if(isAsync){
+          createProduceAsyncFArgs(calledFunction, targetInstruction, targetInstruction);        
+        }
+        else{
+          Instruction* jobId = createJobId(calledFunction, targetInstruction);
+          createProduceFArgs(calledFunction, targetInstruction, (Value*)jobId, targetInstruction);
+          createConsumeReturn(calledFunction, (Value*)jobId, targetInstruction);
+        }
 			}
 		}
 	}
@@ -176,6 +187,69 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 	for(auto &i : eraseList) {
 		i->eraseFromParent();
 	}
+}
+
+void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instruction *insertBefore) {
+	
+	//EsperantoNamer& esperantoNamer = getAnalysis< EsperantoNamer >();
+	EspInitializer& esp = getAnalysis< EspInitializer >();
+	InstMarker& iMarker = getAnalysis< InstMarker >();
+	Module *M = f->getParent();
+	LLVMContext &Context = M->getContext();
+	const DataLayout &dataLayout = M->getDataLayout();
+	std::vector<Value*> actuals(0);
+
+	CallInst* ci = (CallInst*)I;
+	size_t argSize = f->arg_size();
+	Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+	int sum = 0;
+	bool isFirst = true;	
+  int functionId = esp.functionTable.getFunctionID(f);
+
+
+	// for each func args, add it arg list.
+	for (size_t i = 0; i < argSize; ++i) {
+		Value* argValue = ci->getArgOperand(i); // original argument
+		//if(strcmp(argValue->getName().data(), "this") == 0) continue; // XXX: pass "this" argument
+		
+		bool isClassMember = false;
+		//std::map<StringRef,GlobalVariable*>::iterator it;
+		/*for(it = classMatching.begin();it!=classMatching.end();it++){
+			if(strcmp((esperantoNamer.getClassNameInFunction(f->getName())).c_str(),(it->first).data())==0)
+				isClassMember = true;
+		}*/
+		std::string className = iMarker.getClassNameInFunction(f->getName());
+		if(className.size() != 0)
+			isClassMember = true;
+		// if(isClassMember && i==0) continue;
+		Type* type = argValue->getType(); // original type
+		const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type); // allocation type size
+		sum += (int)sizeInBits;
+		Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+		AllocaInst* alloca = new AllocaInst(type, one, "", insertBefore); // allocate buffer on stack
+		if(isFirst) {
+			pointer = (Value*) alloca;
+			isFirst = false;
+		}
+		new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
+	}
+	sum /= 8;
+	//InstInsertPt out = InstInsertPt::Before(insertBefore);
+	Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+	
+	// XXX:'sum' can occur align problem.
+	actuals.resize(3);
+	actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), functionId);
+	//actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
+	actuals[1] = EspUtils::insertCastingBefore(pointer,temp,&dataLayout,insertBefore);
+	actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), sum);
+  
+	CallInst* new_ci = CallInst::Create(ProduceAsyncFunctionArgument,  actuals, "", insertBefore);
+  removedCallInst.push_back(I);
+	substitutedCallInst.push_back(new_ci);
+
+
+	return;
 }
 
 Instruction* RemoteCall::createJobId(Function* f, Instruction *insertBefore){

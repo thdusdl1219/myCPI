@@ -16,6 +16,11 @@ namespace corelab
 		StringRef* arg3;
 	};
 
+  struct AsyncFunc{
+    StringRef* className;
+    StringRef* funcName;
+  };
+
 	struct DriverFunctionInfo{
 		StringRef* driverName;
 		StringRef* functionName;
@@ -214,7 +219,7 @@ namespace corelab
 
 			//std::map<StringRef*,struct MetadataInfo> metadataTable;
 			std::map<StringRef*,struct DriverClassInfo> driverTable;
-      std::vector<StringRef> async_functions;
+      std::vector<struct AsyncFunc> async_functions;
 			ProtocolTable PTable;	
 			DeviceInfoTable DITable;
 			MetadataTable MDTable;

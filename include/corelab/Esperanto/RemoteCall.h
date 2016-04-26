@@ -32,6 +32,7 @@ namespace corelab {
 				
 			Instruction* createJobId(Function* f, Instruction *insertBefore);
 			void createProduceFArgs(Function* f, Instruction* I, Value* jobId, Instruction* insertBefore);
+      void createProduceAsyncFArgs(Function* f, Instruction* I, Instruction* insertBefore);
 			Instruction* createConsumeReturn(Function* f, Value* JobId, Instruction* I);
 			
 			vector<Instruction*> removedCallInst;

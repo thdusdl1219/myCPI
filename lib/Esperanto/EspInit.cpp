@@ -211,10 +211,17 @@ namespace corelab {
 			strcpy(temp,readBuffer);
 			StringRef* metadataType = new StringRef(temp);
       if(strcmp(readBuffer,"EspAsync") ==0 ){
+        struct AsyncFunc async_info;
         c = fscanf(metadataFile,"%s",readBuffer);
         temp = (char*)malloc(100);
         strcpy(temp,readBuffer);
-        async_functions.push_back(StringRef(temp));
+        async_info.className = new StringRef(temp);
+        c = fscanf(metadataFile,"%s",readBuffer);
+        temp = (char*)malloc(100);
+        strcpy(temp,readBuffer);
+        async_info.funcName = new StringRef(temp);
+        async_functions.push_back(async_info);
+        printf("inserted async info : class - %s / func - %s\n",(async_info.className)->data(),(async_info.funcName)->data());
       }
       else if(strcmp(readBuffer,"EspDevDecl") == 0){
 				struct MetadataInfo mi;
