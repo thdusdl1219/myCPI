@@ -326,19 +326,31 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
 			isFirst = false;
 		}
 		new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
+    actuals.resize(0);
+    actuals.resize(3);
+
+	  Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+	  InstInsertPt out = InstInsertPt::Before(insertBefore);
+    actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+    actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+    actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
+
+    CallInst::Create(PushArgument,actuals,"",insertBefore);
 	}
 	sum /= 8;
-	//InstInsertPt out = InstInsertPt::Before(insertBefore);
-	Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
 	
 	// XXX:'sum' can occur align problem.
-	actuals.resize(3);
+  actuals.resize(0);
+	actuals.resize(2);
 	actuals[0] = jobId;
 	//actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
-	actuals[1] = EspUtils::insertCastingBefore(pointer,temp,&dataLayout,insertBefore);
-	actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), sum);
-	CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
+	actuals[1] = ConstantInt::get(Type::getInt32Ty(Context),rc_id);
+	//actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), sum);
+	CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
+  removedCallInst.push_back(I);
+	substitutedCallInst.push_back(new_ci);
 
+  rc_id++;
 	return;
 }
 

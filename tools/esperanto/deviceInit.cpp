@@ -268,8 +268,10 @@ void produceReturn(int jobID, void* buf, int size){
 }
 
 extern "C"
-void produceFunctionArgs(int jobID, void* buf, int size){
+void produceFunctionArgs(int jobID, int rc_id){
 	LOG("produce function Args / jobID = %d\n",jobID);
+int size = drm->getArgsTotalSize(rc_id); 
+  void* buf = drm->getArgsOfRC(rc_id);
 	DataQElem* elem = new DataQElem();
 	
 		LOG("produceFArgs device\n");
