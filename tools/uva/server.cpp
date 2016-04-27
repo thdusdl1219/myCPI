@@ -24,20 +24,23 @@ namespace corelab {
       LOAD_REQ = 2,
       STORE_REQ = 4,
       MMAP_REQ = 6,
-      GLOBAL_SEGFAULT_REQ = 8
+      GLOBAL_SEGFAULT_REQ = 8,
+      GLOBAL_INIT_COMPLETE_SIG = 10
     };
     static QSocket* socket;
     pthread_t openThread; 
-
     
     extern "C" void UVAServerInitialize() {
         LOG("UVA manager(server) : initialize\n");
-        pthread_create(&openThread, NULL, ServerOpenRoutine, NULL); 
+        RuntimeClientConnTb = new map<int *, QSocket *>(); 
+        assert(!isInitEnd && "When server init, isInitEnd value should be false.");
+        pthread_create(&openThread, NULL, ServerOpenRoutine, NULL);
     }
 
     extern "C" void UVAServerFinalize() {
         pthread_join(openThread, NULL);
     }
+
     void* ServerOpenRoutine(void *) {
       LOG("UVA manager(server) : after pthread_create serveropenroutine\n");
       char port[10];
@@ -57,6 +60,13 @@ namespace corelab {
     }
 
     void* ClientRoutine(void * data) {
+      printf("[SERVER] client Routine called (%d)\n", *((int*)data));
+      (*RuntimeClientConnTb)[(int*)data] = socket; 
+      if (isInitEnd) {
+        printf("[SERVER] Oh.. you are late (This client comes in after glb init finished\n");
+        socket->pushWordF(1, (int*)data);
+        socket->sendQue((int*)data);
+      }
       int *clientId = (int *)data;
       pthread_mutex_t mutex=PTHREAD_MUTEX_INITIALIZER;
       int mode;
@@ -193,11 +203,25 @@ namespace corelab {
             //socket->takeRangeF(&ptConstBegin, sizeof(void*), clientId);
             //socket->takeRangeF(&ptConstEnd, sizeof(void*), clientId);
             
+            socket->pushWordF(9, clientId); // ACK
             socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptNoConstBegin))),
                 (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, clientId);
             //socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptConstBegin))), (uintptr_t)ptConstEnd - (uintptr_t)ptConstBegin, clientId);
             socket->sendQue(clientId);
             LOG("[server] GLOBAL_SEGFALUT_REQ process end (%d)\n", *clientId);
+            break;
+          case GLOBAL_INIT_COMPLETE_SIG:
+            LOG("[server] get GLOBAL_INIT_COMPLETE_SIG from client (%d)\n", *clientId);
+            isInitEnd = true;
+            for(auto &i : *RuntimeClientConnTb) {
+              if(*(i.first) != *clientId) {
+                LOG("[server] send 'start permission' signal to client (%d)\n", *(i.first));
+                socket->pushWordF(1, i.first);
+                socket->sendQue(i.first);
+              }
+            }
+            socket->pushWordF(11, clientId);
+            socket->sendQue(clientId);
             break;
           default:
             assert(0 && "wrong request mode");

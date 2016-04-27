@@ -26,6 +26,11 @@ void UVAClient::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
 
+// command line argument
+static cl::opt<string> GVInitializer("gv_initializer", 
+    cl::desc("Specify Global variable initializer (1: gv_initializer, 0: not)"), 
+      cl::value_desc("global initializer in charge"));
+
 bool UVAClient::runOnModule(Module& M) {
   setFunctions(M);
 
@@ -53,6 +58,7 @@ void UVAClient::setFunctions(Module& M) {
   UVAClientInit = M.getOrInsertFunction(
       "UVAClientInitialize",
       Type::getVoidTy(Context),
+      Type::getInt32Ty(Context),
       (Type*)0);
 
   UVAClientFinal = M.getOrInsertFunction(
@@ -75,7 +81,13 @@ void UVAClient::setIniFini(Module& M) {
   BasicBlock *entry = BasicBlock::Create(Context, "entry", initForCtr);
 	BasicBlock *initBB = BasicBlock::Create(Context, "init", initForCtr); 
 
-  CallInst::Create(UVAClientInit, actuals, "", entry); 
+  std::vector<Value *> vecArgs(0);
+  vecArgs.resize(1);
+  if (strcmp(GVInitializer.data(),"1") == 0)
+    vecArgs.push_back(ConstantInt::get(Type::getInt32Ty(Context), 1));
+  else
+    vecArgs.push_back(ConstantInt::get(Type::getInt32Ty(Context), 0)); 
+  CallInst::Create(UVAClientInit, vecArgs, "", entry); 
 	BranchInst::Create(initBB, entry); 
 	//Instruction *termIni = ReturnInst::Create(Context, 0, initBB);
 	ReturnInst::Create(Context, 0, initBB);
@@ -133,10 +145,19 @@ void UVAClient::modifyIniFini(Module &M) {
       }
     }
   }
-  if (isExistEariler) {
-    out << CallInst::Create(UVAClientInit, actuals, "");
+  std::vector<Value *> vecArgs(0);
+  vecArgs.resize(0);
+  vecArgs.resize(1);
+  if (strcmp(GVInitializer.data(),"1") == 0) {
+    vecArgs[0] = (ConstantInt::get(Type::getInt32Ty(Context), 1));
   } else {
-    CallInst::Create(UVAClientInit, actuals, "", bbOfCtor->getFirstNonPHI());
+    vecArgs[0] = (ConstantInt::get(Type::getInt32Ty(Context), 0)); 
+  }
+
+  if (isExistEariler) {
+    out << CallInst::Create(UVAClientInit, vecArgs, "");
+  } else {
+    CallInst::Create(UVAClientInit, vecArgs, "", bbOfCtor->getFirstNonPHI());
   }
 
   if (bbOfDtor->getFirstNonPHI() != NULL) {

@@ -162,7 +162,10 @@ namespace corelab {
 		Function *fnDeclCRange = Function::Create (tyFnVoidVoid, GlobalValue::InternalLinkage, 
 				"__decl_const_global_range__", pM);
 		BasicBlock *blkDeclCRange = BasicBlock::Create (pM->getContext (), "initzer", fnDeclCRange);
-		
+		/*Function *fnSendInitCompleteSignal = Function::Create (tyFnVoidVoid, GlobalValue::InternalLinkage, 
+				"__send_init_complete_signal__", pM);
+		BasicBlock *blkSendInitCompleteSignal = BasicBlock::Create (pM->getContext (), "sendsignal", fnSendInitCompleteSignal);
+		*/
 		Type *tyVoid = Type::getVoidTy (M.getContext ());
 		Type *tyInt8Pt = Type::getInt8PtrTy (M.getContext ());
 		Type *tyUintPtr = Type::getIntNTy (M.getContext (),
@@ -170,6 +173,7 @@ namespace corelab {
 
 		Constant *cnstOffSetCRange = M.getOrInsertFunction ("UVAUtilSetConstantRange",
 				tyVoid, tyInt8Pt, tyInt8Pt/*, tyInt8Pt, tyInt8Pt*/, NULL);
+    Constant *cnstSendInitCompleteSignal = M.getOrInsertFunction ("sendInitCompleteSignal", tyVoid, NULL);
 
 		vector<Value *> vecSetCRangeArgs;
 		vecSetCRangeArgs.push_back (ConstantExpr::getCast (Instruction::IntToPtr,
@@ -193,6 +197,7 @@ namespace corelab {
         Instruction *deviceInitCallInst;
         Instruction *fnGInitzerCallInst;
         InstInsertPt out;
+        InstInsertPt out2;
         bool isExistEarlierCallInst;
         for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
           if(isa<CallInst>(&*I)) {
@@ -206,15 +211,18 @@ namespace corelab {
               printf("fnGInitzer exists!\n");
               fnGInitzerCallInst = &*I;
               out = InstInsertPt::Before(fnGInitzerCallInst);
+              out2 = InstInsertPt::After(fnGInitzerCallInst);
               break;
             }
           }
         }
         if (isExistEarlierCallInst) {
           out << CallInst::Create(fnDeclCRange, actuals, "");
+          out2 << CallInst::Create(cnstSendInitCompleteSignal, actuals, "");
         } else {
           BasicBlock *bbOfCtor = &(ctor->front());
-          CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
+          CallInst *CI = CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
+          CallInst::Create(cnstSendInitCompleteSignal, actuals, "", CI);
         }
       }
     } else { // client who have no duty to initalize fixed global variables. But have to call fnDeclCRange.

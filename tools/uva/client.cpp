@@ -3,6 +3,7 @@
 #include <cassert>
 #include <unistd.h>
 #include <csignal>
+#include <stdint.h>
 
 #include "client.h"
 #include "qsocket.h"
@@ -27,7 +28,7 @@ namespace corelab {
 		struct sigaction segvAction;
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused);
 
-    extern "C" void UVAClientInitialize() {
+    extern "C" void UVAClientInitialize(uint32_t isGVInitializer) {
       char ip[20];
       char port[10];
 
@@ -83,13 +84,16 @@ namespace corelab {
 #endif
 
       /* For synchronized clients start */
-      /*Msocket->receiveQue();
-      int mayIstart = Msocket->takeWordF();
-      if (mayIstart == 1) {
-        return;
-      } else {
-        assert(false && "[CLIENT] server doesn't allow me start.\n");
-      }*/
+      if(!isGVInitializer) {
+        Msocket->receiveQue();
+        int mayIstart = Msocket->takeWordF();
+        if (mayIstart == 1) {
+          printf("[CLIENT] I got start permission !!\n");
+          return;
+        } else {
+          assert(false && "[CLIENT] server doesn't allow me start.\n");
+        }
+      }
     }
     extern "C" void UVAClientFinalize() {
       // Msocket->sendQue();
@@ -128,6 +132,8 @@ namespace corelab {
         Msocket->sendQue();
 
         Msocket->receiveQue();
+        int ack = Msocket->takeWordF();
+        assert(ack == 9 && "wrong!!!");
         Msocket->takeRangeF(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin);
         //Msocket->takeRangeF(ptConstBegin, (uintptr_t)ptConstEnd - (uintptr_t)ptConstBegin);
         LOG("[client] segfaultHandler | get global variables done\n");
@@ -154,6 +160,16 @@ namespace corelab {
 
     extern "C" void uva_store(void *addr, size_t len, void *data) {
       UVAManager::storeHandler(Msocket, addr, len, data);
+    }
+
+    extern "C" void sendInitCompleteSignal() {
+      Msocket->pushWordF(10); // Init complete signal: 9
+      Msocket->sendQue();
+
+      Msocket->receiveQue();
+      int ack = Msocket->takeWordF(); 
+      assert(ack == 11 && "ack!=11: Server says \"Hey, I didn't get global initialization complete signal correctly. \"");
+      return;
     }
   }
 }
