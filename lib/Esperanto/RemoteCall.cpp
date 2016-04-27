@@ -209,7 +209,7 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
 
 	// for each func args, add it arg list.
 	for (size_t i = 0; i < argSize; ++i) {
-		Value* argValue = ci->getArgOperand(i); // original argument
+		Value* argValue = ci->getArgOperand(argSize-1-i); // original argument
 		//if(strcmp(argValue->getName().data(), "this") == 0) continue; // XXX: pass "this" argument
 		
 		bool isClassMember = false;
@@ -227,7 +227,7 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
 		sum += (int)sizeInBits;
 		Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
 		AllocaInst* alloca = new AllocaInst(type, one, "", insertBefore); // allocate buffer on stack
-		if(isFirst) {
+		if(i == (argSize-1)) {
 			pointer = (Value*) alloca;
 			isFirst = false;
 		}
@@ -298,7 +298,7 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
 		sum += (int)sizeInBits;
 		Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
 		AllocaInst* alloca = new AllocaInst(type, one, "", insertBefore); // allocate buffer on stack
-		if(isFirst) {
+		if(i == (argSize-1)) {
 			pointer = (Value*) alloca;
 			isFirst = false;
 		}
