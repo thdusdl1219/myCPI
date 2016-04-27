@@ -23,8 +23,8 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/Passes.h"
 
-//#include "corelab/Utilities/InstInsertPt.h"
-//#include "corelab/Utilities/Casting.h"
+#include "corelab/Utilities/InstInsertPt.h"
+#include "corelab/Utilities/Casting.h"
 //#include "corelab/Metadata/NamedMetadata.h"
 //#include "corelab/Metadata/Metadata.h"
 //#include "corelab/Metadata/LoadNamer.h"
@@ -242,8 +242,11 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
 		new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
     actuals.resize(0);
     actuals.resize(3);
+   
+	  Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+	  InstInsertPt out = InstInsertPt::Before(insertBefore);
     actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
-    actuals[1] = (Value*)alloca;
+    actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
     actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
 
     CallInst::Create(PushArgument,actuals,"",insertBefore);
@@ -256,12 +259,10 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
   }*/
 	sum /= 8;
   //AllocaInst* alloca = new AllocaInst(
-	//InstInsertPt out = InstInsertPt::Before(insertBefore);
   actuals.resize(0);
-	Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
 	
 	// XXX:'sum' can occur align problem.
-	actuals.resize(3);
+	actuals.resize(2);
 	actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), functionId);
 	//actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
 	actuals[1] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
