@@ -881,7 +881,7 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
       Instruction *instruction = &*I;
       // For each load instructions
       if(LoadInst *ld = dyn_cast<LoadInst>(instruction)) {
-        if(isUseOfGetElementPtrInst(ld) == false){
+        //if(isUseOfGetElementPtrInst(ld) == false){
           args.resize (2);
           Value *addr = ld->getPointerOperand();
           Value *temp;
@@ -904,7 +904,7 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
           args[0] = addr;
           args[1] = loadTypeSize_; 
           CallInst::Create(Load, args, "", ld);
-        }
+        //}
       }
       // For each store instructions
       else if (StoreInst *st = dyn_cast<StoreInst>(instruction)) {
@@ -964,6 +964,9 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
           args[0] = addr;
           args[1] = storeValueTypeSize_;
           args[2] = valueOperand;
+          st->dump();
+          printf("getAlignment() : %ld\n", st->getAlignment()); 
+          //st->setAlignment(1);
           CallInst::Create(Store, args, "", st);
         }
       }
