@@ -81,13 +81,15 @@ namespace corelab {
 			int hr = sigaction (SIGSEGV, &segvAction, NULL);
 			assert (hr != -1);
 #endif
-      //Msocket->receiveQue();
-      //int mayIstart = Msocket->takeWordF();
-      //if (mayIstart == 1) {
-      //  return;
-      //} else {
-      //  assert(false && "[CLIENT] server doesn't allow me start.\n");
-      //}
+
+      /* For synchronized clients start */
+      Msocket->receiveQue();
+      int mayIstart = Msocket->takeWordF();
+      if (mayIstart == 1) {
+        return;
+      } else {
+        assert(false && "[CLIENT] server doesn't allow me start.\n");
+      }
     }
     extern "C" void UVAClientFinalize() {
       // Msocket->sendQue();
