@@ -1,19 +1,14 @@
 #include "deviceRuntimeManager.h"
 #include <stdio.h>
-map<int,bool>* consumeTable = new map<int,bool>(); // <jobID, isReturnValueArrived>
-char dumm1[1000];
-map<int,int>* runningJobs = new map<int,int>(); // <jobID, functionID>
+map<int,bool>* consumeTable; // <jobID, isReturnValueArrived>
+map<int,int>* runningJobs; // <jobID, functionID>
 
-char dumm5[1000];
-map<int,int>* jobIDMap = new map<int,int>(); // <local job id, source job id>
+map<int,int>* jobIDMap; // <local job id, source job id>
 
-char dumm4[1000];
-map<int,void*>* argsTable = new map<int,void*>();
+map<int,void*>* argsTable;
 
-char dumm3[1000];
-map<int,void*>* returnValueTable = new map<int,void*>(); //<jobID, returnValue>
+map<int,void*>* returnValueTable; //<jobID, returnValue>
 
-char dumm2[1000];
 
 
 DeviceRuntimeManager::DeviceRuntimeManager(){
@@ -30,6 +25,11 @@ DeviceRuntimeManager::DeviceRuntimeManager(){
 	pthread_mutex_init(argsLock,NULL);
 	pthread_mutex_init(runningJobsLock,NULL);
 	pthread_mutex_init(returnValueTableLock,NULL);
+  consumeTable = new map<int,bool>();
+  runningJobs = new map<int,int>();
+  jobIDMap = new map<int,int>();
+  argsTable = new map<int,void*>();
+  returnValueTable = new map<int,void*>();
 }
 
 int DeviceRuntimeManager::getJobID(){
@@ -53,10 +53,8 @@ void DeviceRuntimeManager::insertRunningJob(int jobID, int functionID){
 	}*/
 	pthread_mutex_lock(runningJobsLock);
 	//printf("insert running job before\n");
-	fflush(stdout);
 	(*runningJobs)[jobID] = functionID;
 	//printf("insert running job after\n");
-	fflush(stdout);
 	pthread_mutex_unlock(runningJobsLock);
 }
 
