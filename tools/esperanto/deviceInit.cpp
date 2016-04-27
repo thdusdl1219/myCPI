@@ -226,6 +226,7 @@ int generateJobId(int functionID){
 extern "C" 
 void produceAsyncFunctionArgs(int functionID, void* buf, int size){
   LOG("Async function call fid = %d\n",functionID);
+  hexdump("async args",(void*)((char*)buf-16),2*size);
   DataQElem* elem = new DataQElem();
   elem->setIsFunctionCall(true);
   elem->setArgs(buf,size);

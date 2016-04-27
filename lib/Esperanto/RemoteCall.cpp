@@ -280,7 +280,7 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
 	bool isFirst = true;	
 	// for each func args, add it arg list.
 	for (size_t i = 0; i < argSize; ++i) {
-		Value* argValue = ci->getArgOperand(i); // original argument
+		Value* argValue = ci->getArgOperand(argSize-1-i); // original argument
 		//if(strcmp(argValue->getName().data(), "this") == 0) continue; // XXX: pass "this" argument
 		
 		bool isClassMember = false;
