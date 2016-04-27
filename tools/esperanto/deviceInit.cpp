@@ -224,9 +224,16 @@ int generateJobId(int functionID){
 }
 
 extern "C" 
-void produceAsyncFunctionArgs(int functionID, void* buf, int size){
+void pushArgument(int rc_id, void* buf, int size){
+  drm->insertArgsInfo(rc_id,buf, size); 
+}
+
+extern "C" 
+void produceAsyncFunctionArgs(int functionID, int rc_id){
   LOG("Async function call fid = %d\n",functionID);
-  hexdump("async args",(void*)((char*)buf-16),3*size);
+  int size = drm->getArgsTotalSize(rc_id); 
+  void* buf = drm->getArgsOfRC(rc_id);
+  hexdump("async args",buf,size);
   DataQElem* elem = new DataQElem();
   elem->setIsFunctionCall(true);
   elem->setArgs(buf,size);

@@ -25,6 +25,7 @@ namespace corelab {
       Constant* ProduceAsyncFunctionArgument;
 			Constant* ProduceFunctionArgument;
 			Constant* ConsumeReturn;
+      Constant* PushArgument;
 			void getClassPointer(Module& M);
 			void setFunctions(Module& M);
 			void substituteRemoteCall(Module& M);
@@ -38,6 +39,7 @@ namespace corelab {
 			vector<Instruction*> removedCallInst;
 			vector<Instruction*> substitutedCallInst;
 			void removeOriginalCallInst();
+      int rc_id = 0;
 	};
 }
 

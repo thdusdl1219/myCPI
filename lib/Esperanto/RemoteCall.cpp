@@ -67,6 +67,15 @@ bool RemoteCall::runOnModule(Module& M) {
 void RemoteCall::setFunctions(Module &M) {
 	LLVMContext &Context = M.getContext();
 
+  // void pushArgument(int rc_id, void* buf, int size);
+  PushArgument = M.getOrInsertFunction(
+      "pushArgument",
+      Type::getVoidTy(Context),
+      Type::getInt32Ty(Context),
+      Type::getInt8PtrTy(Context),
+      Type::getInt32Ty(Context),
+      (Type*)0);
+
 	// int generateJobId(int);
 	GenerateJobId = M.getOrInsertFunction(
 			"generateJobId",
@@ -79,7 +88,6 @@ void RemoteCall::setFunctions(Module &M) {
       "produceAsyncFunctionArgs",
       Type::getVoidTy(Context),
       Type::getInt32Ty(Context),
-			Type::getInt8PtrTy(Context),
 			Type::getInt32Ty(Context),
 			(Type*)0);
 
@@ -206,18 +214,18 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
 	bool isFirst = true;	
   int functionId = esp.functionTable.getFunctionID(f);
 
-
+  
 	// for each func args, add it arg list.
 	for (size_t i = 0; i < argSize; ++i) {
-		Value* argValue = ci->getArgOperand(argSize-1-i); // original argument
+		Value* argValue = ci->getArgOperand(i); // original argument
 		//if(strcmp(argValue->getName().data(), "this") == 0) continue; // XXX: pass "this" argument
 		
 		bool isClassMember = false;
 		//std::map<StringRef,GlobalVariable*>::iterator it;
-		/*for(it = classMatching.begin();it!=classMatching.end();it++){
-			if(strcmp((esperantoNamer.getClassNameInFunction(f->getName())).c_str(),(it->first).data())==0)
-				isClassMember = true;
-		}*/
+		//for(it = classMatching.begin();it!=classMatching.end();it++){
+		//	if(strcmp((esperantoNamer.getClassNameInFunction(f->getName())).c_str(),(it->first).data())==0)
+		//		isClassMember = true;
+		//}
 		std::string className = iMarker.getClassNameInFunction(f->getName());
 		if(className.size() != 0)
 			isClassMember = true;
@@ -232,22 +240,36 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
 			isFirst = false;
 		}
 		new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
+    actuals.resize(0);
+    actuals.resize(3);
+    actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+    actuals[1] = (Value*)alloca;
+    actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
+
+    CallInst::Create(PushArgument,actuals,"",insertBefore);
 	}
+  /*for(size_t i=0; i<argSize; ++i){
+    Value* argValue = ci->getArgOperand(i);
+    Type* type = argValue->getType();
+    const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type);
+    sum += (int)sizeInBits;
+  }*/
 	sum /= 8;
+  //AllocaInst* alloca = new AllocaInst(
 	//InstInsertPt out = InstInsertPt::Before(insertBefore);
+  actuals.resize(0);
 	Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
 	
 	// XXX:'sum' can occur align problem.
 	actuals.resize(3);
 	actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), functionId);
 	//actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
-	actuals[1] = EspUtils::insertCastingBefore(pointer,temp,&dataLayout,insertBefore);
-	actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), sum);
+	actuals[1] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
   
 	CallInst* new_ci = CallInst::Create(ProduceAsyncFunctionArgument,  actuals, "", insertBefore);
   removedCallInst.push_back(I);
 	substitutedCallInst.push_back(new_ci);
-
+  rc_id++;
 
 	return;
 }

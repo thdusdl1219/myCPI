@@ -13,6 +13,7 @@ map<int,void*>* returnValueTable; //<jobID, returnValue>
 
 DeviceRuntimeManager::DeviceRuntimeManager(){
 	jobID = 0;
+	argsListLock = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
 	jobIDLock = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
 	consumeTableLock = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
 	runningJobsLock = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
@@ -20,6 +21,7 @@ DeviceRuntimeManager::DeviceRuntimeManager(){
 	argsLock = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
 	jobIDMapLock = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t));
 	pthread_mutex_init(jobIDLock,NULL);
+	pthread_mutex_init(argsListLock,NULL);
 	pthread_mutex_init(jobIDMapLock,NULL);
 	pthread_mutex_init(consumeTableLock,NULL);
 	pthread_mutex_init(argsLock,NULL);
@@ -57,6 +59,59 @@ void DeviceRuntimeManager::insertRunningJob(int jobID, int functionID){
 	//printf("insert running job after\n");
 	pthread_mutex_unlock(runningJobsLock);
 }
+
+void DeviceRuntimeManager::insertArgsInfo(int rc_id, void* buf, int size){
+  pthread_mutex_lock(argsListLock);
+
+  if(args_list.find(rc_id) == args_list.end()){
+    std::vector<struct args_info>* argsInfo = new std::vector<struct args_info>();
+    //std::vector<struct args_info> argsInfo;
+    args_list[rc_id] = *argsInfo;
+    struct args_info* ai = new struct args_info();
+    ai->args = buf;
+    ai->size = size;
+    args_list[rc_id].push_back(*ai);
+  }
+  else{
+    struct args_info* ai = new struct args_info();
+    ai->args = buf;
+    ai->size = size;
+    args_list[rc_id].push_back(*ai);
+  }
+
+  pthread_mutex_unlock(argsListLock);
+}
+
+int DeviceRuntimeManager::getArgsTotalSize(int rc_id){
+  int total_size = 0;
+  pthread_mutex_lock(argsListLock);
+  std::vector<struct args_info> arg_list = args_list[rc_id];
+  pthread_mutex_unlock(argsListLock);
+  for(int i=0;i<arg_list.size();i++)
+    total_size += arg_list[i].size;
+  return total_size;
+}
+
+void* DeviceRuntimeManager::getArgsOfRC(int rc_id){
+
+  int total_size = 0;
+
+  pthread_mutex_lock(argsListLock);
+  std::vector<struct args_info> arg_list = args_list[rc_id];
+  args_list.erase(rc_id);
+  pthread_mutex_unlock(argsListLock);
+  for(int i=0;i<arg_list.size();i++)
+    total_size += arg_list[i].size;
+  void* ret_addr = (void*)malloc(total_size);
+
+  char* temp = (char*)ret_addr;
+  int temp_size = 0;
+  for(int i=0;i<arg_list.size();i++){
+    memcpy(temp+temp_size,arg_list[i].args,arg_list[i].size);
+    temp_size += arg_list[i].size;
+  }
+  return ret_addr;
+} 
 
 void DeviceRuntimeManager::insertConsumeWait(int jobID){
 	pthread_mutex_lock(consumeTableLock);
