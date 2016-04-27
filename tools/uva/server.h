@@ -1,6 +1,10 @@
 
 namespace corelab {
   namespace UVA {
+    struct RuntimeClientConnTb {
+      int *clientId;
+      Qsocket *socket;
+    }
     extern "C" void UVAServerInitialize();
     extern "C" void UVAServerFinalize();
     void* ServerOpenRoutine(void*);
