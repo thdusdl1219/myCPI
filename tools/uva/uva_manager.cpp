@@ -390,8 +390,8 @@ namespace corelab {
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
     void UVAManager::loadHandler(QSocket *socket, void *addr, size_t typeLen) {
-      LOG("[client] Load : loadHandler start (%p)\n", addr);
       if(xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
+        LOG("[client] Load : loadHandler start (%p)\n", addr);
         if (xmemIsHeapAddr(addr)) {
           LOG("[client] Load : isHeapAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
         } else if (isFixedGlobalAddr(addr)) {
@@ -416,14 +416,14 @@ namespace corelab {
         memcpy(addr, buf, len);
         //hexdump(addr, typeLen);
         xmemDumpRange(addr, typeLen);
+        LOG("[client] Load : loadHandler END\n\n");
       }
-      LOG("[client] Load : loadHandler END\n\n");
     }
 
     void UVAManager::storeHandler(QSocket *socket, void *addr, size_t typeLen, void *data) {
       //LOG("[client] Store instr, addr %p, typeLen %lu, TEST val %d\n", addr, typeLen, *((int*)addr)); 
-      LOG("[client] Store : storeHandler start (%p)\n", addr);
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
+        LOG("[client] Store : storeHandler start (%p)\n", addr);
         if (xmemIsHeapAddr(addr)) {
           LOG("[client] Store : isHeapAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
         } else if (isFixedGlobalAddr(addr)) {
@@ -458,8 +458,8 @@ namespace corelab {
         } else {
           assert(0 && "error: undefined behavior");
         }
+        LOG("[client] Store : storeHandler END\n\n");
       }
-      LOG("[client] Store : storeHandler END\n\n");
     }
 
 
