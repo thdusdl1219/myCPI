@@ -29,6 +29,7 @@ namespace corelab {
     static QSocket* socket;
     pthread_t openThread; 
 
+    
     extern "C" void UVAServerInitialize() {
         LOG("UVA manager(server) : initialize\n");
         pthread_create(&openThread, NULL, ServerOpenRoutine, NULL); 
