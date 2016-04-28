@@ -96,7 +96,6 @@ void RemoteCall::setFunctions(Module &M) {
 			"produceFunctionArgs",
 			Type::getVoidTy(Context),
 			Type::getInt32Ty(Context),
-			Type::getInt8PtrTy(Context),
 			Type::getInt32Ty(Context),
 			(Type*)0);
 	
@@ -347,8 +346,6 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
 	actuals[1] = ConstantInt::get(Type::getInt32Ty(Context),rc_id);
 	//actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), sum);
 	CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
-  removedCallInst.push_back(I);
-	substitutedCallInst.push_back(new_ci);
 
   rc_id++;
 	return;
