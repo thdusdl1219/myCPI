@@ -156,6 +156,10 @@ namespace corelab
 				return StringRef("");
 			}
 
+      std::vector<struct MetadataInfo*> getEspDevDeclList(){
+        return EspDevDecl;
+      }
+
 		private:
 			std::vector<struct MetadataInfo*> EspDevice;
 			std::vector<struct MetadataInfo*> EspDevDecl;

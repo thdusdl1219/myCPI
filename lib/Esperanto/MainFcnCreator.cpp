@@ -55,6 +55,7 @@ namespace corelab {
 		//LLVMContext &Context = getGlobalContext();
 		setFunctions(M);
 		setIniFini(M);	
+    removeOtherCtorDtor(M);
 		return false;
 	}
 
@@ -112,6 +113,27 @@ namespace corelab {
 				return F;
 			}
 		}
+  }
+
+  void MainCreator::removeOtherCtorDtor(Module& M){
+     
+    EspInitializer& espInit = getAnalysis<EspInitializer>();
+    std::vector<struct MetadataInfo*> devdecls = espInit.MDTable.getEspDevDeclList();
+    for(int i=0;i<devdecls.size();i++){
+      struct MetadataInfo* mi = devdecls[i];
+      if(strcmp(DeviceName.data(),mi->arg1->data()) == 0) continue;
+      StringRef constructorName = getRealNameofFunction(*(mi->arg2));
+      Function* ctor = getSimilarFunction(M, constructorName);
+      
+      DEBUG(errs() << "remove " << ctor->getName().data() << "\n");
+      ctor->eraseFromParent();
+
+      StringRef destructorName = getRealNameofFunction(*(mi->arg3));
+      Function* dtor = getSimilarFunction(M, destructorName);
+      DEBUG(errs() << "remove " << dtor->getName().data() << "\n");
+      dtor->eraseFromParent();
+
+    } 
   }
 
   void MainCreator::setFunctions(Module& M){
