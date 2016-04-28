@@ -26,6 +26,8 @@ namespace corelab
 			static char ID;
 			MainCreator() : ModulePass(ID) {}
 
+      std::vector<Function*> functionToRemove;
+
 		private:
 			Function* constructor;
 			Function* destructor;

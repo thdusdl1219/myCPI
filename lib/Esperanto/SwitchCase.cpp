@@ -11,6 +11,7 @@
 #include "corelab/Esperanto/EspUtils.h"
 #include "corelab/Esperanto/RemoteCall.h"
 #include "corelab/Esperanto/SwitchCase.h"
+#include "corelab/Esperanto/MainFcnCreator.h"
 
 #include <iostream>
 
@@ -26,6 +27,7 @@ namespace corelab {
     AU.addRequired< EspInitializer >();
     AU.addRequired< InstMarker >();
     AU.addRequired< RemoteCall >();
+    AU.addRequired< MainCreator >();
     AU.setPreservesAll ();
   }
 
@@ -33,6 +35,7 @@ namespace corelab {
     LLVMContext& Context = M.getContext();
     RemoteCall& remoteCall = getAnalysis< RemoteCall >(); 
     EspInitializer& espInit = getAnalysis< EspInitializer >();
+    MainCreator& mc = getAnalysis< MainCreator >();
     // EsperantoNamer& en = getAnalysis<EsperantoNamer>();
 
     /*** Insert Switch-Case Function ***/
@@ -65,6 +68,11 @@ namespace corelab {
     //actuals.resize(1);
     //actuals[0] = (Value*)(new LoadInst(GV,"",initInst)); 
     //CallInst::Create(Debug, actuals, "", initInst);
+
+    std::vector<Function*> removes = mc.functionToRemove;
+    for(int i=0;i<removes.size();i++)
+      removes[i]->eraseFromParent();
+
 
     //FIXME: Insert init function with this callback function
     //std::vector<Value*> actuals(2);
@@ -180,52 +188,50 @@ namespace corelab {
       // Consume each arguments
       // bool classMember = false;
       for(Function::arg_iterator ai = fi->arg_begin(); ai != fi->arg_end(); ai++){
+
         Type* argType = ai->getType();
-        int argSize = dataLayout.getTypeAllocSizeInBits(argType);
+        if(!argType->isPointerTy()){
 
-        // add target pointer addres
-        Value* bufAddress = BinaryOperator::CreateAdd(bufInt, ConstantInt::get(integerType, addressSum/8), "", execCase);
-
-        Value *tempPtr = ConstantPointerNull::get(argType->getPointerTo(0));
-        out = InstInsertPt::End(execCase);
-        Value *argPtr = Casting::castTo(bufAddress, tempPtr, out, &dataLayout);
-        //Value *argPtr = EspUtils::insertCastingBefore(bufAddress, tempPtr, &dataLayout, execCase->getTerminator());
-
-        /*if(argIndex == 0 && ai->getName().equals("this")){
-					if(instMarker.LFManager.isExist(fp)){
-						LocalFunctionInfo info = instMarker.LFManager.getLocalFunctionInfo(fp);
-						
-						GlobalVariable* classAddress = info.classPointer;
-						//LoadInst* allocatedAddress = new LoadInst((Value*)classAddress,"",execCase);
-						//actuals[0] = new LoadInst(allocatedAddress,"",execCase);
-						actuals[0] = new LoadInst((Value*)classAddress,"",execCase);
-						argIndex++;
-					}*/
-          /*std::map<StringRef, GlobalVariable*>::iterator it;
-          for(it = remoteCall.classMatching.begin() ; it != remoteCall.classMatching.end(); it++){
-            if(esperantoNamer.getClassNameInFunction(fi->getName()) == it->first.str()){
-              LoadInst* allocatedAddress = new LoadInst((Value*)(it->second), "", execCase);
-              actuals[0] = new LoadInst(allocatedAddress, "", execCase);
-              classMember = true;
-              break;
-            }
-          }*/
-        //}
-        /*else if(!classMember){
-            actuals[0] = new LoadInst(argptr, "", execCase);
-            addressSum += argSize;
-          }
-          argIndex++;
-        }*/ 
-        //else {
+          printf("handle normal argument - switchcase\n");
+          int argSize = dataLayout.getTypeAllocSizeInBits(argType);
+          // add target pointer addres
+          Value* bufAddress = BinaryOperator::CreateAdd(bufInt, ConstantInt::get(integerType, addressSum/8), "", execCase);
+          Value *tempPtr = ConstantPointerNull::get(argType->getPointerTo(0));
+          out = InstInsertPt::End(execCase);
+          Value *argPtr = Casting::castTo(bufAddress, tempPtr, out, &dataLayout);
           actuals[argIndex++] = new LoadInst(argPtr, "", execCase);
           addressSum += argSize;
-        //}
+        }
+        else{
+          printf("handle pointer argument - switchcase\n");
+          unsigned pointerSize = dataLayout.getPointerTypeSize(argType);
+          printf("pointer size is %d byte\n",(int)pointerSize);
+          PointerType* pointerType;
+          pointerType = dyn_cast<PointerType>(argType); 
+
+          //Type* newIntegerType = IntegerType::get(Context, 32);
+          Value* bufAddress = BinaryOperator::CreateAdd(bufInt, ConstantInt::get(integerType, addressSum/8), "", execCase);
+          bufAddress->dump();
+          Value *tempPtr = ConstantPointerNull::get(Type::getInt32PtrTy(Context));
+          out = InstInsertPt::End(execCase);
+          Value *argPtr = Casting::castTo(bufAddress, tempPtr, out, &dataLayout);
+          argPtr->dump();
+          Value* addrIn32 = new LoadInst(argPtr,"",execCase);
+          addrIn32->dump();
+          //Value* addrIn64 = Casting::castTo(addrIn32, ConstantInt::get(Type::getInt64Ty(Context),0), out, &dataLayout);
+          //addrIn64->dump();
+          out = InstInsertPt::End(execCase);
+          Value* realAddr = Casting::castTo(addrIn32, ConstantPointerNull::get(pointerType), out, &dataLayout);
+          realAddr->dump();
+          actuals[argIndex++] = realAddr;
+          addressSum += 32;
+          //Value* newArg = Casting::castTo((Value*)&*ai,
+        }
       }
 
       /**** Insert Function Call ****/
       Value* ret = (Value*) CallInst::Create((Value*)fp, actuals, "", execCase); 
-      
+
       // Produce its return value
       if(fi->getReturnType()->isVoidTy()){
         // case: return type is void
@@ -234,7 +240,7 @@ namespace corelab {
         Value* voidptr = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
         actualJID[1] = voidptr;
         actualJID[2] = ConstantInt::get(Type::getInt32Ty(Context), 0);
-        
+
         CallInst::Create(Produce, actualJID, "", execCase);
       } else {
         // case: return type is not void

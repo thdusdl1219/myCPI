@@ -218,7 +218,7 @@ callInst->getArgOperand(i)->dump();
 
 	std::string InstMarker::getClassNameInFunction(StringRef functionName){
 		StringRef fName = functionName.substr(3,functionName.size()-3);
-		//printf("fName = %s\n",fName.data());
+		printf("fName = %s\n",fName.data());
 		std::string ret = "";
 		int classNameLength=0;
 		int count = 0;
@@ -234,7 +234,7 @@ callInst->getArgOperand(i)->dump();
 			else
 				break;
 		}
-		//printf("className length : %d\n",classNameLength);
+		printf("className length : %d\n",classNameLength);
 		if(classNameLength !=0){
 			int j=0;
 			int k=0;
@@ -276,12 +276,12 @@ callInst->getArgOperand(i)->dump();
 						StringRef functionName = getFunctionNameInFunction(calledFunction->getName());
 						//printf("functionName : %s\n",calledFunction->getName());
 						if(functionName.size() ==0) continue;
-						//printf("DEBUG :: function print -> %s\n",functionName.data());
+						printf("DEBUG :: function print -> %s\n",functionName.data());
 						//printf("DEBUG :: class Name in function %s : %s\n",className.c_str(),calledFunction->getName().data());
 						StringRef deviceName = database.MDTable.getDeviceName(StringRef("function"),StringRef(functionName));
 						if(deviceName.size() == 0) continue;
 						int deviceID = database.DITable.getDeviceID(deviceName);
-						//printf("DEBUG :: deviceID = %d\n",deviceID);
+						printf("DEBUG :: deviceID = %d\n",deviceID);
 						makeMetadata(inst,deviceID);	
 					}
 					
@@ -352,9 +352,10 @@ callInst->getArgOperand(i)->dump();
 					Function* calledFunction = callInst->getCalledFunction();
 					if(calledFunction != nullptr){
 						std::string className = getClassNameInFunction(calledFunction->getName());
+            
+						printf("DEBUG :: class Name in function %s : %s\n",className.c_str(),calledFunction->getName().data());
 						//printf("functionName : %s\n",calledFunction->getName());
 						if(className.size() ==0) continue;
-						//printf("DEBUG :: class Name in function %s : %s\n",className.c_str(),calledFunction->getName().data());
 						StringRef deviceName = database.MDTable.getDeviceName(StringRef("class"),StringRef(className));
 						if(deviceName.size() == 0) continue;
 						int deviceID = database.DITable.getDeviceID(deviceName);
@@ -372,7 +373,7 @@ callInst->getArgOperand(i)->dump();
 								//GlobalVariable* globalPointer = new GlobalVariable(M, type,false,GlobalValue::CommonLinkage,init,"");
 								//StoreInst* store = new StoreInst(firstArg,globalPointer);
 								//store->insertBefore(callInst);
-								//printf("Function %s store first arg\n",calledFunction->getName().data());
+								printf("Function %s store first arg\n",calledFunction->getName().data());
 								LFManager.insertLocalFunction(calledFunction,false,NULL);
 							}
 						}

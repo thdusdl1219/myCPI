@@ -75,7 +75,7 @@ namespace corelab {
 		//CallInst::Create(constructor, actuals, "", entry); 
 		BranchInst::Create(initBB, entry); 
 		ReturnInst::Create(Context, 0, initBB);
-		callBeforeMain(initForCtr);
+		callBeforeMain(initForCtr, 0);
 
 		/* finalize */
 		Function *finiForDtr = Function::Create(voidFcnVoidType, GlobalValue::ExternalLinkage, "__destructor__",&M);
@@ -113,6 +113,7 @@ namespace corelab {
 				return F;
 			}
 		}
+    return NULL;
   }
 
   void MainCreator::removeOtherCtorDtor(Module& M){
@@ -126,12 +127,14 @@ namespace corelab {
       Function* ctor = getSimilarFunction(M, constructorName);
       
       DEBUG(errs() << "remove " << ctor->getName().data() << "\n");
-      ctor->eraseFromParent();
+      //ctor->eraseFromParent();
 
       StringRef destructorName = getRealNameofFunction(*(mi->arg3));
       Function* dtor = getSimilarFunction(M, destructorName);
       DEBUG(errs() << "remove " << dtor->getName().data() << "\n");
-      dtor->eraseFromParent();
+      //dtor->eraseFromParent();
+      functionToRemove.push_back(ctor);
+      functionToRemove.push_back(dtor);
 
     } 
   }
@@ -149,6 +152,8 @@ namespace corelab {
     DEBUG(errs() << "constructor name is " << getRealNameofFunction(constructorName) << "\n");
     StringRef realname_constructor = getRealNameofFunction(constructorName); 
     constructor = getSimilarFunction(M, realname_constructor);
+    if(constructor == NULL)
+      DEBUG(errs() << "get similar function error\n");
       //M.getFunction(getRealNameofFunction(constructorName));
     
     //set destructor
@@ -156,6 +161,9 @@ namespace corelab {
     DEBUG(errs() << "destructor name is " << getRealNameofFunction(destructorName) << "\n");
     StringRef realname_destructor = getRealNameofFunction(destructorName); 
     destructor = getSimilarFunction(M, realname_destructor);
+    if(destructor == NULL)
+      DEBUG(errs() << "get similar function error\n");
+
       //M.getFunction(getRealNameofFunction(destructorName));
 
     //set main function
