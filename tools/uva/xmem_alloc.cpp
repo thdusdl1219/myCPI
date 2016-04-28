@@ -72,7 +72,7 @@ extern "C" char* uva_server_strdup (const char *str) {
 	return npt;
 }
 
-extern "C" void* uva_memset(void* ptr, int value, size_t num){
+/*extern "C" void* uva_memset(void* ptr, int value, size_t num){
 	return memset(ptr,value,num);
 }
 
@@ -82,4 +82,4 @@ extern "C" void* uva_memcpy(void* dest, const void* source, size_t num){
 
 extern "C" void* uva_memmove(void* dest, const void* source, size_t num){
 	return uva_memmove(dest,source,num);
-}
+}*/

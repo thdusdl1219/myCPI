@@ -21,11 +21,23 @@ namespace corelab {
     enum {
       THREAD_EXIT = -1,
       HEAP_ALLOC_REQ = 0,
+      HEAP_ALLOC_REQ_ACK = 1,
       LOAD_REQ = 2,
+      LOAD_REQ_ACK = 3,
       STORE_REQ = 4,
+      STORE_REQ_ACK = 5,
       MMAP_REQ = 6,
-      GLOBAL_SEGFAULT_REQ = 8,
-      GLOBAL_INIT_COMPLETE_SIG = 10
+      MMAP_REQ_ACK = 7,
+      MEMSET_REQ = 8,
+      MEMSET_REQ_ACK = 9,
+      MEMCPY_REQ = 10,
+      MEMCPY_REQ_ACK = 11,
+      MEMMOVE_REQ = 12,
+      MEMMOVE_REQ_ACK = 13,
+      GLOBAL_SEGFAULT_REQ = 30, 
+      GLOBAL_SEGFAULT_REQ_ACK = 31, 
+      GLOBAL_INIT_COMPLETE_SIG = 32,
+      GLOBAL_INIT_COMPLETE_SIG_ACK = 33
     };
     static QSocket* socket;
     pthread_t openThread; 
@@ -83,6 +95,13 @@ namespace corelab {
 
       uintptr_t target;
 
+      /* for memset, memcpy */
+      int value;
+      size_t num;
+      void *dest;
+      void *src;
+      /* // for memset, memcpy */
+      
       while(true) {
         pthread_mutex_lock(&mutex);
         socket->receiveQue(clientId);
@@ -115,7 +134,7 @@ namespace corelab {
             LOG("[server] new heapTop : %p\n", HeapTop);
             
             // memory operation end
-            socket->pushWordF(1, clientId);
+            socket->pushWordF(HEAP_ALLOC_REQ_ACK, clientId);
             socket->pushWordF(sizeof(allocAddr), clientId);
             socket->pushRangeF(&allocAddr, sizeof(allocAddr), clientId);
             socket->sendQue(clientId);
@@ -134,7 +153,7 @@ namespace corelab {
             LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
             
             // send ack with value (what to load)
-            socket->pushWordF(3, clientId);
+            socket->pushWordF(LOAD_REQ_ACK, clientId);
             socket->pushWordF(lenType, clientId);
             socket->pushRangeF(requestedAddr, lenType, clientId);
             LOG("[server] TEST loaded value (what): %d\n", *((int*)requestedAddr));
@@ -162,13 +181,13 @@ namespace corelab {
             memcpy(requestedAddr, valueToStore, lenType);
 
             // send ack
-            socket->pushWordF(5, clientId); // ACK
-            socket->pushWordF(0, clientId); // ACK ( 0: normal, -1: abnormal )
+            socket->pushWordF(STORE_REQ_ACK, clientId); // ACK
+            socket->pushWordF(0, clientId); // ACK ( 0: normal, -1: abnormal ) FIXME useless
             socket->sendQue(clientId);
 
             // test
-            //hexdump(requestedAddr, lenType);
-            xmemDumpRange(requestedAddr, lenType);
+            hexdump("store", requestedAddr, lenType);
+            //xmemDumpRange(requestedAddr, lenType);
             break;
           case MMAP_REQ: /*** mmap request ***/
             datalen = socket->takeWordF(clientId);
@@ -190,9 +209,44 @@ namespace corelab {
             
             assert(allocAddr != NULL && "mmap alloc failed in server");
 
-            socket->pushWordF(7, clientId); // ACK
+            socket->pushWordF(MMAP_REQ_ACK, clientId); // ACK
             socket->pushWordF(0, clientId); // ACK (0: normal, -1:abnormal)
             socket->sendQue(clientId);
+            break;
+          case MEMSET_REQ:
+            LOG("[server] get memset request from client\n");
+            datalen = socket->takeWordF(clientId);
+            socket->takeRangeF(&requestedAddr, datalen, clientId);
+            value = socket->takeWordF(clientId);
+            num = socket->takeWordF(clientId);
+
+            LOG("[server] memset(%p, %d, %d)\n", requestedAddr, value, num);
+            memset(requestedAddr, value, num);
+
+            socket->pushWordF(MEMSET_REQ_ACK, clientId);
+            socket->sendQue(clientId);
+            hexdump("memset", requestedAddr, num);
+            //xmemDumpRange(requestedAddr, num);
+            break;
+          case MEMCPY_REQ:
+            LOG("[server] get memcpy request from client\n");
+            datalen = socket->takeWordF(clientId);
+            socket->takeRangeF(&dest, datalen, clientId);
+            num = socket->takeWordF(clientId);
+            valueToStore = malloc(num);
+            socket->takeRangeF(valueToStore, num, clientId);
+            hexdump("server", valueToStore, num);
+            //num = socket->takeWordF(clientId);
+            
+            LOG("[server] memcpy(%p, , %d)\n", dest, num);
+            //LOG("[server] below are src mem stat\n");
+            //xmemDumpRange(src, num);
+            memcpy(dest, valueToStore, num);
+
+            socket->pushWordF(MEMCPY_REQ_ACK, clientId);
+            socket->sendQue(clientId);
+            //xmemDumpRange(dest, num);
+            hexdump("memcpy dest", dest, num); 
             break;
           case GLOBAL_SEGFAULT_REQ:
             LOG("[server] get GLOBAL_SEGFALUT_REQ from client (%d)\n", *clientId);
@@ -203,7 +257,8 @@ namespace corelab {
             //socket->takeRangeF(&ptConstBegin, sizeof(void*), clientId);
             //socket->takeRangeF(&ptConstEnd, sizeof(void*), clientId);
             
-            socket->pushWordF(9, clientId); // ACK
+            LOG("[server] send ack (%d)\n", GLOBAL_SEGFAULT_REQ_ACK);
+            socket->pushWordF(GLOBAL_SEGFAULT_REQ_ACK, clientId); // ACK
             socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptNoConstBegin))),
                 (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, clientId);
             //socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptConstBegin))), (uintptr_t)ptConstEnd - (uintptr_t)ptConstBegin, clientId);
@@ -220,7 +275,7 @@ namespace corelab {
                 socket->sendQue(i.first);
               }
             }
-            socket->pushWordF(11, clientId);
+            socket->pushWordF(GLOBAL_INIT_COMPLETE_SIG_ACK, clientId);
             socket->sendQue(clientId);
             break;
           default:
@@ -232,7 +287,7 @@ namespace corelab {
       return NULL;
     }
 
-    // These two function may not be used.
+    // XXX DEPRECATED : These two function may not be used.
     extern "C" void uva_server_load(void *addr, size_t len) {
       LOG("[server] Load instr, addr %p, len %d\n", addr, len); 
     }

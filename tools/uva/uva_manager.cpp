@@ -81,6 +81,27 @@ namespace corelab {
 		static inline size_t inflateData (void *data, size_t dsize, void *buf, size_t bsize);
 		#endif
 
+    enum {
+      THREAD_EXIT = -1,
+      HEAP_ALLOC_REQ = 0,
+      HEAP_ALLOC_REQ_ACK = 1,
+      LOAD_REQ = 2,
+      LOAD_REQ_ACK = 3,
+      STORE_REQ = 4,
+      STORE_REQ_ACK = 5,
+      MMAP_REQ = 6,
+      MMAP_REQ_ACK = 7,
+      MEMSET_REQ = 8,
+      MEMSET_REQ_ACK = 9,
+      MEMCPY_REQ = 10,
+      MEMCPY_REQ_ACK = 11,
+      MEMMOVE_REQ = 12,
+      MEMMOVE_REQ_ACK = 13,
+      GLOBAL_SEGFAULT_REQ = 30, 
+      GLOBAL_SEGFAULT_REQ_ACK = 31, 
+      GLOBAL_INIT_COMPLETE_SIG = 32,
+      GLOBAL_INIT_COMPLETE_SIG_ACK = 33
+    };
 
 		/*** Interfaces ***/
 		//void UVAManager::initialize (UVAOwnership _uvaown) {
@@ -389,7 +410,7 @@ namespace corelab {
 
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
-    void UVAManager::loadHandler(QSocket *socket, void *addr, size_t typeLen) {
+    void UVAManager::loadHandler(QSocket *socket, size_t typeLen, void *addr) {
       if(xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
         LOG("[client] Load : loadHandler start (%p)\n", addr);
         if (xmemIsHeapAddr(addr)) {
@@ -397,7 +418,7 @@ namespace corelab {
         } else if (isFixedGlobalAddr(addr)) {
           LOG("[client] Load : isFixedGlobalAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
         }
-        socket->pushWordF(2); // mode 2 (client -> server : load request)
+        socket->pushWordF(LOAD_REQ); // mode 2 (client -> server : load request)
         socket->pushWordF(sizeof(addr));
         socket->pushWordF(typeLen); // type length
         //LOG("[client] DEBUG : may be before segfault?\n");
@@ -407,20 +428,20 @@ namespace corelab {
         socket->receiveQue();
         int mode = socket->takeWord();
         //LOG("[client] mode : %d\n", mode); // should be 3
-        assert(mode == 3 && "wrong");
+        assert(mode == LOAD_REQ_ACK && "wrong");
         int len = socket->takeWord();
         //LOG("[client] len : %d\n", len);
         void *buf = malloc(len);
 
         socket->takeRangeF(buf, len);
         memcpy(addr, buf, len);
-        //hexdump(addr, typeLen);
-        xmemDumpRange(addr, typeLen);
+        hexdump("load", addr, typeLen);
+        //xmemDumpRange(addr, typeLen);
         LOG("[client] Load : loadHandler END\n\n");
       }
     }
 
-    void UVAManager::storeHandler(QSocket *socket, void *addr, size_t typeLen, void *data) {
+    void UVAManager::storeHandler(QSocket *socket, size_t typeLen, void *data, void *addr) {
       //LOG("[client] Store instr, addr %p, typeLen %lu, TEST val %d\n", addr, typeLen, *((int*)addr)); 
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
         LOG("[client] Store : storeHandler start (%p)\n", addr);
@@ -429,12 +450,7 @@ namespace corelab {
         } else if (isFixedGlobalAddr(addr)) {
           LOG("[client] Store : isFixedGlobalAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
         }
-        //LOG("[client] data : %d ", (int*)data);
-        //for(int i=0; i<typeLen; i++) {
-        //  printf("%02x", ((unsigned char*)data)[i]);
-        //}
-        //printf("\n");
-        socket->pushWordF(4);
+        socket->pushWordF(STORE_REQ);
         socket->pushWordF(sizeof(addr));
         socket->pushWordF(typeLen);
         socket->pushRangeF(&addr, sizeof(addr));
@@ -442,16 +458,12 @@ namespace corelab {
         socket->sendQue();
         LOG("[client] Store : sizeof(addr) %d, data length %d\n", sizeof(addr), typeLen);
 
-        //hexdump(&data, typeLen);
         socket->receiveQue();
         int mode = socket->takeWord();
         LOG("[client] mode : %d\n", mode);
-        assert(mode == 5 && "wrong");
+        assert(mode == STORE_REQ_ACK && "wrong");
         int len = socket->takeWord();
-        //LOG("[client] len : %d\n", len);
-        //void *buf = malloc(len);
         if (len == 0) { // Normal ack
-          //memcpy(addr, &data, typeLen);
           //LOG("[client] TEST stored value : %d\n", *((int*)addr));
         } else if (len == -1) {
           LOG("[client] store request fail\n"); // TODO: have to handler failure situation.
@@ -462,6 +474,59 @@ namespace corelab {
       }
     }
 
+    void *UVAManager::memsetHandler(QSocket *socket, void *addr, int value, size_t num) {
+      if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
+        LOG("[client] Memset : memsetHandler start (%p)\n", addr);
+        if (xmemIsHeapAddr(addr)) {
+          LOG("[client] Memset : isHeapAddr, is going to request | addr %p\n", addr);
+        } else if (isFixedGlobalAddr(addr)) {
+          LOG("[client] Memset : isFixedGlobalAddr, is going to request | addr %p\n", addr);
+        }
+        
+        socket->pushWordF(MEMSET_REQ);
+        socket->pushWordF(sizeof(addr));
+        socket->pushRangeF(&addr, sizeof(addr));
+        socket->pushWordF(value);
+        socket->pushWordF(num); // XXX check
+        socket->sendQue();
+        LOG("[client] Memset : memset(%p, %d, %d)\n", addr, value, num);
+
+        socket->receiveQue();
+        int ack = socket->takeWord();
+        assert(ack == MEMSET_REQ_ACK && "wrong");
+
+        LOG("[client] Memset : memsetHandler END (%p)\n\n", addr);
+      }
+    }
+
+    void *UVAManager::memcpyHandler(QSocket *socket, void *dest, void *src, size_t num) {
+      if (xmemIsHeapAddr(dest) || isFixedGlobalAddr(dest)) {
+        LOG("[client] Memcpy : memcpyHandler start (%p <- %p)\n", dest, src);
+        if (xmemIsHeapAddr(dest)) {
+          LOG("[client] Memcpy : isHeapAddr, is going to request | %p <- %p\n", dest, src);
+        } else if (isFixedGlobalAddr(dest)) {
+          LOG("[client] Memcpy : isFixedGlobalAddr, is going to request | %p <- %p\n", dest, src);
+        }
+        
+        socket->pushWordF(MEMCPY_REQ);
+        socket->pushWordF(sizeof(dest));
+        socket->pushRangeF(&dest, sizeof(dest));
+        socket->pushWordF(num);
+        socket->pushRangeF(src, num);
+        //socket->pushWordF(num); // XXX check
+        socket->sendQue();
+        LOG("[client] Memcpy : memcpy(%p, %p, %d)\n", dest, src, num);
+        //LOG("[client] Memcpy : src mem stat\n");
+        //xmemDumpRange(src, num);
+        hexdump("stack", src, num);
+        socket->receiveQue();
+        int ack = socket->takeWord();
+        assert(ack == MEMCPY_REQ_ACK && "wrong");
+
+        LOG("[client] Memcpy : memcpyHandler END (%p <- %p)\n\n", dest, src);
+      }
+
+    }
 
 		/*** Get/Set Interfaces ***/
 		void UVAManager::setConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/) { /* FIXME */

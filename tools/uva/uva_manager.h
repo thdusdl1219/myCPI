@@ -33,10 +33,13 @@ namespace corelab {
 			void flushOut (QSocket *socket);
 			void resolveModified (void *addr);
 
-      // Load/Store handler (BONGJUN)
-      void loadHandler(QSocket *socket, void *addr, size_t typeLen);
-      void storeHandler(QSocket *socket, void *addr, size_t typeLen, void *data);
-			
+      // Memory Access handler (BONGJUN)
+      void loadHandler(QSocket *socket, size_t typeLen, void *addr);
+      void storeHandler(QSocket *socket, size_t typeLen, void *data, void *addr);
+    
+      void *memsetHandler(QSocket *socket, void *addr, int value, size_t num);
+      void *memcpyHandler(QSocket *socket, void *dest, void *src, size_t num);
+      
       // Get/Set/Test interfaces
 			void setConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/);
       void getFixedGlobalAddrRange (void **begin_noconst, void **end_noconst/*, void **begin_const, void **end_const*/);

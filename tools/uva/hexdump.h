@@ -1,6 +1,6 @@
 #ifndef HEXDUMP_H
 #define HEXDUMP_H
 
-void hexdump(void *mem, unsigned int len);
+void hexdump(char *desc, void *addr, int len); 
 
 #endif

@@ -68,7 +68,7 @@ namespace corelab {
       BranchInst::Create(initBB, entry); 
       ReturnInst::Create(Context, 0, initBB);
 
-      callBeforeMain(initForCtr);
+      callBeforeMain(initForCtr, 0);
 
       /* finalize */
       Function *finiForDtr = Function::Create(voidFcnVoidType, GlobalValue::InternalLinkage, "__destructor__",&M);
@@ -79,6 +79,7 @@ namespace corelab {
       ReturnInst::Create(Context, 0, fini);
       callAfterMain(finiForDtr);
     }
+    //makeForefrontInGlobalCtorOrder (M, "__constructor__");
     /* FixGlbDuty : it decides who fix global variables and init.  Global
      * variables are shared in multiple clients, thereby we need just only
      * client in charge of fixing and initializing glbs.  Therefore,

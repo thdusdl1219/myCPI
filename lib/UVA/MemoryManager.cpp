@@ -44,7 +44,12 @@ static Function *getCalledFunction_aux(Instruction* indCall); // From AliasAnaly
 static const Value *getCalledValueOfIndCall(const Instruction* indCall);
 static const User *isGEP(const Value *V);
 
-static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, bool is32);
+static void installMemAccessHandler(Module &M, 
+    Constant *Load, 
+    Constant *Store, 
+    Constant *Memset,
+    Constant *Memcpy,
+    Constant *Memmove, bool is32);
 
 //char MemoryManagerX86::ID = 0;
 char MemoryManagerX64::ID = 0;
@@ -157,16 +162,32 @@ void MemoryManagerX64::setFunctions(Module &M) {
   Load = M.getOrInsertFunction(
       "uva_load",
       Type::getVoidTy(Context), /* Return type */
-      Type::getInt64Ty(Context), /* Address */
       Type::getInt64Ty(Context), /* Length */
+      Type::getInt8PtrTy(Context), /* Address */
       (Type*)0);
 
   Store = M.getOrInsertFunction(
       "uva_store",
       Type::getVoidTy(Context), /* Return type */
-      Type::getInt64Ty(Context), /* Address */
       Type::getInt64Ty(Context), /* Length */
-      Type::getInt64PtrTy(Context),
+      Type::getInt8PtrTy(Context), /* value */
+      Type::getInt8PtrTy(Context), /* Address */
+      (Type*)0);
+
+  Memset = M.getOrInsertFunction(
+      "uva_memset",
+      Type::getInt8PtrTy(Context),
+      Type::getInt8PtrTy(Context),
+      Type::getInt32Ty(Context),
+      Type::getInt64Ty(Context),
+      (Type*)0);
+
+  Memcpy = M.getOrInsertFunction(
+      "uva_memcpy",
+      Type::getInt8PtrTy(Context), 
+      Type::getInt8PtrTy(Context),
+      Type::getInt8PtrTy(Context),
+      Type::getInt64Ty(Context), /* size_t */
       (Type*)0);
 
   /* _Znmw : 64 bit */
@@ -323,16 +344,32 @@ void MemoryManagerArm::setFunctions(Module &M) {
   Load = M.getOrInsertFunction(
       "uva_load",
       Type::getVoidTy(Context), /* Return type */
-      Type::getInt32Ty(Context), /* Address */
       Type::getInt32Ty(Context), /* Length */
+      Type::getInt8PtrTy(Context), /* Address */
       (Type*)0);
 
   Store = M.getOrInsertFunction(
       "uva_store",
       Type::getVoidTy(Context), /* Return type */
-      Type::getInt32Ty(Context), /* Address */
       Type::getInt32Ty(Context), /* Length */
-      Type::getInt32PtrTy(Context), /* XXX: Not sure */
+      Type::getInt8PtrTy(Context), /* XXX: Not sure */
+      Type::getInt8PtrTy(Context), /* Address */
+      (Type*)0);
+  
+  Memset = M.getOrInsertFunction(
+      "uva_memset",
+      Type::getInt8PtrTy(Context),
+      Type::getInt8PtrTy(Context),
+      Type::getInt32Ty(Context),
+      Type::getInt32Ty(Context),
+      (Type*)0);
+
+  Memcpy = M.getOrInsertFunction(
+      "uva_memcpy",
+      Type::getInt8PtrTy(Context), 
+      Type::getInt8PtrTy(Context),
+      Type::getInt8PtrTy(Context),
+      Type::getInt32Ty(Context), /* size_t (32 in arm(?)) */
       (Type*)0);
 
   // XXX: New64 need on ARM ??? XXX
@@ -360,7 +397,7 @@ bool MemoryManagerX64::runOnModule(Module& M) {
 		if (F->isDeclaration()) continue;
 		runOnFunction(F, false);
 	}
-  installLoadStoreHandler(M, Load, Store, false);
+  installMemAccessHandler(M, Load, Store, Memset, Memcpy, Memmove, false);
 	return false;
 }
 
@@ -371,7 +408,7 @@ bool MemoryManagerX64S::runOnModule(Module& M) {
 		if (F->isDeclaration()) continue;
 		runOnFunction(F);
 	}
-  installLoadStoreHandler(M, Load, Store, false);
+  //installLoadStoreHandler(M, Load, Store, false);
   return false;
 }
 
@@ -382,7 +419,7 @@ bool MemoryManagerArm::runOnModule(Module& M) {
 		if (F->isDeclaration()) continue;
 		runOnFunction(F, true);
 	}
-  installLoadStoreHandler(M, Load, Store, true);
+  installMemAccessHandler(M, Load, Store, Memset, Memcpy, Memmove, true);
   return false;
 }
 
@@ -471,6 +508,35 @@ bool MemoryManagerX64::runOnFunction(Function *F, bool is32) {
                 }
               }
             }
+          }
+          else if(callee->getName() == "memcpy"){
+            Module *M = F->getParent();
+            std::vector<Value*> args(0);
+            args.resize(3);
+
+            Value *dest = instruction->getOperand(0);
+            Value *src = instruction->getOperand(1);
+            Value *num = instruction->getOperand(2);
+            Value *temp;
+
+            temp = ConstantPointerNull::get(Type::getInt8PtrTy(M->getContext()));
+            //printf("adrspace: %d\n",temp->getType()->getIntegerBitWidth());
+            InstInsertPt out = InstInsertPt::Before(instruction);
+            dest = castTo(dest, temp, out, &(M->getDataLayout()));
+            src = castTo(src, temp, out, &(M->getDataLayout()));
+
+            uint64_t ci_num;
+            if(ConstantInt *CI_num = dyn_cast<ConstantInt>(num)) {
+              unsigned int bitwidth = CI_num->getBitWidth();
+              ci_num = CI_num->getZExtValue();
+              temp = ConstantInt::get(IntegerType::get(M->getContext(), bitwidth), ci_num);
+            }
+            num = castTo(num, temp, out, &(M->getDataLayout()));
+            args[0] = dest; // void* (Int8Ptr)
+            args[1] = src; // voud* (Int8Ptr)
+            args[2] = num; // size_t (Int64Ty or Int32Ty)
+            CallInst::Create(Memcpy, args, "", instruction);
+
           }
           else if(callee->getName() == "_Znwm"){
 						if(wasBitCasted){
@@ -869,8 +935,13 @@ bool MemoryManagerArm::runOnFunction(Function *F, bool is32) {
   return false;
 }
 
-/* installLoadStoreHandler: for both X64, Arm */
-static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, bool is32) {
+/* installMemAccessHandler: for both X64, Arm */
+static void installMemAccessHandler(Module &M, 
+    Constant *Load, 
+    Constant *Store, 
+    Constant *Memset, 
+    Constant *Memcpy, 
+    Constant *Memmove, bool is32) {
   for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
     Function &F = *fi;
     LLVMContext &Context = M.getContext();
@@ -885,11 +956,12 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
           args.resize (2);
           Value *addr = ld->getPointerOperand();
           Value *temp;
-          if(!is32){
-            temp = ConstantInt::get(Type::getInt64Ty(Context), 0);
-          } else {
-            temp = ConstantInt::get(Type::getInt32Ty(Context), 0);
-          }
+          //if(!is32){
+          //  temp = ConstantInt::get(Type::getInt64Ty(Context), 0);
+          //} else {
+          //  temp = ConstantInt::get(Type::getInt32Ty(Context), 0);
+          //}
+          temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
           InstInsertPt out = InstInsertPt::Before(ld);
           addr = castTo(addr, temp, out, &dataLayout);
 
@@ -901,8 +973,8 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
           } else {
             loadTypeSize_ = ConstantInt::get(Type::getInt32Ty(Context), loadTypeSize);
           }
-          args[0] = addr;
-          args[1] = loadTypeSize_; 
+          args[0] = loadTypeSize_; 
+          args[1] = addr;
           CallInst::Create(Load, args, "", ld);
         //}
       }
@@ -911,14 +983,14 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
         args.resize (3);
         Value *addr = st->getPointerOperand();
         Value *temp;
-        if(!is32){
+        /*if(!is32){
           temp = ConstantInt::get(Type::getInt64Ty(Context), 0);
         } else {
           temp = ConstantInt::get(Type::getInt32Ty(Context), 0);
-        }
+        }*/
+          temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
         InstInsertPt out = InstInsertPt::Before(st);
         addr = castTo(addr, temp, out, &dataLayout);
-        
         Value *valueOperand = st->getValueOperand();
         unsigned int storeValueTypeSize = dataLayout.getTypeAllocSize(valueOperand->getType());
         Value *storeValueTypeSize_;
@@ -927,12 +999,13 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
         } else {
           storeValueTypeSize_ = ConstantInt::get(Type::getInt32Ty(Context), storeValueTypeSize);
         }
-        if(!is32){
-          temp = ConstantPointerNull::get(Type::getInt64PtrTy(Context));
+        /*if(!is32){
+          temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
         } else {
-          temp = ConstantPointerNull::get(Type::getInt32PtrTy(Context));
-        }
+          temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+        }*/
 
+        temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
         if (ArrayType *tyArr = dyn_cast<ArrayType>(valueOperand->getType())){
 #ifdef DEBUG_MM
           printf("mm: valueOperand is Array type!, and type size is %d\n", storeValueTypeSize);
@@ -954,21 +1027,123 @@ static void installLoadStoreHandler(Module &M, Constant *Load, Constant *Store, 
 #endif    
           Value *arrOperand = castTo(gepInst, temp, out, &dataLayout);
 
-          args[0] = addr;
-          args[1] = storeValueTypeSize_;
-          args[2] = arrOperand;
+          args[0] = storeValueTypeSize_;
+          args[1] = arrOperand;
+          args[2] = addr;
           CallInst::Create(Store, args, "", st);
-        } else {
+        } else if (StructType *tyStruct = dyn_cast<StructType>(valueOperand->getType())) {
+          printf("mm: valueOperand is Struct Type!, type size is %d\n", storeValueTypeSize);
+
+          vector<Value*> vecGepIdx;
+          vecGepIdx.push_back(ConstantInt::get(Type::getInt32Ty(Context), 0));
+#ifdef DEBUG_MM
+          tyStruct->dump();
+          st->getPointerOperand()->dump();
+#endif          
+          GetElementPtrInst *gepInst = GetElementPtrInst::Create(tyStruct, st->getPointerOperand(), vecGepIdx, "ty.struct.ptr", st); 
+#ifdef DEBUG_MM
+          //unsigned int elemTypeSize = dataLayout.getTypeAllocSize(tyStruct->getElementType());
+          //printf("mm: store's operand (size:%d) (elem:%d) (total:%d):\n", storeValueTypeSize, elemTypeSize, storeValueTypeSize*elemTypeSize);
+          
+          valueOperand->dump();
+          printf("mm: type id is %d", valueOperand->getType()->getTypeID());
+          printf(" , ptr Ty ID is %d\n",valueOperand->getType()->getPointerTo()->getTypeID());
+#endif    
+          Value *structOperand = castTo(gepInst, temp, out, &dataLayout);
+
+          args[0] = storeValueTypeSize_;
+          args[1] = structOperand;
+          args[2] = addr;
+          CallInst::Create(Store, args, "", st);
+        } else if (VectorType *tyVector = dyn_cast<VectorType>(valueOperand->getType())) {
+          printf("mm: valueOperand is Vector Type!, type size is %d\n", storeValueTypeSize);
+
+          vector<Value*> vecGepIdx;
+          vecGepIdx.push_back(ConstantInt::get(Type::getInt32Ty(Context), 0));
+#ifdef DEBUG_MM
+          tyVector->dump();
+          st->getPointerOperand()->dump();
+#endif          
+          GetElementPtrInst *gepInst = GetElementPtrInst::Create(tyVector, st->getPointerOperand(), vecGepIdx, "ty.vector.ptr", st); 
+#ifdef DEBUG_MM
+          //unsigned int elemTypeSize = dataLayout.getTypeAllocSize(tyStruct->getElementType());
+          //printf("mm: store's operand (size:%d) (elem:%d) (total:%d):\n", storeValueTypeSize, elemTypeSize, storeValueTypeSize*elemTypeSize);
+          
+          valueOperand->dump();
+          printf("mm: type id is %d", valueOperand->getType()->getTypeID());
+          printf(" , ptr Ty ID is %d\n",valueOperand->getType()->getPointerTo()->getTypeID());
+#endif    
+          Value *vectorOperand = castTo(gepInst, temp, out, &dataLayout);
+
+          args[0] = storeValueTypeSize_;
+          args[1] = vectorOperand;
+          args[2] = addr;
+          CallInst::Create(Store, args, "", st);
+        } else { /* TODO: may need to handle "vector" type operand */
           valueOperand = castTo(valueOperand, temp, out, &dataLayout);
 
-          args[0] = addr;
-          args[1] = storeValueTypeSize_;
-          args[2] = valueOperand;
-          st->dump();
-          printf("getAlignment() : %ld\n", st->getAlignment()); 
-          //st->setAlignment(1);
+          args[0] = storeValueTypeSize_;
+          args[1] = valueOperand;
+          args[2] = addr;
           CallInst::Create(Store, args, "", st);
         }
+      } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(instruction)) {
+        args.resize(3);
+        
+        Value *addr = MSI->getDest();
+        Value *value = MSI->getValue();
+        Value *num = MSI->getLength();
+        Value *temp;
+        
+        temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+        //printf("adrspace: %d\n",temp->getType()->getIntegerBitWidth());
+        InstInsertPt out = InstInsertPt::Before(MSI);
+        addr = castTo(addr, temp, out, &dataLayout);
+       
+        uint64_t ci_value;
+        if(ConstantInt *CI_value = dyn_cast<ConstantInt>(value)) {
+          ci_value = CI_value->getZExtValue();
+        } 
+        Value *value_ = ConstantInt::get(Type::getInt32Ty(Context), ci_value);
+        
+        uint64_t ci_num;
+        if(ConstantInt *CI_num = dyn_cast<ConstantInt>(num)) {
+          unsigned int bitwidth = CI_num->getBitWidth();
+          ci_num = CI_num->getZExtValue();
+          temp = ConstantInt::get(IntegerType::get(Context, bitwidth), ci_num);
+        }
+        num = castTo(num, temp, out, &dataLayout);
+        args[0] = addr; // void* (Int8Ptr)
+        args[1] = value_; // int (Int32Ty)
+        args[2] = num; // size_t (Int64Ty or Int32Ty)
+        CallInst::Create(Memset, args, "", MSI);
+      } else if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(instruction)) {
+        args.resize(3);
+        
+        Value *dest = MCI->getDest();
+        Value *src = MCI->getSource();
+        Value *num = MCI->getLength();
+        Value *temp;
+        
+        temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+        //printf("adrspace: %d\n",temp->getType()->getIntegerBitWidth());
+        InstInsertPt out = InstInsertPt::Before(MCI);
+        dest = castTo(dest, temp, out, &dataLayout);
+        src = castTo(src, temp, out, &dataLayout);
+
+        uint64_t ci_num;
+        if(ConstantInt *CI_num = dyn_cast<ConstantInt>(num)) {
+          unsigned int bitwidth = CI_num->getBitWidth();
+          ci_num = CI_num->getZExtValue();
+          temp = ConstantInt::get(IntegerType::get(Context, bitwidth), ci_num);
+        }
+        num = castTo(num, temp, out, &dataLayout);
+        args[0] = dest; // void* (Int8Ptr)
+        args[1] = src; // voud* (Int8Ptr)
+        args[2] = num; // size_t (Int64Ty or Int32Ty)
+        CallInst::Create(Memcpy, args, "", MCI);
+      } else if (MemMoveInst *MMI = dyn_cast<MemMoveInst>(instruction)) {
+        printf("MemMoveInst! Unimplemented!!\n");
       }
     } // for
   } // for
@@ -1099,8 +1274,6 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
     else {
 #ifdef DEBUG_MM
       printf("mm: castTo: to's typeID is NOT PointerTyID\n");
-      from->getType()->dump();
-      to->getType()->dump();
 #endif
       cast = new BitCastInst(from, to->getType() );
     }

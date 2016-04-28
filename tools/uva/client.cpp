@@ -23,6 +23,27 @@
 
 namespace corelab {
   namespace UVA {
+    enum {
+      THREAD_EXIT = -1,
+      HEAP_ALLOC_REQ = 0,
+      HEAP_ALLOC_REQ_ACK = 1,
+      LOAD_REQ = 2,
+      LOAD_REQ_ACK = 3,
+      STORE_REQ = 4,
+      STORE_REQ_ACK = 5,
+      MMAP_REQ = 6,
+      MMAP_REQ_ACK = 7,
+      MEMSET_REQ = 8,
+      MEMSET_REQ_ACK = 9,
+      MEMCPY_REQ = 10,
+      MEMCPY_REQ_ACK = 11,
+      MEMMOVE_REQ = 12,
+      MEMMOVE_REQ_ACK = 13,
+      GLOBAL_SEGFAULT_REQ = 30, 
+      GLOBAL_SEGFAULT_REQ_ACK = 31, 
+      GLOBAL_INIT_COMPLETE_SIG = 32,
+      GLOBAL_INIT_COMPLETE_SIG_ACK = 33
+    };
     static QSocket *Msocket;
 
 		struct sigaction segvAction;
@@ -124,7 +145,7 @@ namespace corelab {
       if (ptNoConstBegin <= fault_addr && fault_addr < (void*)0x16000000) {
         //if (UVAManager::isFixedGlobalAddr(fault_addr)) {
         LOG("[client] segfaultHandler | fault_addr is in FixedGlobalAddr space %p\n",ptNoConstBegin);
-        Msocket->pushWordF(8); // send GLOBAL_SEGFAULT_REQ
+        Msocket->pushWordF(GLOBAL_SEGFAULT_REQ); // send GLOBAL_SEGFAULT_REQ
         Msocket->pushRangeF(&ptNoConstBegin, sizeof(void*));
         Msocket->pushRangeF(&ptNoConstEnd, sizeof(void*));
         //Msocket->pushRangeF(&ptConstBegin, sizeof(void*));
@@ -133,7 +154,8 @@ namespace corelab {
 
         Msocket->receiveQue();
         int ack = Msocket->takeWordF();
-        assert(ack == 9 && "wrong!!!");
+        //printf("ack is %d %d\n", ack, GLOBAL_SEGFAULT_REQ_ACK);
+        assert(ack == GLOBAL_SEGFAULT_REQ_ACK && "wrong!!!");
         Msocket->takeRangeF(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin);
         //Msocket->takeRangeF(ptConstBegin, (uintptr_t)ptConstEnd - (uintptr_t)ptConstBegin);
         LOG("[client] segfaultHandler | get global variables done\n");
@@ -154,21 +176,29 @@ namespace corelab {
 				UVAManager::fetchIn (socket, addr);
 			}*/
 		}
-    extern "C" void uva_load(void *addr, size_t len) {
-      UVAManager::loadHandler(Msocket, addr, len);
+    extern "C" void uva_load(size_t len, void *addr) {
+      UVAManager::loadHandler(Msocket, len, addr);
     }
 
-    extern "C" void uva_store(void *addr, size_t len, void *data) {
-      UVAManager::storeHandler(Msocket, addr, len, data);
+    extern "C" void uva_store(size_t len, void *data, void *addr) {
+      UVAManager::storeHandler(Msocket, len, data, addr);
+    }
+
+    extern "C" void *uva_memset(void *addr, int value, size_t num) {
+      UVAManager::memsetHandler(Msocket, addr, value, num);
+    }
+
+    extern "C" void *uva_memcpy(void *dest, void *src, size_t num) {
+      UVAManager::memcpyHandler(Msocket, dest, src, num);
     }
 
     extern "C" void sendInitCompleteSignal() {
-      Msocket->pushWordF(10); // Init complete signal: 9
+      Msocket->pushWordF(GLOBAL_INIT_COMPLETE_SIG); // Init complete signal
       Msocket->sendQue();
 
       Msocket->receiveQue();
       int ack = Msocket->takeWordF(); 
-      assert(ack == 11 && "ack!=11: Server says \"Hey, I didn't get global initialization complete signal correctly. \"");
+      assert(ack == GLOBAL_INIT_COMPLETE_SIG_ACK && "Server says \"Hey, I didn't get global initialization complete signal correctly. \"");
       return;
     }
   }

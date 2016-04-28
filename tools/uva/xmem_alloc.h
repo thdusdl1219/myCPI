@@ -23,8 +23,8 @@ extern "C" void* uva_mmap (void *addr, size_t length, int prot,
 
 extern "C" char* uva_strdup (const char *str);
 
-extern "C" void* uva_memset(void* ptr,int value, size_t num);
-extern "C" void* uva_memcpy(void* dest, const void* source, size_t num);
-extern "C" void* uva_memmove(void* dest, const void* source, size_t num);
+//extern "C" void* uva_memset(void* ptr,int value, size_t num);
+//extern "C" void* uva_memcpy(void* dest, const void* source, size_t num);
+//extern "C" void* uva_memmove(void* dest, const void* source, size_t num);
 
 #endif

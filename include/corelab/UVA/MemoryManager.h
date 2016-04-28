@@ -34,6 +34,9 @@ namespace corelab
 			Constant* Mmap;
       Constant* Load;
       Constant* Store;
+      Constant* Memset;
+      Constant* Memcpy;
+      Constant* Memmove;
       Constant* New64;
       Constant* New32;
 			Type* voidTy;
@@ -96,6 +99,9 @@ namespace corelab
 			Constant* Mmap;
       Constant* Load;
       Constant* Store;
+      Constant* Memset;
+      Constant* Memcpy;
+      Constant* Memmove;
       //Constant* New64;
       Constant* New32;
 			Type* voidTy;

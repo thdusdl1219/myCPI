@@ -17,9 +17,17 @@ namespace corelab {
     
     /* RuntimeClientConnTb: this map record "ClientId" as a key and "QSocket"
      * as a value in runtime when a client comes in. 
+     *
+     * isInitEnd: this value check that global init is end. Server runtime
+     * makes this value true when global initializer send complete signal.
+     * Server runtime can broadcast start permission signal to non-initializer
+     * clients. If some clients don't connect after this value become true, it
+     * is fine. Server runtime can immediately give start permission to late
+     * client. 
+     *
+     *   written by Bongjun.
      */
     static std::map<int *, QSocket *> *RuntimeClientConnTb;
-
     static bool isInitEnd = false;
   }
 }
