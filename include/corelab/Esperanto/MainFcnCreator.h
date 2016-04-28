@@ -18,6 +18,7 @@ namespace corelab
 			void setIniFini(Module& M);
 			Function* getMainFcn(Module& M);
 			StringRef getRealNameofFunction(StringRef fName);
+      Function* getSimilarFunction(Module& M,StringRef name);
 			
 			const char *getPassName() const { return "MainCreator"; }
 			void getAnalysisUsage(AnalysisUsage& AU) const;

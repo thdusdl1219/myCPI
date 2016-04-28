@@ -70,8 +70,8 @@ namespace corelab {
 				voidFcnVoidType, GlobalValue::ExternalLinkage, "__constructor__", &M);
 		BasicBlock *entry = BasicBlock::Create(Context, "entry", initForCtr);
 		BasicBlock *initBB = BasicBlock::Create(Context, "init", initForCtr); 
-		actuals.resize(0);
-		CallInst::Create(constructor, actuals, "", entry); 
+		//actuals.resize(0);
+		//CallInst::Create(constructor, actuals, "", entry); 
 		BranchInst::Create(initBB, entry); 
 		ReturnInst::Create(Context, 0, initBB);
 		callBeforeMain(initForCtr);
@@ -95,47 +95,117 @@ namespace corelab {
 		sprintf(nameSize,"%d",size);
 		std::string nameLength = std::string(nameSize);
 		std::string pre = "_Z" + nameLength;
-		std::string post = "v";
-		std::string finalName = pre + fName + post;
+		std::string finalName = pre + fName;
 		return StringRef(finalName);
 		
 	}
 
-	void MainCreator::setFunctions(Module& M){
+  Function* MainCreator::getSimilarFunction(Module& M, StringRef name){
+    typedef Module::iterator FF;
 
-		EspInitializer& espInit = getAnalysis<EspInitializer>();
-
-		//set main function
-		mainFcn = getMainFcn(M);
-		if(mainFcn == NULL){
-
-			DEBUG(errs() << "There is no main function, so create main!!\n");
-			FunctionType* intFcnVoidType = FunctionType::get(Type::getInt32Ty(M.getContext()),false);
-			mainFcn = Function::Create(intFcnVoidType,GlobalValue::ExternalLinkage,"main",&M);
-			BasicBlock* finalBasicBlock = BasicBlock::Create(M.getContext(),"",mainFcn);
-			//BasicBlock& finalBasicBlock = mainFcn->back();
-			IntegerType* int32Ty = IntegerType::get(M.getContext(),32);
-			ConstantInt* zeroVal = ConstantInt::get(int32Ty,0,true);
-			ReturnInst::Create(M.getContext(),(Value*)zeroVal,finalBasicBlock);
+		for(FF FI = M.begin(),FE = M.end();FI !=FE; ++FI){
+			Function* F = (Function*) &*FI;
+			if(F->isDeclaration()) continue;
+			DEBUG(errs() << "function name is " << F->getName().data() << "\n");
+			if((F->getName().startswith_lower(name))){
+				DEBUG(errs() << "linkage type number is " << F->getLinkage() << "\n");
+				return F;
+			}
 		}
+  }
 
-		//set constructor
-		StringRef constructorName = espInit.MDTable.getConstructorName(DeviceName);
+  void MainCreator::setFunctions(Module& M){
+
+    EspInitializer& espInit = getAnalysis<EspInitializer>();
+    std::vector<Value*> actuals(0);
+    bool mainArgsExist = false;
+    //set constructor
+    StringRef constructorName = espInit.MDTable.getConstructorName(DeviceName);
+
+    DEBUG(errs() << "devicename is " << DeviceName.data() << "\n");
+    DEBUG(errs() << "origin constructor name is " << constructorName.data() << "\n");
+    DEBUG(errs() << "constructor name is " << getRealNameofFunction(constructorName) << "\n");
+    StringRef realname_constructor = getRealNameofFunction(constructorName); 
+    constructor = getSimilarFunction(M, realname_constructor);
+      //M.getFunction(getRealNameofFunction(constructorName));
     
-		DEBUG(errs() << "devicename is " << DeviceName.data() << "\n");
-		DEBUG(errs() << "origin constructor name is " << constructorName.data() << "\n");
-		DEBUG(errs() << "constructor name is " << getRealNameofFunction(constructorName) << "\n");
-		constructor = M.getFunction(getRealNameofFunction(constructorName));
-		
-		//set destructor
-		StringRef destructorName = espInit.MDTable.getDestructorName(DeviceName);
-		DEBUG(errs() << "destructor name is " << getRealNameofFunction(destructorName) << "\n");
-		destructor = M.getFunction(getRealNameofFunction(destructorName));
+    //set destructor
+    StringRef destructorName = espInit.MDTable.getDestructorName(DeviceName);
+    DEBUG(errs() << "destructor name is " << getRealNameofFunction(destructorName) << "\n");
+    StringRef realname_destructor = getRealNameofFunction(destructorName); 
+    destructor = getSimilarFunction(M, realname_destructor);
+      //M.getFunction(getRealNameofFunction(destructorName));
 
-	}
+    //set main function
+    mainFcn = getMainFcn(M);
+    if(mainFcn == NULL){
+      if(constructor->arg_empty()){
+        DEBUG(errs() << "There is no main function, so create main with void args!!\n");
+        FunctionType* intFcnVoidType = FunctionType::get(Type::getInt32Ty(M.getContext()),false);
+        mainFcn = Function::Create(intFcnVoidType,GlobalValue::ExternalLinkage,"main",&M);
+	      BasicBlock *entry = BasicBlock::Create(M.getContext(), "entry", mainFcn);
+        BasicBlock* finalBasicBlock = BasicBlock::Create(M.getContext(),"",mainFcn);
+        //BasicBlock& finalBasicBlock = mainFcn->back();
+        actuals.resize(0);
+		    CallInst::Create(constructor, actuals, "", entry); 
 
-	Function* MainCreator::getMainFcn(Module& M){
-		typedef Module::iterator FF;
+		    BranchInst::Create(finalBasicBlock,entry);
+        IntegerType* int32Ty = IntegerType::get(M.getContext(),32);
+        ConstantInt* zeroVal = ConstantInt::get(int32Ty,0,true);
+        ReturnInst::Create(M.getContext(),(Value*)zeroVal,finalBasicBlock);
+
+        DEBUG(errs() << "There is no main function, so create main with void args!! - end\n");
+      }
+      else{
+        std::vector<Type*> main_args_type;
+        main_args_type.resize(2);
+        main_args_type[0] = IntegerType::get(M.getContext(),32);
+        main_args_type[1] = (Type::getInt8PtrTy(M.getContext()))->getPointerTo();
+        FunctionType* mainFcnType = FunctionType::get(Type::getInt32Ty(M.getContext()),main_args_type,false);
+        mainFcn = Function::Create(mainFcnType,GlobalValue::ExternalLinkage,"main",&M);
+        BasicBlock *entry = BasicBlock::Create(M.getContext(), "entry", mainFcn);
+        BasicBlock* finalBasicBlock = BasicBlock::Create(M.getContext(),"",mainFcn);
+
+        //BasicBlock& finalBasicBlock = mainFcn->back();
+        actuals.resize(2);
+        Function::arg_iterator ai = mainFcn->arg_begin();
+        actuals[0] = (Value*)&*ai;
+        actuals[1] = (Value*)&*(++ai);
+        CallInst::Create(constructor, actuals, "", entry); 
+
+		    BranchInst::Create(finalBasicBlock, entry);
+        IntegerType* int32Ty = IntegerType::get(M.getContext(),32);
+        ConstantInt* zeroVal = ConstantInt::get(int32Ty,0,true);
+        ReturnInst::Create(M.getContext(),(Value*)zeroVal,finalBasicBlock);
+      }
+    }
+    else{
+      if(mainFcn->arg_empty()){
+        BasicBlock* firstBB = (BasicBlock*)(&*mainFcn->begin());    
+        Instruction* firstNonPHI = firstBB->getFirstNonPHI();
+        CallInst::Create(constructor,"",firstNonPHI);
+      }
+      else{
+        if(constructor->arg_empty()){
+          BasicBlock* firstBB = (BasicBlock*)(&*mainFcn->begin());    
+          Instruction* firstNonPHI = firstBB->getFirstNonPHI();
+          CallInst::Create(constructor,"",firstNonPHI);
+        }
+        else{
+          actuals.resize(2);
+          Function::arg_iterator ai = mainFcn->arg_begin();
+          actuals[0] = (Value*)&*ai;
+          actuals[1] = (Value*)&*(++ai);
+          BasicBlock* firstBB = (BasicBlock*)(&*mainFcn->begin());    
+          Instruction* firstNonPHI = firstBB->getFirstNonPHI();
+          CallInst::Create(constructor,actuals,"",firstNonPHI);
+        }
+      }
+    }
+  }
+
+  Function* MainCreator::getMainFcn(Module& M){
+    typedef Module::iterator FF;
 
 		for(FF FI = M.begin(),FE = M.end();FI !=FE; ++FI){
 			Function* F = (Function*) &*FI;
