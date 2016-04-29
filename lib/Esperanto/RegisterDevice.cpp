@@ -112,7 +112,9 @@ namespace corelab {
             if(ctor->isDeclaration()) continue;
             DEBUG(errs() << "invoke inst operands " << ctorName.data() << " / " << ctor->getName().data() << "\n");
             printf("\n");
-            if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
+            //        if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
+            if((ctor->getName()).find(ctorName) != std::string::npos){
+
               std::vector<Value*> actuals(0);
               InstInsertPt out = InstInsertPt::Before(inst);
 
