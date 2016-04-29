@@ -39,6 +39,7 @@
 #include <cstdio>
 #include <stdio.h>
 #include <string.h>
+#include <cxxabi.h>
 using namespace corelab;
 
 namespace corelab {
@@ -76,21 +77,29 @@ namespace corelab {
 		const DataLayout& dataLayout = M.getDataLayout();
 
 		StringRef ctorName = createConstructorName();
-		DEBUG(errs() << "ctorName is " << ctorName.data() << "\n");
+		//DEBUG(errs() << "ctorName is " << ctorName.data() << "\n");
 
 		for(FF FI = M.begin(),FE = M.end();FI !=FE; ++FI){
 			Function* F = (Function*) &*FI;
-			if (F->isDeclaration()) continue;
+			//if (F->isDeclaration()) continue;
+
 
 			for(BB BI = F->begin(),BE = F->end();BI != BE; ++BI){
         BasicBlock* B = (BasicBlock*) &*BI;
         for(II Ii = B->begin(),IE = B->end();Ii != IE; ++Ii){
           Instruction* inst = (Instruction*)&*Ii;
+
           if(CallInst* ci = dyn_cast<CallInst>(inst)){
 
             Function* ctor = ci->getCalledFunction();
+            int status = 0;
+            char* ctor_demangled = abi::__cxa_demangle(ctor->getName().data(),0,0,&status);
+            if(ctor_demangled == NULL) continue;
+            //DEBUG(errs() << "\n\nctor demangled " << ctor_demangled << "\n\n");
+
             //if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
-            if((ctor->getName()).find(ctorName) != std::string::npos){
+            if(status != 0) continue;
+            if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
               std::vector<Value*> actuals(0);
               InstInsertPt out = InstInsertPt::Before(inst);
 
@@ -101,19 +110,27 @@ namespace corelab {
               actuals[0] = deviceAddr;
               out << CallInst::Create(RegisterDevice,actuals,"");
             }
-            else{
+            /*else{
               DEBUG(errs() << "call inst different name " << ctor->getName().data() <<"\n");
-            }
+            }*/
           }
           else if(InvokeInst* ii = dyn_cast<InvokeInst>(inst)){
             //InvokeInst* ci = (InvokeInst*)inst;
+            ii->dump();
             Function* ctor = ii->getCalledFunction();
-            if(ctor == NULL) continue;
-            if(ctor->isDeclaration()) continue;
-            DEBUG(errs() << "invoke inst operands " << ctorName.data() << " / " << ctor->getName().data() << "\n");
-            printf("\n");
+            //if(ctor == NULL) continue;
+            //if(ctor->isDeclaration()) continue;
+            Value* ctor_ = ii->getCalledValue();
+            DEBUG(errs() << "\n\n\norginal function name " << ctor_->getName().data() << "\n\n\n");
+            //DEBUG(errs() << "invoke inst operands " << ctorName.data() << " / " << ctor->getName().data() << "\n\n\n");
+            //printf("\n");
             //        if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
-            if((ctor->getName()).find(ctorName) != std::string::npos){
+            int status = 0;
+            char* ctor_demangled = abi::__cxa_demangle(ctor_->getName().data(),0,0,&status);
+            //DEBUG(errs() << "\n\nctor demangled " << ctor_demangled << "\n\n");
+            if(status != 0) continue;
+            if(ctor_->getName().startswith(createConstructorName())){
+              DEBUG(errs() << "\n\nDEBUG::::::::::::::::::::::::::::::::::::::::invoke instruction is matched\n\n");
 
               std::vector<Value*> actuals(0);
               InstInsertPt out = InstInsertPt::Before(inst);
@@ -125,9 +142,9 @@ namespace corelab {
               actuals[0] = deviceAddr;
               out << CallInst::Create(RegisterDevice,actuals,"");
             }
-            else{
+            /*else{
               DEBUG(errs() << "invoke inst different name " << ctor->getName().data() <<"\n");
-            }
+            }*/
 
           }
         }
