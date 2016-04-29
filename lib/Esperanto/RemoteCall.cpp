@@ -217,38 +217,49 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
 	// for each func args, add it arg list.
 	for (size_t i = 0; i < argSize; ++i) {
 		Value* argValue = ci->getArgOperand(i); // original argument
-		//if(strcmp(argValue->getName().data(), "this") == 0) continue; // XXX: pass "this" argument
 		
-		bool isClassMember = false;
-		//std::map<StringRef,GlobalVariable*>::iterator it;
-		//for(it = classMatching.begin();it!=classMatching.end();it++){
-		//	if(strcmp((esperantoNamer.getClassNameInFunction(f->getName())).c_str(),(it->first).data())==0)
-		//		isClassMember = true;
-		//}
-		std::string className = iMarker.getClassNameInFunction(f->getName());
-		if(className.size() != 0)
-			isClassMember = true;
-		// if(isClassMember && i==0) continue;
 		Type* type = argValue->getType(); // original type
-		const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type); // allocation type size
-		sum += (int)sizeInBits;
-		Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
-		AllocaInst* alloca = new AllocaInst(type, one, (sizeInBits/8),"", insertBefore); // allocate buffer on stack
-		if(i == (argSize -1)) {
-			pointer = (Value*) alloca;
-			isFirst = false;
-		}
-		new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
-    actuals.resize(0);
-    actuals.resize(3);
-   
-	  Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
-	  InstInsertPt out = InstInsertPt::Before(insertBefore);
-    actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
-    actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
-    actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
+    if(!type->isPointerTy()){
+      const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type); // allocation type size
+      sum += (int)sizeInBits;
+      Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+      AllocaInst* alloca = new AllocaInst(type, one, (sizeInBits/8),"", insertBefore); // allocate buffer on stack
+      if(i == (argSize -1)) {
+        pointer = (Value*) alloca;
+        isFirst = false;
+      }
+      new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
+      actuals.resize(0);
+      actuals.resize(3);
 
-    CallInst::Create(PushArgument,actuals,"",insertBefore);
+      Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+      InstInsertPt out = InstInsertPt::Before(insertBefore);
+      actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+      actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+      actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
+
+      CallInst::Create(PushArgument,actuals,"",insertBefore);
+    }
+    else{
+      sum += 32;
+      Type* newType = Type::getInt32Ty(Context);
+      Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+      AllocaInst* alloca = new AllocaInst(newType, one, 4,"", insertBefore); // allocate buffer on stack
+      InstInsertPt out = InstInsertPt::Before(insertBefore);
+      Value* addrIn32 = Casting::castTo(argValue, ConstantInt::get(Type::getInt32Ty(Context),0),out,&dataLayout);
+      new StoreInst(addrIn32,alloca,insertBefore);
+
+      actuals.resize(0);
+      actuals.resize(3);
+      Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+      out = InstInsertPt::Before(insertBefore);
+      actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+      actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+      actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), 4);
+
+      CallInst::Create(PushArgument,actuals,"",insertBefore);
+
+    }
 	}
   /*for(size_t i=0; i<argSize; ++i){
     Value* argValue = ci->getArgOperand(i);
@@ -303,19 +314,9 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
 	// for each func args, add it arg list.
 	for (size_t i = 0; i < argSize; ++i) {
 		Value* argValue = ci->getArgOperand(i); // original argument
-		//if(strcmp(argValue->getName().data(), "this") == 0) continue; // XXX: pass "this" argument
-		
-		bool isClassMember = false;
-		//std::map<StringRef,GlobalVariable*>::iterator it;
-		/*for(it = classMatching.begin();it!=classMatching.end();it++){
-			if(strcmp((esperantoNamer.getClassNameInFunction(f->getName())).c_str(),(it->first).data())==0)
-				isClassMember = true;
-		}*/
-		std::string className = iMarker.getClassNameInFunction(f->getName());
-		if(className.size() != 0)
-			isClassMember = true;
-		// if(isClassMember && i==0) continue;
+
 		Type* type = argValue->getType(); // original type
+    if(!type->isPointerTy()){
 		const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type); // allocation type size
 		sum += (int)sizeInBits;
 		Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
@@ -335,6 +336,27 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
     actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
 
     CallInst::Create(PushArgument,actuals,"",insertBefore);
+    }
+    else{
+      sum += 32;
+      Type* newType = Type::getInt32Ty(Context);
+      Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+		  AllocaInst* alloca = new AllocaInst(newType, one, 4,"", insertBefore); // allocate buffer on stack
+      InstInsertPt out = InstInsertPt::Before(insertBefore);
+      Value* addrIn32 = Casting::castTo(argValue, ConstantInt::get(Type::getInt32Ty(Context),0),out,&dataLayout);
+      new StoreInst(addrIn32,alloca,insertBefore);
+
+      actuals.resize(0);
+      actuals.resize(3);
+      Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+      out = InstInsertPt::Before(insertBefore);
+      actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+      actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+      actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), 4);
+
+      CallInst::Create(PushArgument,actuals,"",insertBefore);
+
+    }
 	}
 	sum /= 8;
 	
