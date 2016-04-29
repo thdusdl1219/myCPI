@@ -25,7 +25,7 @@
 #include <string>
 #include <list>
 
-#define DEBUG_HOIST
+//#define DEBUG_FIXGLB
 
 using namespace llvm;
 using namespace corelab;
@@ -112,7 +112,9 @@ void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
     bool isExistEarlierCallInst;
     for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
       if(isa<CallInst>(&*I)) {
+#ifdef DEBUG_FIXGLB
         printf("in begin (FixedGlobalFactory) : found callinst\n");
+#endif
         isExistEarlierCallInst = true;
         I->dump();
         CallInst *tarFun = dyn_cast<CallInst>(&*I);
@@ -121,7 +123,9 @@ void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
           deviceInitCallInst = &*I;
           out = InstInsertPt::After(deviceInitCallInst);
         } else if(callee->getName().find("__fixed_global_initializer__") != std::string::npos) {
+#ifdef DEBUG_FIXGLB
           printf("Earlier fnGInitzer exists!\n");
+#endif
           ealierFnGInitzerCallInst = &*I;
           out = InstInsertPt::After(ealierFnGInitzerCallInst);
         }
@@ -229,7 +233,7 @@ FixedGlobalVariable* FixedGlobalFactory::create (Type *type, Constant *initzer,
 	const DataLayout *dataLayout = &(pM->getDataLayout ());
 	sizeTotal += dataLayout->getTypeAllocSize (type);
 
-#ifdef DEBUG_HOIST
+#ifdef DEBUG_FIXGLB
   printf("FIXGLB: FixedGlobalFactory::create: name( %s ), size ( %d )\n", name.str().c_str(), dataLayout->getTypeAllocSize(type));
 #endif
 	return fgvar;
@@ -299,7 +303,7 @@ void* FixedGlobalFactory::getFixedAddress (FixedGlobalVariable *fgvar) {
 static void createAndFillInitializers (Constant *initzer, Value *valPtr, 
 		BasicBlock *blkAtEnd, list<Instruction *> &lstInstInitzer) {
 	if (ConstantDataArray *cnstArrInitzer = dyn_cast<ConstantDataArray> (initzer)) {
-#ifdef DEBUG_HOIST
+#ifdef DEBUG_FIXGLB
     printf("FIXGLB: createAndFillInitializers: is ConstantDataArray initzer\n");
 #endif
 		// WORKAROUND: if INITZER is a constant array initializer,

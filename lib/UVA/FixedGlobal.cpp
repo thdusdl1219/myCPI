@@ -29,7 +29,7 @@
 #define FIXED_GLOBAL_BASE 			((void *)0x15000000)
 #define FIXED_CONST_GLOBAL_BASE ((void *)0x16000000)
 
-#define DEBUG_FIXGLB
+//#define DEBUG_FIXGLB
 
 using namespace llvm;
 using namespace std;
@@ -53,7 +53,9 @@ namespace corelab {
     
     LLVMContext &Context = M.getContext(); 
     if(M.getFunction("__constructor__") == NULL) { // UVA-only module
+#ifdef DEBUG_FIXGLB
       printf("FixedGlobal::runOnModule: ctor do not exist (may be UVA-only module)\n");
+#endif
       std::vector<Type*> formals(0);
       std::vector<Value*> actuals(0);
 
@@ -209,7 +211,9 @@ namespace corelab {
               deviceInitCallInst = &*I;
               out = InstInsertPt::After(deviceInitCallInst);
             } else if(callee->getName().find("__fixed_global_initializer__") != std::string::npos) {
+#ifdef DEBUG_FIXGLB
               printf("fnGInitzer exists!\n");
+#endif
               fnGInitzerCallInst = &*I;
               out = InstInsertPt::Before(fnGInitzerCallInst);
               out2 = InstInsertPt::After(fnGInitzerCallInst);
@@ -264,7 +268,9 @@ namespace corelab {
 		while (!lstDispGvars.empty ()) {
 			GlobalVariable *gvar = lstDispGvars.front ();
 			lstDispGvars.pop_front ();
+#ifdef DEBUG_FIXGLB
       gvar->dump();
+#endif
 
 			if (!gvar->user_empty ()) {
 				lstDispGvars.push_back (gvar);
@@ -282,12 +288,16 @@ namespace corelab {
     for (auto U : V->users()) {
       if (Instruction *I = dyn_cast<Instruction>(U)) {
         if(isa<LoadInst>(I) || isa<StoreInst>(I)) continue;
+#ifdef DEBUG_FIXGLB
         I->dump();
+#endif
         Value *LI = new LoadInst(V, "load.glb", I);
         for (unsigned int i = 0; i < I->getNumOperands(); i++) {
           if (I->getOperand(i)->getType() == LI->getType()) {
+#ifdef DEBUG_FIXGLB
             printf("in user, this operand (%d) should be replaced\n", i);
             I->getOperand(i)->dump();
+#endif
             I->setOperand(i, LI);
           }
         }
