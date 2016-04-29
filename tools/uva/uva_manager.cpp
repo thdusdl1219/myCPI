@@ -411,7 +411,10 @@ namespace corelab {
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
     void UVAManager::loadHandler(QSocket *socket, size_t typeLen, void *addr) {
-      if (addr > (void*)0x38000000) {
+      uint32_t intAddr;
+      memcpy(&intAddr, &addr, 4);
+
+      if (intAddr > 939524096 || intAddr < 352321536) {
         return;
       }
 
@@ -427,9 +430,6 @@ namespace corelab {
         socket->pushWordF(typeLen); // type length
         //LOG("[client] DEBUG : may be before segfault?\n");
         
-        uint32_t intAddr;
-       
-        memcpy(&intAddr, &addr, 4);
 
         LOG("[client] intAddr %d\n", intAddr);
         socket->pushWordF(intAddr);
@@ -452,8 +452,10 @@ namespace corelab {
     }
 
     void UVAManager::storeHandler(QSocket *socket, size_t typeLen, void *data, void *addr) {
-      //LOG("[client] Store instr, addr %p, typeLen %lu, TEST val %d\n", addr, typeLen, *((int*)addr)); 
-      if (addr > (void*)0x38000000) {
+      uint32_t intAddr;
+      memcpy(&intAddr, &addr, 4);
+
+      if (intAddr > 939524096 || intAddr < 352321536) {
         return;
       }
 
@@ -466,9 +468,6 @@ namespace corelab {
         }
         socket->pushWordF(STORE_REQ);
         socket->pushWordF(typeLen);
-        
-        uint32_t intAddr;
-        memcpy(&intAddr, &addr, 4);
 
         socket->pushWordF(intAddr);
         socket->pushRangeF(&data, typeLen);
@@ -492,8 +491,10 @@ namespace corelab {
     }
 
     void *UVAManager::memsetHandler(QSocket *socket, void *addr, int value, size_t num) {
-      if (addr > (void*)0x38000000) {
-        LOG("[client] memsetHandler: addr (%p) may be stack END\n", addr);
+      uint32_t intAddr;
+      memcpy(&intAddr, &addr, 4);
+
+      if (intAddr > 939524096 || intAddr < 352321536) {
         return addr;
       }
 
@@ -506,8 +507,6 @@ namespace corelab {
         }
         
         socket->pushWordF(MEMSET_REQ);
-        uint32_t intAddr;
-        memcpy(&intAddr, &addr, 4);
         socket->pushWordF(intAddr);
         socket->pushWordF(value);
         socket->pushWordF(num); // XXX check
@@ -525,8 +524,10 @@ namespace corelab {
     }
 
     void *UVAManager::memcpyHandler(QSocket *socket, void *dest, void *src, size_t num) {
-      if (dest > (void*)0x38000000) {
-        LOG("[client] memcpyHandler: dest (%p) may be stack END (src:%p)\n", dest, src);
+      uint32_t intAddr;
+      memcpy(&intAddr, &dest, 4);
+
+      if (intAddr > 939524096 || intAddr < 352321536) {
         return dest;
       }
 
@@ -539,9 +540,7 @@ namespace corelab {
         }
         
         socket->pushWordF(MEMCPY_REQ);
-        int intAddrDest;
-        memcpy(&intAddrDest, &dest, 4);
-        socket->pushWordF(intAddrDest);
+        socket->pushWordF(intAddr);
         socket->pushWordF(num);
         socket->pushRangeF(src, num);
         //socket->pushWordF(num); // XXX check
