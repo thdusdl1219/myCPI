@@ -132,6 +132,9 @@ namespace corelab {
 			void *fault_addr = si->si_addr;
       LOG("[client] segfaultHandler | fault_addr : %p\n", fault_addr);
       
+      if (fault_addr < (void*)0x15000000) assert(0 && "fault_addr : under 0x15000000");
+      if (fault_addr > (void*)0x38000000) assert(0 && "fault_addr : above 0x38000000");
+
       mmap((void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), 
           PAGE_SIZE, 
           PROT_WRITE | PROT_READ,
@@ -140,7 +143,6 @@ namespace corelab {
       LOG("[client] segfaultHandler | mmap page_addr : %p, mmap size: %d | handling  complete\n", 
           (void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), PAGE_SIZE);
       
-      if (fault_addr < (void*)0x15000000) assert(0);
       
       void *ptNoConstBegin;
       void *ptNoConstEnd;
