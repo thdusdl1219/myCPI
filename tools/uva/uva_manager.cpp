@@ -411,6 +411,10 @@ namespace corelab {
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
     void UVAManager::loadHandler(QSocket *socket, size_t typeLen, void *addr) {
+      if (addr > (void*)0x38000000) {
+        return;
+      }
+
       if(xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
         LOG("[client] Load : loadHandler start (%p)\n", addr);
         if (xmemIsHeapAddr(addr)) {
@@ -449,6 +453,10 @@ namespace corelab {
 
     void UVAManager::storeHandler(QSocket *socket, size_t typeLen, void *data, void *addr) {
       //LOG("[client] Store instr, addr %p, typeLen %lu, TEST val %d\n", addr, typeLen, *((int*)addr)); 
+      if (addr > (void*)0x38000000) {
+        return;
+      }
+
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
         LOG("[client] Store : storeHandler start (%p)\n", addr);
         if (xmemIsHeapAddr(addr)) {
@@ -484,6 +492,11 @@ namespace corelab {
     }
 
     void *UVAManager::memsetHandler(QSocket *socket, void *addr, int value, size_t num) {
+      if (addr > (void*)0x38000000) {
+        LOG("[client] memsetHandler: addr may be stack END\n");
+        return addr;
+      }
+
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
         LOG("[client] Memset : memsetHandler start (%p)\n", addr);
         if (xmemIsHeapAddr(addr)) {
@@ -513,7 +526,7 @@ namespace corelab {
 
     void *UVAManager::memcpyHandler(QSocket *socket, void *dest, void *src, size_t num) {
       if (dest > (void*)0x38000000) {
-        LOG("[client] memcpyHandler: dest may be stack\n");
+        LOG("[client] memcpyHandler: dest may be stack END\n");
         return dest;
       }
 
