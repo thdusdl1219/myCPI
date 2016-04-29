@@ -512,6 +512,11 @@ namespace corelab {
     }
 
     void *UVAManager::memcpyHandler(QSocket *socket, void *dest, void *src, size_t num) {
+      if (dest > (void*)0x38000000) {
+        LOG("[client] memcpyHandler: dest may be stack\n");
+        return dest;
+      }
+
       if (xmemIsHeapAddr(dest) || isFixedGlobalAddr(dest)) {
         LOG("[client] Memcpy : memcpyHandler start (%p <- %p)\n", dest, src);
         if (xmemIsHeapAddr(dest)) {
