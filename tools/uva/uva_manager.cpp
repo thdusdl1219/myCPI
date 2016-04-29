@@ -437,8 +437,8 @@ namespace corelab {
 
         socket->receiveQue();
         int mode = socket->takeWord();
-        //LOG("[client] mode : %d\n", mode); // should be 3
-        assert(mode == LOAD_REQ_ACK && "wrong");
+        LOG("[client] mode : %d\n", mode); // should be 3
+        //assert(mode == LOAD_REQ_ACK && "wrong");
         int len = socket->takeWord();
         //LOG("[client] len : %d\n", len);
         void *buf = malloc(len);
@@ -477,7 +477,7 @@ namespace corelab {
         socket->receiveQue();
         int mode = socket->takeWord();
         LOG("[client] mode : %d\n", mode);
-        assert(mode == STORE_REQ_ACK && "wrong");
+        //assert(mode == STORE_REQ_ACK && "wrong");
         int len = socket->takeWord();
         if (len == 0) { // Normal ack
           //LOG("[client] TEST stored value : %d\n", *((int*)addr));
@@ -551,7 +551,7 @@ namespace corelab {
         hexdump("stack", src, num);
         socket->receiveQue();
         int ack = socket->takeWord();
-        assert(ack == MEMCPY_REQ_ACK && "wrong");
+       // assert(ack == MEMCPY_REQ_ACK && "wrong");
 
         LOG("[client] Memcpy : memcpyHandler END (%p <- %p)\n\n", dest, src);
       }

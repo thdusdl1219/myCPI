@@ -458,7 +458,7 @@ namespace corelab {
         socket->receiveQue();
         int mode = socket->takeWord();
         fprintf(stderr, "mode : %d\n", mode);
-        assert(mode == 7);
+        //assert(mode == 7);
         int ack = socket->takeWord();
         assert(ack == 0);
         //fprintf(stderr, "len : %d\n", len);
