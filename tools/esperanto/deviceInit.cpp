@@ -226,6 +226,7 @@ int generateJobId(int functionID){
 extern "C" 
 void pushArgument(int rc_id, void* buf, int size){
   drm->insertArgsInfo(rc_id,buf, size); 
+  hexdump("argument %d",buf,size);
 }
 
 extern "C" 
