@@ -83,29 +83,51 @@ namespace corelab {
 			if (F->isDeclaration()) continue;
 
 			for(BB BI = F->begin(),BE = F->end();BI != BE; ++BI){
-				BasicBlock* B = (BasicBlock*) &*BI;
-				for(II Ii = B->begin(),IE = B->end();Ii != IE; ++Ii){
-					Instruction* inst = (Instruction*)&*Ii;
-					if(!isa<CallInst>(inst)) continue;
+        BasicBlock* B = (BasicBlock*) &*BI;
+        for(II Ii = B->begin(),IE = B->end();Ii != IE; ++Ii){
+          Instruction* inst = (Instruction*)&*Ii;
+          if(isa<CallInst>(inst)){
 
-					CallInst* ci = (CallInst*)inst;
-					Function* ctor = ci->getCalledFunction();
-					if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
-						std::vector<Value*> actuals(0);
-						InstInsertPt out = InstInsertPt::Before(inst);
-						
-						Value* voidPointer = ConstantPointerNull::get(Type::getInt8PtrTy(M.getContext()));
-						Value* deviceAddr = Casting::castTo(ci->getArgOperand(0),voidPointer,out,&dataLayout);
+            CallInst* ci = (CallInst*)inst;
+            Function* ctor = ci->getCalledFunction();
+            if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
+              std::vector<Value*> actuals(0);
+              InstInsertPt out = InstInsertPt::Before(inst);
 
-						actuals.resize(1);
-						actuals[0] = deviceAddr;
-						out << CallInst::Create(RegisterDevice,actuals,"");
-					}
-					else{
-						DEBUG(errs() << "different name " << ctor->getName().data() <<"\n");
-					}
-				}
-			}
+              Value* voidPointer = ConstantPointerNull::get(Type::getInt8PtrTy(M.getContext()));
+              Value* deviceAddr = Casting::castTo(ci->getArgOperand(0),voidPointer,out,&dataLayout);
+
+              actuals.resize(1);
+              actuals[0] = deviceAddr;
+              out << CallInst::Create(RegisterDevice,actuals,"");
+            }
+            else{
+              DEBUG(errs() << "different name " << ctor->getName().data() <<"\n");
+            }
+          }
+          else if(isa<InvokeInst>(inst)){
+            InvokeInst* ci = (InvokeInst*)inst;
+            Function* ctor = ci->getCalledFunction();
+            if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
+              std::vector<Value*> actuals(0);
+              InstInsertPt out = InstInsertPt::Before(inst);
+
+              Value* voidPointer = ConstantPointerNull::get(Type::getInt8PtrTy(M.getContext()));
+              Value* deviceAddr = Casting::castTo(ci->getArgOperand(0),voidPointer,out,&dataLayout);
+
+              actuals.resize(1);
+              actuals[0] = deviceAddr;
+              out << CallInst::Create(RegisterDevice,actuals,"");
+            }
+            else{
+              DEBUG(errs() << "different name " << ctor->getName().data() <<"\n");
+            }
+
+          }
+          else 
+            continue;
+        }
+      }
 		}
 				
 	}
