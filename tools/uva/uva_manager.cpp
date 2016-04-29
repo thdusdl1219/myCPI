@@ -493,7 +493,7 @@ namespace corelab {
 
     void *UVAManager::memsetHandler(QSocket *socket, void *addr, int value, size_t num) {
       if (addr > (void*)0x38000000) {
-        LOG("[client] memsetHandler: addr may be stack END\n");
+        LOG("[client] memsetHandler: addr (%p) may be stack END\n", addr);
         return addr;
       }
 
@@ -526,7 +526,7 @@ namespace corelab {
 
     void *UVAManager::memcpyHandler(QSocket *socket, void *dest, void *src, size_t num) {
       if (dest > (void*)0x38000000) {
-        LOG("[client] memcpyHandler: dest may be stack END\n");
+        LOG("[client] memcpyHandler: dest (%p) may be stack END (src:%p)\n", dest, src);
         return dest;
       }
 
