@@ -89,7 +89,8 @@ namespace corelab {
           if(CallInst* ci = dyn_cast<CallInst>(inst)){
 
             Function* ctor = ci->getCalledFunction();
-            if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
+            //if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
+            if((ctor->getName()).find(ctorName) != std::string::npos){
               std::vector<Value*> actuals(0);
               InstInsertPt out = InstInsertPt::Before(inst);
 
@@ -140,7 +141,7 @@ namespace corelab {
 		sprintf(nameSize,"%d",size);
 		std::string nameLength = std::string(nameSize);
 		std::string pre = "_ZN" + nameLength;
-		std::string post = "C2Ev";
+		std::string post = "C";
 		std::string finalName = pre + devName + post;
 		return StringRef(finalName);
 	}
