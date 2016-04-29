@@ -94,6 +94,8 @@ namespace corelab {
       void *ptConstEnd;
 
       uintptr_t target;
+      uint32_t intermediate;
+      void *castedAddr;
 
       /* for memset, memcpy */
       int value;
@@ -118,6 +120,7 @@ namespace corelab {
             pthread_exit(&rval);
             LOG("[server] thread exit!");
             break;
+          
           case HEAP_ALLOC_REQ: /*** heap allocate request ***/
             datalen = socket->takeWordF(clientId);
             LOG("[server] (datalen) : (%d)\n", datalen);
@@ -139,9 +142,8 @@ namespace corelab {
             socket->pushRangeF(&allocAddr, sizeof(allocAddr), clientId);
             socket->sendQue(clientId);
             break;
+          
           case LOAD_REQ: /*** load request ***/
-            datalen = socket->takeWordF(clientId);
-            LOG("[server] (datalen) : (%d)\n", datalen);
             LOG("[server] get Load request from client (id: %d)\n", *clientId);
 
             // receive type length (how much load in byte)
@@ -149,7 +151,7 @@ namespace corelab {
             LOG("[server] type length (how much): %d\n", lenType);
 
             // receive requested addr (where)
-            socket->takeRangeF(&requestedAddr, datalen, clientId);
+            requestedAddr = reinterpret_cast<void*>(socket->takeWordF(clientId));
             LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
             
             // send ack with value (what to load)
@@ -159,9 +161,8 @@ namespace corelab {
             LOG("[server] TEST loaded value (what): %d\n", *((int*)requestedAddr));
             socket->sendQue(clientId);
             break;
+          
           case STORE_REQ: /*** store request ***/
-            datalen = socket->takeWordF(clientId);
-            LOG("[server] (datalen) : (%d)\n", datalen);
             LOG("[server] get store request from client\n");
 
             // get type length (how much store in byte)
@@ -169,7 +170,7 @@ namespace corelab {
             LOG("[server] type length (how much store in byte): %d\n", lenType);
 
             // get requested addr (where)
-            socket->takeRangeF(&requestedAddr, datalen, clientId);
+            requestedAddr = reinterpret_cast<void*>(socket->takeWordF(clientId));
             LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
 
             // get value which client want to store (what to store)
@@ -189,13 +190,12 @@ namespace corelab {
             hexdump("store", requestedAddr, lenType);
             //xmemDumpRange(requestedAddr, lenType);
             break;
+          
           case MMAP_REQ: /*** mmap request ***/
-            datalen = socket->takeWordF(clientId);
-            LOG("[server] (datalen) : (%d)\n", datalen);
-            LOG("[server] get mmap request from client\n");
+            LOG("[server] get mmap request from client (%d)\n", *clientId);
 
             // get requested addr (where)
-            socket->takeRangeF(&requestedAddr, datalen, clientId);
+            requestedAddr = reinterpret_cast<void*>(socket->takeWordF(clientId));
             LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
             
             // get size variable's length (32 or 64 bits)
@@ -214,9 +214,8 @@ namespace corelab {
             socket->sendQue(clientId);
             break;
           case MEMSET_REQ:
-            LOG("[server] get memset request from client\n");
-            datalen = socket->takeWordF(clientId);
-            socket->takeRangeF(&requestedAddr, datalen, clientId);
+            LOG("[server] get memset request from client (%d)\n", *clientId);
+            requestedAddr = reinterpret_cast<void*>(socket->takeWordF(clientId));
             value = socket->takeWordF(clientId);
             num = socket->takeWordF(clientId);
 
@@ -230,13 +229,12 @@ namespace corelab {
             break;
           case MEMCPY_REQ:
             LOG("[server] get memcpy request from client\n");
-            datalen = socket->takeWordF(clientId);
-            socket->takeRangeF(&dest, datalen, clientId);
+            dest = reinterpret_cast<void*>(socket->takeWordF(clientId));
             num = socket->takeWordF(clientId);
             valueToStore = malloc(num);
             socket->takeRangeF(valueToStore, num, clientId);
             hexdump("server", valueToStore, num);
-            //num = socket->takeWordF(clientId);
+            
             
             LOG("[server] memcpy(%p, , %d)\n", dest, num);
             //LOG("[server] below are src mem stat\n");
@@ -250,12 +248,12 @@ namespace corelab {
             break;
           case GLOBAL_SEGFAULT_REQ:
             LOG("[server] get GLOBAL_SEGFALUT_REQ from client (%d)\n", *clientId);
-            socket->takeRangeF(&ptNoConstBegin, sizeof(void*), clientId);
+            
+            ptNoConstBegin = reinterpret_cast<void*>(socket->takeWordF(clientId));
+            ptNoConstEnd = reinterpret_cast<void*>(socket->takeWordF(clientId));
+            
             target = (uintptr_t)(&ptNoConstBegin);
             LOG("[server] TEST ptConstBegin (%p)\n", (void*)(*((uintptr_t *)target)));
-            socket->takeRangeF(&ptNoConstEnd, sizeof(void*), clientId);
-            //socket->takeRangeF(&ptConstBegin, sizeof(void*), clientId);
-            //socket->takeRangeF(&ptConstEnd, sizeof(void*), clientId);
             
             LOG("[server] send ack (%d)\n", GLOBAL_SEGFAULT_REQ_ACK);
             socket->pushWordF(GLOBAL_SEGFAULT_REQ_ACK, clientId); // ACK

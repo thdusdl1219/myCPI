@@ -419,10 +419,15 @@ namespace corelab {
           LOG("[client] Load : isFixedGlobalAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
         }
         socket->pushWordF(LOAD_REQ); // mode 2 (client -> server : load request)
-        socket->pushWordF(sizeof(addr));
+        //socket->pushWordF(sizeof(addr));
         socket->pushWordF(typeLen); // type length
         //LOG("[client] DEBUG : may be before segfault?\n");
-        socket->pushRangeF(&addr, sizeof(addr));
+        
+        uint32_t intAddr;
+        
+        memcpy(&intAddr, &addr, 4);
+        
+        socket->pushWordF(intAddr);
         socket->sendQue();
 
         socket->receiveQue();
@@ -451,9 +456,12 @@ namespace corelab {
           LOG("[client] Store : isFixedGlobalAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
         }
         socket->pushWordF(STORE_REQ);
-        socket->pushWordF(sizeof(addr));
         socket->pushWordF(typeLen);
-        socket->pushRangeF(&addr, sizeof(addr));
+        
+        uint32_t intAddr;
+        memcpy(&intAddr, &addr, 4);
+
+        socket->pushWordF(intAddr);
         socket->pushRangeF(&data, typeLen);
         socket->sendQue();
         LOG("[client] Store : sizeof(addr) %d, data length %d\n", sizeof(addr), typeLen);
@@ -484,8 +492,9 @@ namespace corelab {
         }
         
         socket->pushWordF(MEMSET_REQ);
-        socket->pushWordF(sizeof(addr));
-        socket->pushRangeF(&addr, sizeof(addr));
+        uint32_t intAddr;
+        memcpy(&intAddr, &addr, 4);
+        socket->pushWordF(intAddr);
         socket->pushWordF(value);
         socket->pushWordF(num); // XXX check
         socket->sendQue();
@@ -509,8 +518,9 @@ namespace corelab {
         }
         
         socket->pushWordF(MEMCPY_REQ);
-        socket->pushWordF(sizeof(dest));
-        socket->pushRangeF(&dest, sizeof(dest));
+        int intAddrDest;
+        memcpy(&intAddrDest, &dest, 4);
+        socket->pushWordF(intAddrDest);
         socket->pushWordF(num);
         socket->pushRangeF(src, num);
         //socket->pushWordF(num); // XXX check

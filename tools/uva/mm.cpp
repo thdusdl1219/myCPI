@@ -448,8 +448,9 @@ namespace corelab {
 
         // [client side] just send size and addr
         socket->pushWordF(6); // mmap request mode
-        socket->pushWordF(sizeof(addr));
-        socket->pushRangeF(&addr, sizeof(addr));
+        uint32_t intAddr;
+        memcpy(&intAddr, &addr, 4);
+        socket->pushWordF(intAddr);
         socket->pushWordF(sizeof(size));
         socket->pushRangeF(&size, sizeof(size)); // send size
         socket->sendQue();

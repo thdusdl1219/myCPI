@@ -131,37 +131,43 @@ namespace corelab {
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused) {
 			void *fault_addr = si->si_addr;
       LOG("[client] segfaultHandler | fault_addr : %p\n", fault_addr);
+      
       mmap((void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), 
           PAGE_SIZE, 
           PROT_WRITE | PROT_READ,
           MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, (off_t) 0);
-      LOG("[client] segfaultHandler | mmap page_addr : %p, mmap size: %d | handling  complete\n", (void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), PAGE_SIZE);
+      
+      LOG("[client] segfaultHandler | mmap page_addr : %p, mmap size: %d | handling  complete\n", 
+          (void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), PAGE_SIZE);
+      
       if (fault_addr < (void*)0x15000000) assert(0);
+      
       void *ptNoConstBegin;
       void *ptNoConstEnd;
-      //void *ptConstBegin;
-      //void *ptConstEnd;
+      
       UVAManager::getFixedGlobalAddrRange(&ptNoConstBegin, &ptNoConstEnd/*, &ptConstBegin, &ptConstEnd*/);
       if (ptNoConstBegin <= fault_addr && fault_addr < (void*)0x16000000) {
-        //if (UVAManager::isFixedGlobalAddr(fault_addr)) {
         LOG("[client] segfaultHandler | fault_addr is in FixedGlobalAddr space %p\n",ptNoConstBegin);
         Msocket->pushWordF(GLOBAL_SEGFAULT_REQ); // send GLOBAL_SEGFAULT_REQ
-        Msocket->pushRangeF(&ptNoConstBegin, sizeof(void*));
-        Msocket->pushRangeF(&ptNoConstEnd, sizeof(void*));
-        //Msocket->pushRangeF(&ptConstBegin, sizeof(void*));
-        //Msocket->pushRangeF(&ptConstEnd, sizeof(void*));
+        //uint32_t intAddrBegin = reinterpret_cast<uint32_t>(ptNoConstBegin);
+        //uint32_t intAddrEnd = reinterpret_cast<uint32_t>(ptNoConstEnd);
+        uint32_t intAddrBegin;
+        uint32_t intAddrEnd;
+        
+        memcpy(&intAddrBegin, &ptNoConstBegin, 4);
+        memcpy(&intAddrEnd, &ptNoConstEnd, 4);
+        
+        Msocket->pushWordF(intAddrBegin);
+        Msocket->pushWordF(intAddrEnd);
         Msocket->sendQue();
 
         Msocket->receiveQue();
         int ack = Msocket->takeWordF();
-        //printf("ack is %d %d\n", ack, GLOBAL_SEGFAULT_REQ_ACK);
         assert(ack == GLOBAL_SEGFAULT_REQ_ACK && "wrong!!!");
         Msocket->takeRangeF(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin);
-        //Msocket->takeRangeF(ptConstBegin, (uintptr_t)ptConstEnd - (uintptr_t)ptConstBegin);
         LOG("[client] segfaultHandler | get global variables done\n");
         LOG("[client] segfaultHandler (TEST print)\n");
-        xmemDumpRange(ptNoConstBegin, 32);
-        //xmemDumpRange(ptConstBegin, 32);
+        hexdump("segfault", ptNoConstBegin, 24);
       }
       return;
       /*
