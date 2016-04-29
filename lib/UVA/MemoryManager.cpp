@@ -546,12 +546,12 @@ bool MemoryManagerX64::runOnFunction(Function *F, bool is32) {
 							callInst->setCalledFunction(Malloc);
 						}
           }
-          else if(callee->getName() == "Znwj"){
+          else if(callee->getName() == "_Znwj"){
 						if(wasBitCasted){
 							Value *changeTo = Builder.CreateBitCast(New32, ty);
 							callInst->setCalledFunction(changeTo);
 						} else {
-							callInst->setCalledFunction(New32);
+							callInst->setCalledFunction(Malloc);
 						}
           }
 				}
@@ -869,12 +869,12 @@ bool MemoryManagerArm::runOnFunction(Function *F, bool is32) {
 							callInst->setCalledFunction(Malloc);
 						}
           }*/
-          else if(callee->getName() == "Znwj"){
+          else if(callee->getName() == "_Znwj"){
 						if(wasBitCasted){
 							Value *changeTo = Builder.CreateBitCast(New32, ty);
 							callInst->setCalledFunction(changeTo);
 						} else {
-							callInst->setCalledFunction(New32);
+							callInst->setCalledFunction(Malloc);
 						}
           }
 				}

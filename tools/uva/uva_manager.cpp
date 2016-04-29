@@ -424,9 +424,10 @@ namespace corelab {
         //LOG("[client] DEBUG : may be before segfault?\n");
         
         uint32_t intAddr;
-        
+       
         memcpy(&intAddr, &addr, 4);
-        
+
+        LOG("[client] intAddr %d\n", intAddr);
         socket->pushWordF(intAddr);
         socket->sendQue();
 
