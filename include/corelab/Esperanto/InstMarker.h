@@ -35,23 +35,23 @@ namespace corelab
 
 	class LocalFunctionManager{
 		public:
-			void insertLocalFunction(Function* f, bool isStatic_, GlobalVariable* classPointer_){
+			void insertLocalFunction(Instruction* f, bool isStatic_, GlobalVariable* classPointer_){
 				LocalFunctionInfo temp;
 				temp.isStatic = isStatic_;
 				temp.classPointer = classPointer_;
 				localFunctions[f] = temp;
 			}
-			LocalFunctionInfo getLocalFunctionInfo(Function* f){
+			LocalFunctionInfo getLocalFunctionInfo(Instruction* f){
 					return localFunctions[f];
 			}
-			bool isExist(Function* f){
+			bool isExist(Instruction* f){
 				if(localFunctions.find(f) != localFunctions.end())
 					return true;
 				return false;
 			}
 
 		private:
-			std::map<Function*,LocalFunctionInfo> localFunctions;
+			std::map<Instruction*,LocalFunctionInfo> localFunctions;
 	};
 
 	class InstMarker : public ModulePass
@@ -77,7 +77,7 @@ namespace corelab
 			InstMarker() : ModulePass(ID) {}
 
 
-      std::vector<CallInst*> async_fcn_list;
+      std::vector<Function*> async_fcn_list;
 
 	};
 }

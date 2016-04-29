@@ -192,7 +192,7 @@ namespace corelab {
         Type* argType = ai->getType();
         if(!argType->isPointerTy()){
 
-          printf("handle normal argument - switchcase\n");
+         // printf("handle normal argument - switchcase\n");
           int argSize = dataLayout.getTypeAllocSizeInBits(argType);
           // add target pointer addres
           Value* bufAddress = BinaryOperator::CreateAdd(bufInt, ConstantInt::get(integerType, addressSum/8), "", execCase);
@@ -203,9 +203,9 @@ namespace corelab {
           addressSum += argSize;
         }
         else{
-          printf("handle pointer argument - switchcase\n");
+          //printf("handle pointer argument - switchcase\n");
           unsigned pointerSize = dataLayout.getPointerTypeSize(argType);
-          printf("pointer size is %d byte\n",(int)pointerSize);
+          //printf("pointer size is %d byte\n",(int)pointerSize);
           PointerType* pointerType;
           pointerType = dyn_cast<PointerType>(argType); 
 

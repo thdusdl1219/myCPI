@@ -80,7 +80,7 @@ namespace corelab {
 				*tempName = protocols;
 			}
       std::string tempName_string = tempName->str();
-      printf("BONGJUN: tempName_string %s\n", tempName_string.c_str());
+      //printf("BONGJUN: tempName_string %s\n", tempName_string.c_str());
 			struct ProtocolInfo pInfo;
 			if(isHost)
 				(pInfo).targetInit = tempProtocols[tempName_string].initHost;
@@ -98,12 +98,12 @@ namespace corelab {
 			else
 				entry->insertClntProtocol(tempName_string,pInfo);
 			//printf("tempName address : %p, %p\n",tempName_,(tempName).data());
-			if(isHost)
-				printf("HOST :: ");
-			else
-				printf("CLNT :: ");
-			printf("inserted protocol is %s\n",(*tempName).str().c_str());
-      printf("BONGJUN inserted protocol is %s\n", tempName_string.c_str());
+			//if(isHost)
+			//	printf("HOST :: ");
+			//else
+			//	printf("CLNT :: ");
+			//printf("inserted protocol is %s\n",(*tempName).str().c_str());
+      //printf("BONGJUN inserted protocol is %s\n", tempName_string.c_str());
 			if(isLast)
 				break;
 		}	
@@ -120,17 +120,17 @@ namespace corelab {
 			StringRef tempProtocol = StringRef(protocolBuffer);
 
 			if(tempProtocol.find(':') != std::string::npos){
-				printf("%s - both protocol is exist\n",DevDecls[i]->arg1->data());
+				//printf("%s - both protocol is exist\n",DevDecls[i]->arg1->data());
 				std::pair<StringRef,StringRef> protocolPair = tempProtocol.split(':');
 				StringRef first = protocolPair.first;
 				StringRef second = protocolPair.second;
-				printf("dev21 : %s\n",DevDecls[i]->arg1->data());
+				//printf("dev21 : %s\n",DevDecls[i]->arg1->data());
 				makePTableEntry(entry,tempProtocols,first);
-				printf("dev22 : %s\n",DevDecls[i]->arg1->data());
+				//printf("dev22 : %s\n",DevDecls[i]->arg1->data());
 				makePTableEntry(entry,tempProtocols,second);
 			}
 			else{
-				printf("dev1 : %s\n",DevDecls[i]->arg1->data());
+				//printf("dev1 : %s\n",DevDecls[i]->arg1->data());
 				makePTableEntry(entry,tempProtocols,tempProtocol);	
 			}
 			PTable.insertProtocol(*(DevDecls[i]->arg1),*entry);
@@ -221,7 +221,7 @@ namespace corelab {
         strcpy(temp,readBuffer);
         async_info.funcName = new StringRef(temp);
         async_functions.push_back(async_info);
-        printf("inserted async info : class - %s / func - %s\n",(async_info.className)->data(),(async_info.funcName)->data());
+        //printf("inserted async info : class - %s / func - %s\n",(async_info.className)->data(),(async_info.funcName)->data());
       }
       else if(strcmp(readBuffer,"EspDevDecl") == 0){
 				struct MetadataInfo mi;

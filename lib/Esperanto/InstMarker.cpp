@@ -54,8 +54,8 @@ namespace corelab {
 		markFunctionInst(M);
 		removeMarkedRegion(M);
 
-    for(auto ci : async_fcn_list)
-      DEBUG(errs() << "async function is " << ci->getCalledFunction()->getName().data() << "\n");
+    //for(auto ci : async_fcn_list)
+    //  DEBUG(errs() << "async function is " << ci->getCalledFunction()->getName().data() << "\n");
 		//buildMetadataTable();
 		//buildDriverTable();
 		return false;
@@ -76,14 +76,22 @@ namespace corelab {
 				BasicBlock* B = (BasicBlock*) &*BI;
 				for(II Ii = B->begin(),IE = B->end();Ii != IE; ++Ii){
 					Instruction* inst = (Instruction*) &*Ii;
-					if(!isa<CallInst>(inst)) continue;
+					if(!isa<CallInst>(inst) && !isa<InvokeInst>(inst)) continue;
+          Function* calledFunction;
+          if(isa<CallInst>(inst)){
 					CallInst* callInst = cast<CallInst>(inst);
-					Function* calledFunction = callInst->getCalledFunction();
+					calledFunction = callInst->getCalledFunction();
+          }
+          else{
+          InvokeInst* invokeInst = cast<InvokeInst>(inst);
+					calledFunction = invokeInst->getCalledFunction();
+
+          }
 					if(calledFunction != nullptr){
 						StringRef functionName = getFunctionNameInFunction(calledFunction->getName());
             StringRef className = getClassNameInFunction(calledFunction->getName());
             if(className.size() != 0)
-            DEBUG(errs() << "Names " << className.data() << " - " << functionName.data() << "\n");
+            //DEBUG(errs() << "Names " << className.data() << " - " << functionName.data() << "\n");
 						if(functionName.size() ==0) continue;
             if(className.size() == 0) continue;
             //DEBUG(errs() << "async function size is " << database.async_functions.size() << "\n");
@@ -91,12 +99,12 @@ namespace corelab {
 
               if(strcmp(className.data(),(database.async_functions[i].className)->data()) != 0) continue;
               if(strcmp(functionName.data(),(database.async_functions[i].funcName)->data()) != 0) continue;
-              async_fcn_list.push_back(callInst);
-              DEBUG(errs() << "matching -----------------------------------\n");
+              async_fcn_list.push_back(calledFunction);
+              //DEBUG(errs() << "matching -----------------------------------\n");
 
-              DEBUG(errs() << "classNames " << className.data() << " - " << (database.async_functions[i].className)->data() << "\n");
+              //DEBUG(errs() << "classNames " << className.data() << " - " << (database.async_functions[i].className)->data() << "\n");
 
-              DEBUG(errs() << "function Names " << functionName.data() << " - " << (database.async_functions[i].funcName)->data() << "\n");
+              //DEBUG(errs() << "function Names " << functionName.data() << " - " << (database.async_functions[i].funcName)->data() << "\n");
             }
             /*if(strcmp(functionName.data(),"EspAsyncFcn") != 0) continue;
             DEBUG(errs() << "async function name is " << functionName.data() << "\n");
@@ -125,7 +133,7 @@ callInst->getArgOperand(i)->dump();
 		//namedMDNode->addOperand(mdNode);
 		instruction->setMetadata("namer", mdNode);
 		//instruction->dump();
-		errs() <<" has namer metadata\n";
+		//errs() <<" has namer metadata\n";
 		return;
 	}
 
@@ -175,7 +183,7 @@ callInst->getArgOperand(i)->dump();
 			StringRef tempName = functionName.substr(2,functionName.size()-2);
       if(count_ > 0)
         tempName = functionName.substr(classRegion,functionName.size()-classRegion);
-			printf("temp name :%s\n",tempName.data());
+			//printf("temp name :%s\n",tempName.data());
 			std::string ret = "";
 			int classNameLength=0;
 			int count = 0;
@@ -202,7 +210,7 @@ callInst->getArgOperand(i)->dump();
 				}
         char* ret_temp = (char*)malloc(classNameLength);
         strcpy(ret_temp,ret.c_str());
-        printf("function name is %s\n",ret_temp);
+        //printf("function name is %s\n",ret_temp);
 				return StringRef(ret_temp);
 			}
 			else{
@@ -217,11 +225,14 @@ callInst->getArgOperand(i)->dump();
 	}
 
 	std::string InstMarker::getClassNameInFunction(StringRef functionName){
+    if(functionName.size() < 4) return "";
 		StringRef fName = functionName.substr(3,functionName.size()-3);
-		printf("fName = %s\n",fName.data());
+		//printf("fName = %s\n",fName.data());
 		std::string ret = "";
 		int classNameLength=0;
 		int count = 0;
+    
+    //if(!(fName[0] == '_' && fName[1] == 'Z' && fName[2] == 'N')) return "";
 		for(int i=0;i<(int)fName.size();i++){
 			if(47 < fName[i] && fName[i] <58){
 				//printf("%c : %d\n",fName[i],fName[i]);
@@ -234,7 +245,7 @@ callInst->getArgOperand(i)->dump();
 			else
 				break;
 		}
-		printf("className length : %d\n",classNameLength);
+		//printf("className length : %d\n",classNameLength);
 		if(classNameLength !=0){
 			int j=0;
 			int k=0;
@@ -276,12 +287,12 @@ callInst->getArgOperand(i)->dump();
 						StringRef functionName = getFunctionNameInFunction(calledFunction->getName());
 						//printf("functionName : %s\n",calledFunction->getName());
 						if(functionName.size() ==0) continue;
-						printf("DEBUG :: function print -> %s\n",functionName.data());
+						//printf("DEBUG :: function print -> %s\n",functionName.data());
 						//printf("DEBUG :: class Name in function %s : %s\n",className.c_str(),calledFunction->getName().data());
 						StringRef deviceName = database.MDTable.getDeviceName(StringRef("function"),StringRef(functionName));
 						if(deviceName.size() == 0) continue;
 						int deviceID = database.DITable.getDeviceID(deviceName);
-						printf("DEBUG :: deviceID = %d\n",deviceID);
+						//printf("DEBUG :: deviceID = %d\n",deviceID);
 						makeMetadata(inst,deviceID);	
 					}
 					
@@ -319,9 +330,9 @@ callInst->getArgOperand(i)->dump();
 						//printf("DEBUG :: class Name in function %s : %s\n",className.c_str(),calledFunction->getName().data());
 						StringRef deviceName = database.MDTable.getDeviceName(StringRef("region"),StringRef(functionName));
 						if(deviceName.size() == 0) continue;
-						printf("device name : %s\n", deviceName.data());
+						//printf("device name : %s\n", deviceName.data());
 						int deviceID = database.DITable.getDeviceID(deviceName);
-						printf("DEBUG :: deviceID = %d\n",deviceID);
+						//printf("DEBUG :: deviceID = %d\n",deviceID);
 						makeMetadata(inst,deviceID);	
 					}
 					
@@ -348,45 +359,53 @@ callInst->getArgOperand(i)->dump();
 				for(II Ii = B->begin(),IE = B->end();Ii != IE; ++Ii){
 					Instruction* inst = (Instruction*) &*Ii;
 					if(!isa<CallInst>(inst)) continue;
-					CallInst* callInst = cast<CallInst>(inst);
-					Function* calledFunction = callInst->getCalledFunction();
-					if(calledFunction != nullptr){
-						std::string className = getClassNameInFunction(calledFunction->getName());
+          Function* calledFunction;
+          Value* calledValue;
+          bool isCallInst =false;
+          CallInst* callInst = dyn_cast<CallInst>(inst);
+
+          calledValue = callInst->getCalledValue();
+          calledFunction = callInst->getCalledFunction();
+          if(calledFunction != nullptr){
+            DEBUG(errs() << "function name is " << calledFunction->getName().data() << "\n");
+            std::string className = getClassNameInFunction(calledFunction->getName());
+            if(className.size() !=0)
+            DEBUG(errs() << "class name is " << className.c_str() << "\n");
             
-						printf("DEBUG :: class Name in function %s : %s\n",className.c_str(),calledFunction->getName().data());
-						//printf("functionName : %s\n",calledFunction->getName());
-						if(className.size() ==0) continue;
-						StringRef deviceName = database.MDTable.getDeviceName(StringRef("class"),StringRef(className));
-						if(deviceName.size() == 0) continue;
-						int deviceID = database.DITable.getDeviceID(deviceName);
-						Value* firstArg = (Value*)(callInst->getArgOperand(0));
-						//printf("Function %s\n,first arg = %s\n",calledFunction->getName().data(),firstArg->getName().data());
-						//printf("calledFunction argNum :%d\n",(int)callInst->getNumArgOperands());
-						//firstArg->dump();
-						if(strcmp("this",calledFunction->arg_begin()->getName().data()) == 0){
-							if(!LFManager.isExist(calledFunction)){
-								//Type* type = firstArg->getType();
-								//Value* one = ConstantInt::get(Type::getInt32Ty(Context),1);
-								//AllocaInst* alloca = new AllocaInst(type,one,"",callInst);
-								//new StoreInst(firstArg,alloca,callInst);
-								//Constant* init = Constant::getNullValue(type);
-								//GlobalVariable* globalPointer = new GlobalVariable(M, type,false,GlobalValue::CommonLinkage,init,"");
-								//StoreInst* store = new StoreInst(firstArg,globalPointer);
-								//store->insertBefore(callInst);
-								printf("Function %s store first arg\n",calledFunction->getName().data());
-								LFManager.insertLocalFunction(calledFunction,false,NULL);
-							}
-						}
-						else{
-							LFManager.insertLocalFunction(calledFunction,true,nullptr);
-						}
-						//printf("first arg's name : %s\n",arg->getName().data());
-						//printf("DEBUG :: deviceID = %d\n",deviceID);
-						makeMetadata(inst,deviceID);	
-					}
-					
-				}
-			}
+            if(className.size() ==0) continue;
+            StringRef deviceName = database.MDTable.getDeviceName(StringRef("class"),StringRef(className));
+            
+            if(deviceName.size() == 0) continue;
+            int deviceID = database.DITable.getDeviceID(deviceName);
+            DEBUG(errs() << "\nfunction class & devicename" << className.c_str() << " / " << deviceName.data() << "\n");
+            /*if(strcmp("this",calledFunction->arg_begin()->getName().data()) == 0){
+              if(!LFManager.isExist(calledFunction)){
+                LFManager.insertLocalFunction(inst,false,NULL);
+              }
+            }
+            else{
+              LFManager.insertLocalFunction(inst,true,nullptr);
+            }*/
+            makeMetadata(inst,deviceID);	
+          }
+          else if(calledValue != nullptr){
+            if(calledValue->getName().size() != 0){
+            DEBUG(errs() << "called value " << calledValue->getName().data() << "\n");
+            std::string className = getClassNameInFunction(calledValue->getName());
+
+            if(className.size() ==0) continue;
+            StringRef deviceName = database.MDTable.getDeviceName(StringRef("class"),StringRef(className));
+            if(deviceName.size() == 0) continue;
+            int deviceID = database.DITable.getDeviceID(deviceName);
+
+            DEBUG(errs() << "\n value class & devicename" << className.c_str() << " / " << deviceName.data() << "\n");
+            //LFManager.insertLocalFunction(inst,true,nullptr);
+            makeMetadata(inst,deviceID);	
+            }
+          }
+
+        }
+      }
 		}
 	}
 	/*void EspInitializer::checkCallInst(Module& M){

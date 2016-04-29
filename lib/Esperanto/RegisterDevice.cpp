@@ -90,25 +90,49 @@ namespace corelab {
           Instruction* inst = (Instruction*)&*Ii;
 
           if(CallInst* ci = dyn_cast<CallInst>(inst)){
-
+            Value* ctor_v = ci->getCalledValue();
             Function* ctor = ci->getCalledFunction();
-            int status = 0;
-            char* ctor_demangled = abi::__cxa_demangle(ctor->getName().data(),0,0,&status);
-            if(ctor_demangled == NULL) continue;
-            //DEBUG(errs() << "\n\nctor demangled " << ctor_demangled << "\n\n");
+            if(ctor != NULL){
 
-            //if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
-            if(status != 0) continue;
-            if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
-              std::vector<Value*> actuals(0);
-              InstInsertPt out = InstInsertPt::Before(inst);
+              int status = 0;
+              //char* ctor_demangled = abi::__cxa_demangle(ctor->getName().data(),0,0,&status);
+              //if(ctor_demangled == NULL) continue;
+              //DEBUG(errs() << "\n\nctor demangled " << ctor_demangled << "\n\n");
 
-              Value* voidPointer = ConstantPointerNull::get(Type::getInt8PtrTy(M.getContext()));
-              Value* deviceAddr = Casting::castTo(ci->getArgOperand(0),voidPointer,out,&dataLayout);
+              //if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
+              if(status != 0) continue;
+              if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
+                std::vector<Value*> actuals(0);
+                InstInsertPt out = InstInsertPt::Before(inst);
 
-              actuals.resize(1);
-              actuals[0] = deviceAddr;
-              out << CallInst::Create(RegisterDevice,actuals,"");
+                Value* voidPointer = ConstantPointerNull::get(Type::getInt8PtrTy(M.getContext()));
+                Value* deviceAddr = Casting::castTo(ci->getArgOperand(0),voidPointer,out,&dataLayout);
+
+                actuals.resize(1);
+                actuals[0] = deviceAddr;
+                out << CallInst::Create(RegisterDevice,actuals,"");
+              }
+            }
+            else{
+              int status = 0;
+              //char* ctor_demangled = abi::__cxa_demangle(ctor->getName().data(),0,0,&status);
+              //if(ctor_demangled == NULL) continue;
+              //DEBUG(errs() << "\n\nctor demangled " << ctor_demangled << "\n\n");
+
+              //if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
+              if(status != 0) continue;
+              if(strcmp(ctorName.data(),ctor_v->getName().data()) == 0){
+                std::vector<Value*> actuals(0);
+                InstInsertPt out = InstInsertPt::Before(inst);
+
+                Value* voidPointer = ConstantPointerNull::get(Type::getInt8PtrTy(M.getContext()));
+                Value* deviceAddr = Casting::castTo(ci->getArgOperand(0),voidPointer,out,&dataLayout);
+
+                actuals.resize(1);
+                actuals[0] = deviceAddr;
+                out << CallInst::Create(RegisterDevice,actuals,"");
+              }
+
             }
             /*else{
               DEBUG(errs() << "call inst different name " << ctor->getName().data() <<"\n");
@@ -121,16 +145,16 @@ namespace corelab {
             //if(ctor == NULL) continue;
             //if(ctor->isDeclaration()) continue;
             Value* ctor_ = ii->getCalledValue();
-            DEBUG(errs() << "\n\n\norginal function name " << ctor_->getName().data() << "\n\n\n");
+            //DEBUG(errs() << "\n\n\norginal function name " << ctor_->getName().data() << "\n\n\n");
             //DEBUG(errs() << "invoke inst operands " << ctorName.data() << " / " << ctor->getName().data() << "\n\n\n");
             //printf("\n");
             //        if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
             int status = 0;
-            char* ctor_demangled = abi::__cxa_demangle(ctor_->getName().data(),0,0,&status);
+            //char* ctor_demangled = abi::__cxa_demangle(ctor_->getName().data(),0,0,&status);
             //DEBUG(errs() << "\n\nctor demangled " << ctor_demangled << "\n\n");
-            if(status != 0) continue;
+            //if(status != 0) continue;
             if(ctor_->getName().startswith(createConstructorName())){
-              DEBUG(errs() << "\n\nDEBUG::::::::::::::::::::::::::::::::::::::::invoke instruction is matched\n\n");
+              //DEBUG(errs() << "\n\nDEBUG::::::::::::::::::::::::::::::::::::::::invoke instruction is matched\n\n");
 
               std::vector<Value*> actuals(0);
               InstInsertPt out = InstInsertPt::Before(inst);

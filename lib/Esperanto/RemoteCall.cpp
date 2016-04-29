@@ -130,7 +130,7 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 
 			for(II Ii = B->begin(), Ie = B->end(); Ii != Ie; ++Ii) {
 				Instruction* targetInstruction = (Instruction*) &*Ii;
-				if(!isa<CallInst>(targetInstruction)) continue;
+				if(!isa<CallInst>(targetInstruction) && !isa<InvokeInst>(targetInstruction)) continue;
 				//targetInstruction->dump();
 				DEBUG(errs() << "before check metadata namer\n");
 	
@@ -138,7 +138,15 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 				MDNode* md = targetInstruction->getMetadata("namer");
 				if (md == NULL) continue;
 
-				CallInst* ci = (CallInst*)targetInstruction;
+        CallInst* ci;
+        InvokeInst* ii;
+        bool isCallInst = false;
+        if(isa<CallInst>(targetInstruction)){
+				  ci = (CallInst*)targetInstruction;
+          isCallInst = true;
+        }
+        else if(isa<InvokeInst>(targetInstruction))
+          ii = (InvokeInst*)targetInstruction;
 					
 				// check device name and type(architecture) are same with arguments 
 				Value* deviceIDAsValue = cast<ValueAsMetadata>(md->getOperand(0).get())->getValue();
@@ -147,7 +155,11 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 				int deviceID = (int)deviceIDAsConstantInt->getZExtValue();
 				DEBUG(errs() << "this function has namer metadata : did = " << deviceID << "\n");
 				//StringRef compType = cast<MDString>(md->getOperand(1).get())->getString();
-				Function* calledFunction = ci->getCalledFunction();
+        Function* calledFunction;
+        if(isCallInst)
+				  calledFunction = ci->getCalledFunction();
+        else
+          calledFunction = ii->getCalledFunction();
 				if (calledFunction == NULL) continue;
 				DEBUG(errs() << "called function is not null"<< "\n");
 
@@ -155,7 +167,7 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 				if(calledFunctionId < 0) continue;
 									DEBUG(errs() << "called function's id is not 0"<< "\n");
 					
-				printf("function id : %d ==> %s\n",calledFunctionId,calledFunction->getName().data());
+				//printf("function id : %d ==> %s\n",calledFunctionId,calledFunction->getName().data());
 				//printf("function & deviceID = %s / %d\n",calledFunction->getName().data(),deviceID);
 				StringRef devName = StringRef(deviceName);
 				if(esp.DITable.getDeviceID(devName) == deviceID){
@@ -164,9 +176,9 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 					continue;
 				}
 				else if(esp.MDTable.getDeviceName(StringRef("region"),StringRef(calledFunction->getName().drop_front())).size() != 0){
-					printf("inside elseif\n");
+					//printf("inside elseif\n");
 					if(deviceID != esp.DITable.getDeviceID(DeviceName)){
-						printf("OMG :: it is not my local region\n");
+						//printf("OMG :: it is not my local region\n");
 						eraseList.push_back(ci);
 						continue;
 					}
@@ -175,7 +187,7 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 
         bool isAsync = false;
         for(auto async_ci : im.async_fcn_list){
-          if(ci == async_ci)
+          if(ci->getCalledFunction() == async_ci)
             isAsync = true;
         }
         if(isAsync){
@@ -186,40 +198,41 @@ void RemoteCall::substituteRemoteCall(Module& M) {
           createProduceFArgs(calledFunction, targetInstruction, (Value*)jobId, targetInstruction);
           createConsumeReturn(calledFunction, (Value*)jobId, targetInstruction);
         }
-			}
-		}
-	}
-	
-	removeOriginalCallInst();
-	for(auto &i : eraseList) {
-		i->eraseFromParent();
-	}
+      }
+    }
+  }
+
+  removeOriginalCallInst();
+  for(auto &i : eraseList) {
+    i->eraseFromParent();
+  }
 }
 
 void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instruction *insertBefore) {
-	
-	//EsperantoNamer& esperantoNamer = getAnalysis< EsperantoNamer >();
-	EspInitializer& esp = getAnalysis< EspInitializer >();
-	InstMarker& iMarker = getAnalysis< InstMarker >();
-	Module *M = f->getParent();
-	LLVMContext &Context = M->getContext();
-	const DataLayout &dataLayout = M->getDataLayout();
-	std::vector<Value*> actuals(0);
 
-	CallInst* ci = (CallInst*)I;
-	size_t argSize = f->arg_size();
-	Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
-	int sum = 0;
-	bool isFirst = true;	
-  int functionId = esp.functionTable.getFunctionID(f);
+  //EsperantoNamer& esperantoNamer = getAnalysis< EsperantoNamer >();
+  EspInitializer& esp = getAnalysis< EspInitializer >();
+  InstMarker& iMarker = getAnalysis< InstMarker >();
+  Module *M = I->getModule();
+  LLVMContext &Context = M->getContext();
+  const DataLayout &dataLayout = M->getDataLayout();
+  std::vector<Value*> actuals(0);
+  if(isa<CallInst>(I)){
 
-  
-	// for each func args, add it arg list.
-	for (size_t i = 0; i < argSize; ++i) {
-		Value* argValue = ci->getArgOperand(i); // original argument
-		
-		Type* type = argValue->getType(); // original type
-    if(!type->isPointerTy()){
+      CallInst* ci = (CallInst*)I;
+      size_t argSize = f->arg_size();
+      Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+      int sum = 0;
+      bool isFirst = true;	
+      int functionId = esp.functionTable.getFunctionID(f);
+
+
+      // for each func args, add it arg list.
+      for (size_t i = 0; i < argSize; ++i) {
+      Value* argValue = ci->getArgOperand(i); // original argument
+
+      Type* type = argValue->getType(); // original type
+      if(!type->isPointerTy()){
       const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type); // allocation type size
       sum += (int)sizeInBits;
       Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
@@ -239,50 +252,127 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
       actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
 
       CallInst::Create(PushArgument,actuals,"",insertBefore);
-    }
-    else{
-      sum += 32;
-      Type* newType = Type::getInt32Ty(Context);
-      Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
-      AllocaInst* alloca = new AllocaInst(newType, one, 4,"", insertBefore); // allocate buffer on stack
-      InstInsertPt out = InstInsertPt::Before(insertBefore);
-      Value* addrIn32 = Casting::castTo(argValue, ConstantInt::get(Type::getInt32Ty(Context),0),out,&dataLayout);
-      new StoreInst(addrIn32,alloca,insertBefore);
+      }
+      else{
+        sum += 32;
+        Type* newType = Type::getInt32Ty(Context);
+        Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+        AllocaInst* alloca = new AllocaInst(newType, one, 4,"", insertBefore); // allocate buffer on stack
+        InstInsertPt out = InstInsertPt::Before(insertBefore);
+        Value* addrIn32 = Casting::castTo(argValue, ConstantInt::get(Type::getInt32Ty(Context),0),out,&dataLayout);
+        new StoreInst(addrIn32,alloca,insertBefore);
 
+        actuals.resize(0);
+        actuals.resize(3);
+        Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+        out = InstInsertPt::Before(insertBefore);
+        actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+        actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+        actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), 4);
+
+        CallInst::Create(PushArgument,actuals,"",insertBefore);
+
+      }
+      }
+      /*for(size_t i=0; i<argSize; ++i){
+        Value* argValue = ci->getArgOperand(i);
+        Type* type = argValue->getType();
+        const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type);
+        sum += (int)sizeInBits;
+        }*/
+      sum /= 8;
+      //AllocaInst* alloca = new AllocaInst(
       actuals.resize(0);
-      actuals.resize(3);
-      Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
-      out = InstInsertPt::Before(insertBefore);
-      actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
-      actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
-      actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), 4);
 
-      CallInst::Create(PushArgument,actuals,"",insertBefore);
+      // XXX:'sum' can occur align problem.
+      actuals.resize(2);
+      actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), functionId);
+      //actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
+      actuals[1] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
 
+      CallInst* new_ci = CallInst::Create(ProduceAsyncFunctionArgument,  actuals, "", insertBefore);
+      removedCallInst.push_back(I);
+      substitutedCallInst.push_back(new_ci);
+      rc_id++;
+  }
+  else if(isa<InvokeInst>(I)){
+    InvokeInst* ci = (InvokeInst*)I;
+    size_t argSize = f->arg_size();
+    Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+    int sum = 0;
+    bool isFirst = true;	
+    int functionId = esp.functionTable.getFunctionID(f);
+
+
+    // for each func args, add it arg list.
+    for (size_t i = 0; i < argSize; ++i) {
+      Value* argValue = ci->getArgOperand(i); // original argument
+
+      Type* type = argValue->getType(); // original type
+      if(!type->isPointerTy()){
+        const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type); // allocation type size
+        sum += (int)sizeInBits;
+        Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+        AllocaInst* alloca = new AllocaInst(type, one, (sizeInBits/8),"", insertBefore); // allocate buffer on stack
+        if(i == (argSize -1)) {
+          pointer = (Value*) alloca;
+          isFirst = false;
+        }
+        new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
+        actuals.resize(0);
+        actuals.resize(3);
+
+        Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+        InstInsertPt out = InstInsertPt::Before(insertBefore);
+        actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+        actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+        actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
+
+        CallInst::Create(PushArgument,actuals,"",insertBefore);
+      }
+      else{
+        sum += 32;
+        Type* newType = Type::getInt32Ty(Context);
+        Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+        AllocaInst* alloca = new AllocaInst(newType, one, 4,"", insertBefore); // allocate buffer on stack
+        InstInsertPt out = InstInsertPt::Before(insertBefore);
+        Value* addrIn32 = Casting::castTo(argValue, ConstantInt::get(Type::getInt32Ty(Context),0),out,&dataLayout);
+        new StoreInst(addrIn32,alloca,insertBefore);
+
+        actuals.resize(0);
+        actuals.resize(3);
+        Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+        out = InstInsertPt::Before(insertBefore);
+        actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+        actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+        actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), 4);
+
+        CallInst::Create(PushArgument,actuals,"",insertBefore);
+
+      }
     }
-	}
-  /*for(size_t i=0; i<argSize; ++i){
-    Value* argValue = ci->getArgOperand(i);
-    Type* type = argValue->getType();
-    const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type);
-    sum += (int)sizeInBits;
-  }*/
-	sum /= 8;
-  //AllocaInst* alloca = new AllocaInst(
-  actuals.resize(0);
-	
-	// XXX:'sum' can occur align problem.
-	actuals.resize(2);
-	actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), functionId);
-	//actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
-	actuals[1] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
-  
-	CallInst* new_ci = CallInst::Create(ProduceAsyncFunctionArgument,  actuals, "", insertBefore);
-  removedCallInst.push_back(I);
-	substitutedCallInst.push_back(new_ci);
-  rc_id++;
+    /*for(size_t i=0; i<argSize; ++i){
+      Value* argValue = ci->getArgOperand(i);
+      Type* type = argValue->getType();
+      const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type);
+      sum += (int)sizeInBits;
+      }*/
+    sum /= 8;
+    //AllocaInst* alloca = new AllocaInst(
+    actuals.resize(0);
 
-	return;
+    // XXX:'sum' can occur align problem.
+    actuals.resize(2);
+    actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), functionId);
+    //actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
+    actuals[1] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+
+    CallInst* new_ci = CallInst::Create(ProduceAsyncFunctionArgument,  actuals, "", insertBefore);
+    removedCallInst.push_back(I);
+    substitutedCallInst.push_back(new_ci);
+    rc_id++;  
+  }
+  return;
 }
 
 Instruction* RemoteCall::createJobId(Function* f, Instruction *insertBefore){
@@ -297,125 +387,194 @@ Instruction* RemoteCall::createJobId(Function* f, Instruction *insertBefore){
 }
 
 void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, Instruction *insertBefore) {
-	
-	//EsperantoNamer& esperantoNamer = getAnalysis< EsperantoNamer >();
-	EspInitializer& esp = getAnalysis< EspInitializer >();
-	InstMarker& iMarker =getAnalysis< InstMarker >();
-	Module *M = f->getParent();
-	LLVMContext &Context = M->getContext();
-	const DataLayout &dataLayout = M->getDataLayout();
-	std::vector<Value*> actuals(0);
 
-	CallInst* ci = (CallInst*)I;
-	size_t argSize = f->arg_size();
-	Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
-	int sum = 0;
-	bool isFirst = true;	
-	// for each func args, add it arg list.
-	for (size_t i = 0; i < argSize; ++i) {
-		Value* argValue = ci->getArgOperand(i); // original argument
+  //EsperantoNamer& esperantoNamer = getAnalysis< EsperantoNamer >();
+  EspInitializer& esp = getAnalysis< EspInitializer >();
+  InstMarker& iMarker =getAnalysis< InstMarker >();
+  Module *M = I->getModule();
+  LLVMContext &Context = M->getContext();
+  const DataLayout &dataLayout = M->getDataLayout();
+  std::vector<Value*> actuals(0);
 
-		Type* type = argValue->getType(); // original type
-    if(!type->isPointerTy()){
-		const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type); // allocation type size
-		sum += (int)sizeInBits;
-		Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
-		AllocaInst* alloca = new AllocaInst(type, one, (sizeInBits/8),"", insertBefore); // allocate buffer on stack
-		if(isFirst) {
-			pointer = (Value*) alloca;
-			isFirst = false;
-		}
-		new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
+  if(isa<CallInst>(I)){
+
+    CallInst* ci = (CallInst*)I;
+    size_t argSize = f->arg_size();
+    Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+    int sum = 0;
+    bool isFirst = true;	
+    // for each func args, add it arg list.
+    for (size_t i = 0; i < argSize; ++i) {
+      Value* argValue = ci->getArgOperand(i); // original argument
+
+      Type* type = argValue->getType(); // original type
+      if(!type->isPointerTy()){
+        const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type); // allocation type size
+        sum += (int)sizeInBits;
+        Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+        AllocaInst* alloca = new AllocaInst(type, one, (sizeInBits/8),"", insertBefore); // allocate buffer on stack
+        if(isFirst) {
+          pointer = (Value*) alloca;
+          isFirst = false;
+        }
+        new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
+        actuals.resize(0);
+        actuals.resize(3);
+
+        Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+        InstInsertPt out = InstInsertPt::Before(insertBefore);
+        actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+        actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+        actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
+
+        CallInst::Create(PushArgument,actuals,"",insertBefore);
+      }
+      else{
+        sum += 32;
+        Type* newType = Type::getInt32Ty(Context);
+        Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+        AllocaInst* alloca = new AllocaInst(newType, one, 4,"", insertBefore); // allocate buffer on stack
+        InstInsertPt out = InstInsertPt::Before(insertBefore);
+        Value* addrIn32 = Casting::castTo(argValue, ConstantInt::get(Type::getInt32Ty(Context),0),out,&dataLayout);
+        new StoreInst(addrIn32,alloca,insertBefore);
+
+        actuals.resize(0);
+        actuals.resize(3);
+        Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+        out = InstInsertPt::Before(insertBefore);
+        actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+        actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+        actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), 4);
+
+        CallInst::Create(PushArgument,actuals,"",insertBefore);
+
+      }
+    }
+    sum /= 8;
+
+    // XXX:'sum' can occur align problem.
     actuals.resize(0);
-    actuals.resize(3);
+    actuals.resize(2);
+    actuals[0] = jobId;
+    //actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
+    actuals[1] = ConstantInt::get(Type::getInt32Ty(Context),rc_id);
+    //actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), sum);
+    CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
 
-	  Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
-	  InstInsertPt out = InstInsertPt::Before(insertBefore);
-    actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
-    actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
-    actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
+    rc_id++;
+  }
+  else if(isa<InvokeInst>(I)){
+    InvokeInst* ci = (InvokeInst*)I;
+    size_t argSize = f->arg_size();
+    Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+    int sum = 0;
+    bool isFirst = true;	
+    // for each func args, add it arg list.
+    for (size_t i = 0; i < argSize; ++i) {
+      Value* argValue = ci->getArgOperand(i); // original argument
 
-    CallInst::Create(PushArgument,actuals,"",insertBefore);
+      Type* type = argValue->getType(); // original type
+      if(!type->isPointerTy()){
+        const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type); // allocation type size
+        sum += (int)sizeInBits;
+        Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+        AllocaInst* alloca = new AllocaInst(type, one, (sizeInBits/8),"", insertBefore); // allocate buffer on stack
+        if(isFirst) {
+          pointer = (Value*) alloca;
+          isFirst = false;
+        }
+        new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
+        actuals.resize(0);
+        actuals.resize(3);
+
+        Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+        InstInsertPt out = InstInsertPt::Before(insertBefore);
+        actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+        actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+        actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (sizeInBits/8));
+
+        CallInst::Create(PushArgument,actuals,"",insertBefore);
+      }
+      else{
+        sum += 32;
+        Type* newType = Type::getInt32Ty(Context);
+        Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
+        AllocaInst* alloca = new AllocaInst(newType, one, 4,"", insertBefore); // allocate buffer on stack
+        InstInsertPt out = InstInsertPt::Before(insertBefore);
+        Value* addrIn32 = Casting::castTo(argValue, ConstantInt::get(Type::getInt32Ty(Context),0),out,&dataLayout);
+        new StoreInst(addrIn32,alloca,insertBefore);
+
+        actuals.resize(0);
+        actuals.resize(3);
+        Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+        out = InstInsertPt::Before(insertBefore);
+        actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
+        actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
+        actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), 4);
+
+        CallInst::Create(PushArgument,actuals,"",insertBefore);
+
+      }
     }
-    else{
-      sum += 32;
-      Type* newType = Type::getInt32Ty(Context);
-      Value* one = ConstantInt::get(Type::getInt32Ty(Context), 1); 
-		  AllocaInst* alloca = new AllocaInst(newType, one, 4,"", insertBefore); // allocate buffer on stack
-      InstInsertPt out = InstInsertPt::Before(insertBefore);
-      Value* addrIn32 = Casting::castTo(argValue, ConstantInt::get(Type::getInt32Ty(Context),0),out,&dataLayout);
-      new StoreInst(addrIn32,alloca,insertBefore);
+    sum /= 8;
 
-      actuals.resize(0);
-      actuals.resize(3);
-      Value* temp = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
-      out = InstInsertPt::Before(insertBefore);
-      actuals[0] = ConstantInt::get(Type::getInt32Ty(Context), rc_id);
-      actuals[1] = Casting::castTo((Value*)alloca, temp, out, &dataLayout);
-      actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), 4);
+    // XXX:'sum' can occur align problem.
+    actuals.resize(0);
+    actuals.resize(2);
+    actuals[0] = jobId;
+    //actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
+    actuals[1] = ConstantInt::get(Type::getInt32Ty(Context),rc_id);
+    //actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), sum);
+    CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
 
-      CallInst::Create(PushArgument,actuals,"",insertBefore);
-
-    }
-	}
-	sum /= 8;
-	
-	// XXX:'sum' can occur align problem.
-  actuals.resize(0);
-	actuals.resize(2);
-	actuals[0] = jobId;
-	//actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
-	actuals[1] = ConstantInt::get(Type::getInt32Ty(Context),rc_id);
-	//actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), sum);
-	CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
-
-  rc_id++;
-	return;
+    rc_id++;
+  }
+  return;
 }
 
 Instruction* RemoteCall::createConsumeReturn(Function* f, Value* JobId, Instruction* I) {
-	Module* M = f->getParent();
-	const DataLayout &dataLayout = M->getDataLayout();
-	std::vector<Value*> actuals(0);
+  Module* M = I->getModule();
+  const DataLayout &dataLayout = M->getDataLayout();
+  std::vector<Value*> actuals(0);
 
-	actuals.resize(1);
-	Type* type = f->getReturnType();
-	if (type->getTypeID() == Type::VoidTyID) {
-		// case: return type is void
-		actuals[0] = JobId;
-		CallInst* ci = CallInst::Create(ConsumeReturn, actuals, "", I);
-		
-		// add substituted call inst info.
-		removedCallInst.push_back(I);
-		substitutedCallInst.push_back(ci);
-		return NULL;
-	} else {
-		// case: return type is not void
-		actuals[0] = JobId;
-		CallInst* ci = CallInst::Create(ConsumeReturn, actuals, "", I);
-		//InstInsertPt out = InstInsertPt::Before(I);
-		Value* temp = ConstantPointerNull::get(f->getReturnType()->getPointerTo(0));
-		
-		// cast to void* to pointer type of target
-		Instruction* castedCI = (Instruction*)EspUtils::insertCastingBefore(ci,temp,&dataLayout,I);
-			//Casting::castTo(ci, temp, out, &dataLayout);
-		LoadInst* loadedCI = new LoadInst(castedCI, "", I);
-		
-		// add substituted call inst info.
-		removedCallInst.push_back(I);
-		substitutedCallInst.push_back(loadedCI);
-		return loadedCI;
-	}
-	return NULL;
+  actuals.resize(1);
+  Type* type = f->getReturnType();
+  if (type->getTypeID() == Type::VoidTyID) {
+    // case: return type is void
+    actuals[0] = JobId;
+    CallInst* ci = CallInst::Create(ConsumeReturn, actuals, "", I);
+
+    // add substituted call inst info.
+    removedCallInst.push_back(I);
+    substitutedCallInst.push_back(ci);
+    return NULL;
+  } else {
+    // case: return type is not void
+    actuals[0] = JobId;
+    CallInst* ci = CallInst::Create(ConsumeReturn, actuals, "", I);
+    //InstInsertPt out = InstInsertPt::Before(I);
+    Value* temp = ConstantPointerNull::get(f->getReturnType()->getPointerTo(0));
+
+    // cast to void* to pointer type of target
+    Instruction* castedCI = (Instruction*)EspUtils::insertCastingBefore(ci,temp,&dataLayout,I);
+    //Casting::castTo(ci, temp, out, &dataLayout);
+    LoadInst* loadedCI = new LoadInst(castedCI, "", I);
+
+    // add substituted call inst info.
+    removedCallInst.push_back(I);
+    substitutedCallInst.push_back(loadedCI);
+    return loadedCI;
+  }
+  return NULL;
 }
 
 void RemoteCall::removeOriginalCallInst() {
-	assert(removedCallInst.size() == substitutedCallInst.size() && "callinst substitution is crashed");
+  assert(removedCallInst.size() == substitutedCallInst.size() && "callinst substitution is crashed");
 
-	for(size_t i = 0; i < removedCallInst.size(); ++i) {
-		Instruction* old_ci = removedCallInst[i];
-		Instruction* new_ci = substitutedCallInst[i];
-		
+  for(size_t i = 0; i < removedCallInst.size(); ++i) {
+    Instruction* old_ci = removedCallInst[i];
+    Instruction* new_ci = substitutedCallInst[i];
+
 		std::vector<User*> targets;
 		for(Value::user_iterator ui = old_ci->user_begin(), ue = old_ci->user_end(); ui != ue; ++ui) {
 			User* target = *ui; // instruction that uses callinst value
@@ -444,7 +603,7 @@ void RemoteCall::generateFunctionTableProfile(){
 	int funcNum = 0;
 	//DeviceMapEntry* dme = new DeviceMapEntry();
 	//dme->setName(DeviceName.c_str());
-	printf("device name : %s, id : %d\n",DeviceName.c_str(),ei.DITable.getDeviceID(DeviceName));
+	//printf("device name : %s, id : %d\n",DeviceName.c_str(),ei.DITable.getDeviceID(DeviceName));
 	sprintf(filename,"functionTable-%d",ei.DITable.getDeviceID(DeviceName));
 	FILE* output = fopen(filename,"w");
 	typedef std::map<Function*, bool>::iterator FI;
@@ -456,13 +615,13 @@ void RemoteCall::generateFunctionTableProfile(){
 		}
 	}
 	fprintf(output,"%d\n",funcNum);	
-	printf("funcNum : %d\n",funcNum);
+	//printf("funcNum : %d\n",funcNum);
 	for(FI fi = localFunctionTable.begin(), fe = localFunctionTable.end(); fi != fe; ++fi){
 		Function* func = (Function*)(fi->first);
 		if(fi->second){
 			int functionID = ei.functionTable.getFunctionID(func);
 				//loadNamer.getFunctionId(*func);
-			printf("function ID : %d\n", functionID);
+			//printf("function ID : %d\n", functionID);
 			fprintf(output,"%d ",functionID);
 		}
 	}	
