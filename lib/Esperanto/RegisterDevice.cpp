@@ -101,7 +101,7 @@ namespace corelab {
 
               //if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
               if(status != 0) continue;
-              if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
+              if(ctor->getName().startswith(ctorName)){
                 std::vector<Value*> actuals(0);
                 InstInsertPt out = InstInsertPt::Before(inst);
 
@@ -121,7 +121,7 @@ namespace corelab {
 
               //if(strcmp(ctorName.data(),ctor->getName().data()) == 0){
               if(status != 0) continue;
-              if(strcmp(ctorName.data(),ctor_v->getName().data()) == 0){
+              if(ctor_v->getName().startswith(ctorName)){
                 std::vector<Value*> actuals(0);
                 InstInsertPt out = InstInsertPt::Before(inst);
 
