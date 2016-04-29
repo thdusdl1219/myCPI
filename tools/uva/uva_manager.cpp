@@ -502,7 +502,7 @@ namespace corelab {
         LOG("[client] Memset : memset(%p, %d, %d)\n", addr, value, num);
 
         socket->receiveQue();
-        int ack = socket->takeWord();
+        int ack = socket->takeWordF();
         assert(ack == MEMSET_REQ_ACK && "wrong");
 
         LOG("[client] Memset : memsetHandler END (%p)\n\n", addr);
