@@ -265,6 +265,11 @@ namespace corelab {
             break;
           case GLOBAL_INIT_COMPLETE_SIG:
             LOG("[server] get GLOBAL_INIT_COMPLETE_SIG from client (%d)\n", *clientId);
+            if (isInitEnd) {
+              LOG("[server] already complete... somthing wrong..\n");
+              continue;
+            }
+
             isInitEnd = true;
             for(auto &i : *RuntimeClientConnTb) {
               if(*(i.first) != *clientId) {
