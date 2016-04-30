@@ -61,7 +61,9 @@ namespace corelab {
         if (!gvar->isConstant ()) {
           //vecGvars.insert (gvar);
           if (strcmp(gvar_str, gvar->getName().data()) == 0) {
+#ifdef DEBUG_FIXGLB
             printf("found! %s\n", gvar->getName().data());
+#endif
             vecGvars.push_back(gvar);
             break;
           }
@@ -81,7 +83,9 @@ namespace corelab {
           if (hasFunction (gvar->getInitializer ())) {
             gvar->setConstant (false);
             if (strcmp(gvar_str, gvar->getName().data()) == 0) {
+#ifdef DEBUG_FIXGLB
               printf("found! %s\n", gvar->getName().data());
+#endif
               vecGvars.push_back(gvar);
               break;
             }
@@ -158,8 +162,10 @@ namespace corelab {
       ssize_t read;
 
       while ((read = getline(&line, &len, fp)) != -1) {
+#ifdef DEBUG_FIXGLB
         //printf("Retrieved line of length %zu :\n", read);
         printf("%s", line);
+#endif
         strtok(line,"\n");
         findGV(M, line, vecGvars);
       }
@@ -182,7 +188,9 @@ namespace corelab {
              gvar->getName().str().substr (0, 5) != string ("llvm."))) {
           if (!gvar->isConstant ()) {
             vecGvars.push_back (gvar);
+#ifdef DEBUG_FIXGLB
             printf("$$$$$$$$$$$$$$$$$$ %s\n", gvar->getName().data());
+#endif
             fprintf(fp, "%s\n", gvar->getName().data());
 #ifdef DEBUG_FIXGLB
             printf("FIXGLB: runOnModule: no const (has init func): %s\n", gvar->getName().data());
@@ -200,7 +208,9 @@ namespace corelab {
             if (hasFunction (gvar->getInitializer ())) {
               gvar->setConstant (false);
               vecGvars.push_back (gvar);
+#ifdef DEBUG_FIXGLB
             printf("$$$$$$$$$$$$$$$$$$ %s\n", gvar->getName().data());
+#endif
               fprintf(fp, "%s\n", gvar->getName().data());
 #ifdef DEBUG_FIXGLB
               printf("FIXGLB: runOnModule: const (has init func): %s\n", gvar->getName().data());
@@ -217,10 +227,12 @@ namespace corelab {
       }
     }
 
+#ifdef DEBUG_FIXGLB
     printf("FIXGLB: vecGvars:\n");
     for (auto SI : vecGvars) {
       printf("%s\n", SI->getName().data());
     }
+#endif
 		/* Convert non-constant globals */
 		size_t sizeGvars = convertToFixedGlobals (vecGvars, FIXED_GLOBAL_BASE);
 #ifdef DEBUG_FIXGLB

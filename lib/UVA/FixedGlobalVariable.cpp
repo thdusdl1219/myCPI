@@ -117,7 +117,9 @@ void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
         printf("in begin (FixedGlobalFactory) : found callinst\n");
 #endif
         isExistEarlierCallInst = true;
+#ifdef DEBUG_FIXGLB
         I->dump();
+#endif
         CallInst *tarFun = dyn_cast<CallInst>(&*I);
         Function *callee = tarFun->getCalledFunction();
         if(callee->getName() == "deviceInit") { // Esperanto-aware
@@ -233,8 +235,10 @@ FixedGlobalVariable* FixedGlobalFactory::create (Type *type, Constant *initzer,
 
 	/* update the total chunk size of globals. */
 	const DataLayout *dataLayout = &(pM->getDataLayout ());
+#ifdef DEBUG_FIXGLB
   type->dump();
   printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ type size : %d\n", dataLayout->getTypeAllocSize(type));
+#endif
 	
   //sizeTotal += dataLayout->getTypeAllocSize (type);
 	sizeTotal += 8;
