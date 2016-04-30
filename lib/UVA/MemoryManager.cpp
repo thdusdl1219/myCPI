@@ -1088,6 +1088,7 @@ static void installMemAccessHandler(Module &M,
           CallInst::Create(Store, args, "", st);
         }
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(instruction)) {
+        printf("MemsetInst\n");
         args.resize(3);
         
         Value *addr = MSI->getDest();
@@ -1118,6 +1119,7 @@ static void installMemAccessHandler(Module &M,
         args[2] = num; // size_t (Int64Ty or Int32Ty)
         CallInst::Create(Memset, args, "", MSI);
       } else if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(instruction)) {
+        printf("MemcpyInst\n");
         args.resize(3);
         
         Value *dest = MCI->getDest();
