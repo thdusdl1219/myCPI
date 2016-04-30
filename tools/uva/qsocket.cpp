@@ -25,7 +25,7 @@
 #include "overhead.h"
 #endif
 
-#define DEBUG_UVA
+//#define DEBUG_UVA
 
 //using namespace std;
 
@@ -43,7 +43,9 @@ namespace corelab {
 	QSocket::QSocket () {
 		initializeFields ();
     clientRoutine = NULL;
+#ifdef DEBUG_UVA
 		DEBUG.PRINT ("socket allocated (addr: %p)", this);
+#endif
 
 		#ifdef OVERHEAD_TEST
 		OHDTEST_SETUP ();
@@ -170,14 +172,18 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 
 		initializeFields ();
 
+#ifdef DEBUG_UVA
 		DEBUG.BEGIN_TASK ("CONFIG", "configuring socket..");
+#endif
 		idHost = socket (PF_INET, SOCK_STREAM, 0);
 		if (idHost < 0) {
 			DEBUG.EXIT_TASK ("CONFIG", "failed: cannot assign socket id");
 			perror ("socket");
 			return false;
 		}
+#ifdef DEBUG_UVA
 		DEBUG.PRINT ("socket id assined (id:%d)", idHost);
+#endif
 
 		memset (&eptHost, 0, sizeof (eptHost));
 		eptHost.sin_family = AF_INET;
@@ -190,7 +196,9 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 			perror ("bind");
 			return false;
 		}
+#ifdef DEBUG_UVA
 		DEBUG.PRINT ("socket bound (port:%hu)", ntohs (eptHost.sin_port));
+#endif
 		DEBUG.END_TASK ("CONFIG");
 
 		DEBUG.BEGIN_TASK ("LISTEN", "listening..");
@@ -311,7 +319,9 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 			perror ("connect");
 			return false;
 		}
+#ifdef DEBUG_UVA
 		DEBUG.PRINT ("connected.");
+#endif
 		DEBUG.END_TASK ("CONNECT");
 
 		initializeSocketOpt ();
