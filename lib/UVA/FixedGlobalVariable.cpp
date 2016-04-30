@@ -159,7 +159,7 @@ void FixedGlobalFactory::end (bool isFixGlbDuty) {
 	Type *tyInt8Pt = Type::getInt8PtrTy (*pC);
 	Type *tyInt32 = Type::getInt32Ty (*pC);
 
-  Type *archiTy = Type::getIntNTy ((pM->getContext()), dataLayout->getPointerSizeInBits ());
+  Type *tyArchi = Type::getIntNTy ((pM->getContext()), dataLayout->getPointerSizeInBits ());
 
 	size_t sizeAlloc = (sizeTotal + PAGE_SIZE - 1) / PAGE_SIZE * PAGE_SIZE;
 
@@ -170,18 +170,19 @@ void FixedGlobalFactory::end (bool isFixGlbDuty) {
 
 	blkGInitzer->moveAfter (blkMmap);
 
+  printf("############## %d \n", dataLayout->getPointerSizeInBits());
 	vector<Value *> vecMmapArgs;
 	vecMmapArgs.push_back (
 			ConstantExpr::getCast (Instruction::IntToPtr,
-					ConstantInt::get (archiTy, uptBase), tyInt8Pt));
-	vecMmapArgs.push_back (ConstantInt::get (archiTy, sizeAlloc));
+					ConstantInt::get (tyArchi, uptBase), tyInt8Pt));
+	vecMmapArgs.push_back (ConstantInt::get (tyArchi, sizeAlloc));
 	vecMmapArgs.push_back (ConstantInt::get (tyInt32, 3));
 	vecMmapArgs.push_back (ConstantInt::get (tyInt32, 50));
 	vecMmapArgs.push_back (ConstantInt::get (tyInt32, -1));
-	vecMmapArgs.push_back (ConstantInt::get (archiTy, 0));
+	vecMmapArgs.push_back (ConstantInt::get (tyArchi, 0));
 
 	Constant *cnstMmap = pM->getOrInsertFunction ("mmap", tyInt8Pt,
-			tyInt8Pt, tyUintPtr, tyInt32, tyInt32, tyInt32, tyUintPtr, NULL);
+			tyInt8Pt, tyArchi, tyInt32, tyInt32, tyInt32, tyArchi, NULL);
 	Instruction *instMmapCall = CallInst::Create (cnstMmap, vecMmapArgs, 
 			"mmap.pt", blkMmap);
 	Instruction *instCastedMmapRes = CastInst::CreatePointerCast (instMmapCall, tyUintPtr,
