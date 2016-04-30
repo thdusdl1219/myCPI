@@ -211,18 +211,18 @@ namespace corelab {
 
           //Type* newIntegerType = IntegerType::get(Context, 32);
           Value* bufAddress = BinaryOperator::CreateAdd(bufInt, ConstantInt::get(integerType, addressSum/8), "", execCase);
-          bufAddress->dump();
+          //bufAddress->dump();
           Value *tempPtr = ConstantPointerNull::get(Type::getInt32PtrTy(Context));
           out = InstInsertPt::End(execCase);
           Value *argPtr = Casting::castTo(bufAddress, tempPtr, out, &dataLayout);
-          argPtr->dump();
+          //argPtr->dump();
           Value* addrIn32 = new LoadInst(argPtr,"",execCase);
-          addrIn32->dump();
+          //addrIn32->dump();
           //Value* addrIn64 = Casting::castTo(addrIn32, ConstantInt::get(Type::getInt64Ty(Context),0), out, &dataLayout);
           //addrIn64->dump();
           out = InstInsertPt::End(execCase);
           Value* realAddr = Casting::castTo(addrIn32, ConstantPointerNull::get(pointerType), out, &dataLayout);
-          realAddr->dump();
+          //realAddr->dump();
           actuals[argIndex++] = realAddr;
           addressSum += 32;
           //Value* newArg = Casting::castTo((Value*)&*ai,

@@ -132,7 +132,7 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 				Instruction* targetInstruction = (Instruction*) &*Ii;
 				if(!isa<CallInst>(targetInstruction) && !isa<InvokeInst>(targetInstruction)) continue;
 				//targetInstruction->dump();
-				DEBUG(errs() << "before check metadata namer\n");
+				//DEBUG(errs() << "before check metadata namer\n");
 	
 				// check the metadata which is attached to attributes
 				MDNode* md = targetInstruction->getMetadata("namer");
@@ -153,7 +153,7 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 				Constant* deviceIDAsConstant = cast<Constant>(deviceIDAsValue);
 				ConstantInt* deviceIDAsConstantInt = cast<ConstantInt>(deviceIDAsConstant);
 				int deviceID = (int)deviceIDAsConstantInt->getZExtValue();
-				DEBUG(errs() << "this function has namer metadata : did = " << deviceID << "\n");
+				//DEBUG(errs() << "this function has namer metadata : did = " << deviceID << "\n");
 				//StringRef compType = cast<MDString>(md->getOperand(1).get())->getString();
         Function* calledFunction;
         if(isCallInst)
@@ -161,16 +161,17 @@ void RemoteCall::substituteRemoteCall(Module& M) {
         else
           calledFunction = ii->getCalledFunction();
 				if (calledFunction == NULL) continue;
-				DEBUG(errs() << "called function is not null"<< "\n");
+				//DEBUG(errs() << "called function is not null"<< "\n");
 
 				int calledFunctionId = esp.functionTable.getFunctionID(calledFunction);
 				if(calledFunctionId < 0) continue;
-									DEBUG(errs() << "called function's id is not 0"<< "\n");
+									//DEBUG(errs() << "called function's id is not 0"<< "\n");
 					
 				//printf("function id : %d ==> %s\n",calledFunctionId,calledFunction->getName().data());
 				//printf("function & deviceID = %s / %d\n",calledFunction->getName().data(),deviceID);
 				StringRef devName = StringRef(deviceName);
 				if(esp.DITable.getDeviceID(devName) == deviceID){
+          DEBUG(errs() << "This function " << calledFunction->getName().data() << " is localFunction : " <<  calledFunctionId<<"\n");
 					//printf("This function is in device %d\n",deviceID);	
 					localFunctionTable[calledFunction] = true;	
 					continue;
@@ -395,7 +396,7 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
   LLVMContext &Context = M->getContext();
   const DataLayout &dataLayout = M->getDataLayout();
   std::vector<Value*> actuals(0);
-
+  DEBUG(errs() << "function " << f->getName().data() << " is remote call function " << esp.functionTable.getFunctionID(f) << "\n");
   if(isa<CallInst>(I)){
 
     CallInst* ci = (CallInst*)I;

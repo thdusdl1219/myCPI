@@ -219,7 +219,7 @@ int generateJobId(int functionID){
 		//printf("get job id : %d\n",jobID);
 		drm->insertRunningJob(jobID, functionID);
 
-	LOG("DEBUG :: generate job ID = %d\n",jobID);
+	LOG("DEBUG :: generate job ID = %d ; %d\n",jobID,functionID);
 	return jobID;
 }
 
@@ -289,7 +289,7 @@ int size = drm->getArgsTotalSize(rc_id);
 		pthread_mutex_lock(&sendQHandleLock);
 		sendQHandling = true;
 		pthread_mutex_unlock(&sendQHandleLock);
-		LOG("produce function args to send q\n");
+		LOG("produce function args to send q : %d\n",drm->getRunningJobFID(jobID));
 }
 
 extern "C"
