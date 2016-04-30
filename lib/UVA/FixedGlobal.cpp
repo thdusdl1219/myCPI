@@ -25,6 +25,7 @@
 #include <list>
 #include <cstdio>
 #include <string>
+#include <unistd.h>
 
 #define FIXED_GLOBAL_BASE 			((void *)0x15000000)
 #define FIXED_CONST_GLOBAL_BASE ((void *)0x16000000)
@@ -47,6 +48,57 @@ namespace corelab {
   static cl::opt<string> FixGlbDuty("fix_global_duty", 
       cl::desc("Specify Global variable fixing and initializer (1: initializer, 0: not)"), 
       cl::value_desc("global initializer in charge"));
+
+  void FixedGlobal::findGV(Module &M, char *gvar_str, vector<GlobalVariable*> &vecGvars) {
+    for (Module::global_iterator igvar = M.global_begin ();
+        igvar != M.global_end (); ++igvar) {
+      GlobalVariable *gvar = &*igvar;
+
+      // FIXME assume external, if it doesn't have an initializer.
+      if ((!gvar->hasExternalLinkage () || gvar->hasInitializer ()) &&
+          (gvar->getName().str().length () < 5 ||
+           gvar->getName().str().substr (0, 5) != string ("llvm."))) {
+        if (!gvar->isConstant ()) {
+          //vecGvars.insert (gvar);
+          if (strcmp(gvar_str, gvar->getName().data()) == 0) {
+            printf("found! %s\n", gvar->getName().data());
+            vecGvars.push_back(gvar);
+            break;
+          }
+#ifdef DEBUG_FIXGLB
+          printf("FIXGLB: runOnModule: no const (has init func): %s\n", gvar->getName().data());
+#endif
+        } else {
+          // WORKAROUND: If the global initializer takes functions,
+          // it breaks the rule where function pointers of the server
+          // must have a function's address of the client, ending
+          // up with a devestating result.
+
+          // It would be more ideal to fix the function translator pass,
+          // but now, we just add a small workaround code here,
+          // so that the initializer can be effectivly overlapped 
+          // to the client's one at runtime.
+          if (hasFunction (gvar->getInitializer ())) {
+            gvar->setConstant (false);
+            if (strcmp(gvar_str, gvar->getName().data()) == 0) {
+              printf("found! %s\n", gvar->getName().data());
+              vecGvars.push_back(gvar);
+              break;
+            }
+#ifdef DEBUG_FIXGLB
+            printf("FIXGLB: runOnModule: const (has init func): %s\n", gvar->getName().data());
+#endif
+          }	
+          else {
+            //setConstGvars.insert (gvar);
+#ifdef DEBUG_FIXGLB
+            printf("FIXGLB: runOnModule: const (NO init func): %s\n",gvar->getName().data());
+#endif
+          }
+        }
+      }
+    }
+  }
 
 	bool FixedGlobal::runOnModule (Module& M) {
 		this->pM = &M;
@@ -93,50 +145,84 @@ namespace corelab {
       this->isFixGlbDuty = false;
 
 		/* Find all internal global variables. */
-		set<GlobalVariable *> setGvars;
-		set<GlobalVariable *> setConstGvars;
-		for (Module::global_iterator igvar = M.global_begin ();
-				 igvar != M.global_end (); ++igvar) {
-			GlobalVariable *gvar = &*igvar;
-			
-			// FIXME assume external, if it doesn't have an initializer.
-			if ((!gvar->hasExternalLinkage () || gvar->hasInitializer ()) &&
-					(gvar->getName().str().length () < 5 ||
-					 	gvar->getName().str().substr (0, 5) != string ("llvm."))) {
-				if (!gvar->isConstant ()) {
-					setGvars.insert (gvar);
-#ifdef DEBUG_FIXGLB
-          printf("FIXGLB: runOnModule: no const (has init func): %s\n", gvar->getName().data());
-#endif
-        } else {
-					// WORKAROUND: If the global initializer takes functions,
-					// it breaks the rule where function pointers of the server
-					// must have a function's address of the client, ending
-					// up with a devestating result.
-					
-					// It would be more ideal to fix the function translator pass,
-					// but now, we just add a small workaround code here,
-					// so that the initializer can be effectivly overlapped 
-					// to the client's one at runtime.
-					if (hasFunction (gvar->getInitializer ())) {
-						gvar->setConstant (false);
-						setGvars.insert (gvar);
-#ifdef DEBUG_FIXGLB
-          printf("FIXGLB: runOnModule: const (has init func): %s\n", gvar->getName().data());
-#endif
-          }	
-					else {
-						setConstGvars.insert (gvar);
-#ifdef DEBUG_FIXGLB
-          printf("FIXGLB: runOnModule: const (NO init func): %s\n",gvar->getName().data());
-#endif
-          }
-				}
-			}
-		}
+		vector<GlobalVariable *> vecGvars;
+		//set<GlobalVariable *> setConstGvars;
+    
+    bool isFileExist = false;
+    if(access( "gv_list.dat", F_OK ) != -1) { // gv_list.dat already exist!
+      isFileExist = true;
+      FILE *fp = fopen("gv_list.dat", "r");
+      assert(fp && "gv_list.dat should be exist !");
+      char *line = NULL;
+      size_t len = 0;
+      ssize_t read;
 
+      while ((read = getline(&line, &len, fp)) != -1) {
+        //printf("Retrieved line of length %zu :\n", read);
+        printf("%s", line);
+        strtok(line,"\n");
+        findGV(M, line, vecGvars);
+      }
+      //while (fscanf (fp, "%s\n", buf) != EOF) {
+      //  vecGvarsTmp.push_back(buf);
+      //  buf = (char*)realloc(buf, sizeof(char)*1024);
+      //}
+      //free(line);
+      fclose (fp); 
+    } else {
+      FILE *fp = fopen("gv_list.dat", "w");
+
+      for (Module::global_iterator igvar = M.global_begin ();
+          igvar != M.global_end (); ++igvar) {
+        GlobalVariable *gvar = &*igvar;
+
+        // FIXME assume external, if it doesn't have an initializer.
+        if ((!gvar->hasExternalLinkage () || gvar->hasInitializer ()) &&
+            (gvar->getName().str().length () < 5 ||
+             gvar->getName().str().substr (0, 5) != string ("llvm."))) {
+          if (!gvar->isConstant ()) {
+            vecGvars.push_back (gvar);
+            printf("$$$$$$$$$$$$$$$$$$ %s\n", gvar->getName().data());
+            fprintf(fp, "%s\n", gvar->getName().data());
+#ifdef DEBUG_FIXGLB
+            printf("FIXGLB: runOnModule: no const (has init func): %s\n", gvar->getName().data());
+#endif
+          } else {
+            // WORKAROUND: If the global initializer takes functions,
+            // it breaks the rule where function pointers of the server
+            // must have a function's address of the client, ending
+            // up with a devestating result.
+
+            // It would be more ideal to fix the function translator pass,
+            // but now, we just add a small workaround code here,
+            // so that the initializer can be effectivly overlapped 
+            // to the client's one at runtime.
+            if (hasFunction (gvar->getInitializer ())) {
+              gvar->setConstant (false);
+              vecGvars.push_back (gvar);
+            printf("$$$$$$$$$$$$$$$$$$ %s\n", gvar->getName().data());
+              fprintf(fp, "%s\n", gvar->getName().data());
+#ifdef DEBUG_FIXGLB
+              printf("FIXGLB: runOnModule: const (has init func): %s\n", gvar->getName().data());
+#endif
+            }	
+            else {
+              //setConstGvars.insert (gvar);
+#ifdef DEBUG_FIXGLB
+              printf("FIXGLB: runOnModule: const (NO init func): %s\n",gvar->getName().data());
+#endif
+            }
+          }
+        }
+      }
+    }
+
+    printf("FIXGLB: vecGvars:\n");
+    for (auto SI : vecGvars) {
+      printf("%s\n", SI->getName().data());
+    }
 		/* Convert non-constant globals */
-		size_t sizeGvars = convertToFixedGlobals (setGvars, FIXED_GLOBAL_BASE);
+		size_t sizeGvars = convertToFixedGlobals (vecGvars, FIXED_GLOBAL_BASE);
 #ifdef DEBUG_FIXGLB
     printf("FIXGLB: sizeGvars is %ld\n", sizeGvars);
 #endif
@@ -262,8 +348,8 @@ namespace corelab {
 
 		/* Finalize */
 		list<GlobalVariable *> lstDispGvars;
-		lstDispGvars.insert (lstDispGvars.begin (), setGvars.begin (), setGvars.end ());
-		//lstDispGvars.insert (lstDispGvars.begin (), setConstGvars.begin (), setConstGvars.end ());
+		lstDispGvars.insert (lstDispGvars.begin (), vecGvars.begin (), vecGvars.end ());
+	  //lstDispGvars.insert (lstDispGvars.begin (), setConstGvars.begin (), setConstGvars.end ());
 
 		while (!lstDispGvars.empty ()) {
 			GlobalVariable *gvar = lstDispGvars.front ();
@@ -280,9 +366,24 @@ namespace corelab {
 			gvar->eraseFromParent ();
 		}
 
+/*		while (!vecGvars.empty ()) {
+			GlobalVariable *gvar = vecGvars.front ();
+			vecGvars.pop_back ();
+#ifdef DEBUG_FIXGLB
+      gvar->dump();
+#endif
+
+			if (!gvar->user_empty ()) {
+				vecGvars.push_back (gvar);
+				continue;
+			}
+
+			gvar->eraseFromParent ();
+		}
+    */
+
 		return false;
 	}
-
   static void findAndInsertLoadInstForAllUsesRecursively (Value *V) {
     if (V->user_empty()) return;
     for (auto U : V->users()) {
@@ -305,7 +406,7 @@ namespace corelab {
       }
     }
   }
-	size_t FixedGlobal::convertToFixedGlobals (set<GlobalVariable *> setGvars, void *base) {
+	size_t FixedGlobal::convertToFixedGlobals (vector<GlobalVariable *> vecGvars, void *base) {
 		typedef map<GlobalVariable *, FixedGlobalVariable *> GlobalToFixedMap;
 		typedef pair<GlobalVariable *, FixedGlobalVariable *> GlobalToFixedPair;
 		size_t sizeTotalGvars = 0;
@@ -315,8 +416,8 @@ namespace corelab {
 
 		/* Replace them to fixed globals */
 		GlobalToFixedMap mapGlobalToFixed;
-		for (set<GlobalVariable *>::iterator igvar = setGvars.begin ();
-				 igvar != setGvars.end (); ++igvar) {
+		for (vector<GlobalVariable *>::iterator igvar = vecGvars.begin ();
+				 igvar != vecGvars.end (); ++igvar) {
 			GlobalVariable *gvar = *igvar;
 
 			string gname = gvar->getName().str ();

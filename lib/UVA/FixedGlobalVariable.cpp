@@ -79,8 +79,9 @@ void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
 	/* Minor initializations */
 	mapFGvars.clear ();
 
-	tyUintPtr = Type::getIntNTy (module->getContext (),
-			module->getDataLayout ().getPointerSizeInBits ());
+	//tyUintPtr = Type::getIntNTy (module->getContext (),
+	//		module->getDataLayout ().getPointerSizeInBits ());
+  tyUintPtr = Type::getInt64Ty (module->getContext());
 	pM = module;
 	uptBase = (uintptr_t)base;
 	sizeTotal = 0;
@@ -215,6 +216,7 @@ FixedGlobalVariable* FixedGlobalFactory::create (Type *type, Constant *initzer,
 
 	assert (initzer && "The initializer should not be null after this point.");
 
+  // FIXME alignment
 	FixedGlobalVariable *fgvar =
 			GlobalAlias::create (type, 0, GlobalValue::InternalLinkage, name,
 					ConstantExpr::getCast (Instruction::IntToPtr, 
@@ -231,7 +233,11 @@ FixedGlobalVariable* FixedGlobalFactory::create (Type *type, Constant *initzer,
 
 	/* update the total chunk size of globals. */
 	const DataLayout *dataLayout = &(pM->getDataLayout ());
-	sizeTotal += dataLayout->getTypeAllocSize (type);
+  type->dump();
+  printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ type size : %d\n", dataLayout->getTypeAllocSize(type));
+	
+  //sizeTotal += dataLayout->getTypeAllocSize (type);
+	sizeTotal += 8;
 
 #ifdef DEBUG_FIXGLB
   printf("FIXGLB: FixedGlobalFactory::create: name( %s ), size ( %d )\n", name.str().c_str(), dataLayout->getTypeAllocSize(type));

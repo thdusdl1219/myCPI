@@ -23,7 +23,8 @@ namespace corelab {
 			Module *pM;
       bool isFixGlbDuty;
 
-			size_t convertToFixedGlobals (set<GlobalVariable *> setGvars, void *base);
+			size_t convertToFixedGlobals (vector<GlobalVariable *> vecGvars, void *base);
+      void findGV(Module &M, char *gvar_str, vector<GlobalVariable*> &vecGvars);
 			bool hasFunction (Constant *cnst);
 	};
 }
