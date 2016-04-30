@@ -219,22 +219,22 @@ int generateJobId(int functionID){
 		//printf("get job id : %d\n",jobID);
 		drm->insertRunningJob(jobID, functionID);
 
-	LOG("DEBUG :: generate job ID = %d ; %d\n",jobID,functionID);
+	//LOG("DEBUG :: generate job ID = %d ; %d\n",jobID,functionID);
 	return jobID;
 }
 
 extern "C" 
 void pushArgument(int rc_id, void* buf, int size){
   drm->insertArgsInfo(rc_id,buf, size); 
-  hexdump("argument %d",buf,size);
+  //hexdump("argument %d",buf,size);
 }
 
 extern "C" 
 void produceAsyncFunctionArgs(int functionID, int rc_id){
-  LOG("Async function call fid = %d\n",functionID);
+  //LOG("Async function call fid = %d\n",functionID);
   int size = drm->getArgsTotalSize(rc_id); 
   void* buf = drm->getArgsOfRC(rc_id);
-  hexdump("async args",buf,size);
+  //hexdump("async args",buf,size);
   DataQElem* elem = new DataQElem();
   elem->setIsFunctionCall(true);
   elem->setArgs(buf,size);
@@ -255,7 +255,7 @@ void produceReturn(int jobID, void* buf, int size){
 	void* ret = (void*)malloc(size);
 	memcpy(ret,buf,size);
 	
-		LOG("produceReturn device\n");
+		//LOG("produceReturn device\n");
 		elem->setIsFunctionCall(false);
 		elem->setArgs(NULL,0);
 		elem->setFunctionID(drm->getRunningJobFID(jobID));
@@ -270,14 +270,14 @@ void produceReturn(int jobID, void* buf, int size){
 
 extern "C"
 void produceFunctionArgs(int jobID, int rc_id){
-	LOG("produce function Args / jobID = %d\n",jobID);
+	//LOG("produce function Args / jobID = %d\n",jobID);
 int size = drm->getArgsTotalSize(rc_id); 
   void* buf = drm->getArgsOfRC(rc_id);
 	DataQElem* elem = new DataQElem();
 	
-		LOG("produceFArgs device\n");
+		//LOG("produceFArgs device\n");
 		//LOG("args address : %p\n",buf);
-		hexdump("produced args",buf,size);
+		//hexdump("produced args",buf,size);
 		elem->setIsFunctionCall(true);
 		elem->setArgs(buf,size);
 		elem->setFunctionID(drm->getRunningJobFID(jobID));
@@ -289,7 +289,7 @@ int size = drm->getArgsTotalSize(rc_id);
 		pthread_mutex_lock(&sendQHandleLock);
 		sendQHandling = true;
 		pthread_mutex_unlock(&sendQHandleLock);
-		LOG("produce function args to send q : %d\n",drm->getRunningJobFID(jobID));
+		//LOG("produce function args to send q : %d\n",drm->getRunningJobFID(jobID));
 }
 
 extern "C"
@@ -297,35 +297,35 @@ void registerDevice(void* addr){
 	LOG("Address of device is %p\n",addr);
   uint32_t temp;
   memcpy(&temp,&addr,4);
-  hexdump("register",&addr,sizeof(addr));
-  hexdump("register temp",&temp,sizeof(temp));
+  //hexdump("register",&addr,sizeof(addr));
+  //hexdump("register temp",&temp,sizeof(temp));
   DataQElem* elem = new DataQElem();
   elem->setIsFunctionCall(false);
   char* info = (char*)malloc(8);
   //sprintf(info,"%zu%d",temp,deviceID);
   memcpy(info,&temp,4);
   memcpy(info+4,&deviceID,4);
-  hexdump("info",(void*)info,8);
+  //hexdump("info",(void*)info,8);
   elem->setArgs(NULL,0);
   elem->setFunctionID(-1);
   elem->setJobID(-1);
   elem->setRetVal((void*)info,8);
-  LOG("before insert\n");
+  //LOG("before insert\n");
   dqm->insertElementToSendQ(elem);
-  LOG("after insert\n");
+  //LOG("after insert\n");
 
   pthread_mutex_lock(&sendQHandleLock);
-  LOG("sendQHandle is on\n");
+  //LOG("sendQHandle is on\n");
   sendQHandling = true;
   pthread_mutex_unlock(&sendQHandleLock);
-  LOG("register device to send q\n");
+  //LOG("register device to send q\n");
 
 }
 
 extern "C"
 void* consumeFunctionArgs(int jobID){	
 	
-		LOG("consume function args\n");
+		//LOG("consume function args\n");
 	
 		pthread_mutex_lock(&handleArgsLock);
 		void* ret = drm->getArgs(jobID);
@@ -337,15 +337,15 @@ void* consumeFunctionArgs(int jobID){
 extern "C"
 void* consumeReturn(int jobID){
 	void* ret;
-	LOG("Consume Return is started\n");
+	//LOG("Consume Return is started\n");
 	
 		while(1){
 			if(drm->checkConsumeWait(jobID)){
 				ret = drm->getReturnValue(jobID);
-				LOG("return is received, jobID = %d\n",jobID);
+				//LOG("return is received, jobID = %d\n",jobID);
 				//drm->deleteConsumeWait(jobID);
 				//hexdump("return",ret,4);
-				LOG("return is received\n");
+				//LOG("return is received\n");
 				break;
 			}
 		}
@@ -362,7 +362,7 @@ void* consumeReturn(int jobID){
 /* listener: listen returnValue & remote functioncall from gateway */
 
 void* listenerFunction(void* arg){
-	LOG("DEBUG :: listen thread in device is started\n");
+	//LOG("DEBUG :: listen thread in device is started\n");
 	int recvSocket = drm->getRecvSocket();
 	char* header = (char*)malloc(9);
 	char type;
@@ -407,10 +407,10 @@ void* listenerFunction(void* arg){
           localJobID = drm->getJobID();
         else
           localJobID = -2;
-				LOG("-------------------------------------------------------------------------------------\n");
-				LOG("Recv function call (DEVICE) -> localJobID = %d, sourceJobID = %d, functionID = %d\n",localJobID, sourceJobID, FID);
-				hexdump("Args",args,payloadSize-4);
-				LOG("-------------------------------------------------------------------------------------\n");
+				//LOG("-------------------------------------------------------------------------------------\n");
+				//LOG("Recv function call (DEVICE) -> localJobID = %d, sourceJobID = %d, functionID = %d\n",localJobID, sourceJobID, FID);
+				//hexdump("Args",args,payloadSize-4);
+				//LOG("-------------------------------------------------------------------------------------\n");
 				elem->setIsFunctionCall(true);
 				elem->setArgs(args,payloadSize-4);
 				elem->setFunctionID(FID);
@@ -428,10 +428,10 @@ void* listenerFunction(void* arg){
 				if(payloadSize !=0)
 					recvComplete(recvSocket,buffer,payloadSize);
 				void* retVal = (void*)buffer;
-				LOG("-------------------------------------------------------------------------------------\n");
-				LOG("Recv Return value (DEVICE) -> localJobID = %d\n",sourceJobID);
-				hexdump("Return",retVal,payloadSize);
-				LOG("-------------------------------------------------------------------------------------\n");
+				//LOG("-------------------------------------------------------------------------------------\n");
+				//LOG("Recv Return value (DEVICE) -> localJobID = %d\n",sourceJobID);
+				//hexdump("Return",retVal,payloadSize);
+				//LOG("-------------------------------------------------------------------------------------\n");
 
 				elem->setIsFunctionCall(false);
 				elem->setArgs(NULL,0);
@@ -446,14 +446,14 @@ void* listenerFunction(void* arg){
 			}
 		}
 	}
-	LOG("DEBUG :: listen thread in device is ended\n");
+	//LOG("DEBUG :: listen thread in device is ended\n");
 	return NULL;
 }
 
 /* sendQHandlerFunction: send returnValue & remote functioncall to gateway*/
 
 void* sendQHandlerFunction(void* arg){
-	LOG("DEBUG :: sendQHandler Function in device is started\n");
+	//LOG("DEBUG :: sendQHandler Function in device is started\n");
 		/*pthread_mutex_lock(&settingLock);
 		sendQsetting = true;
 		LOG("sendQ setting is complete\n");
@@ -469,13 +469,13 @@ void* sendQHandlerFunction(void* arg){
 		pthread_mutex_lock(&sendQHandleLock);
 		if(sendQHandling){
 			sendQSize = dqm->getSendQSize();
-      LOG("sendQsize is %d\n",sendQSize);
+      //LOG("sendQsize is %d\n",sendQSize);
 			sendQHandling = false;
 		}
 
 		pthread_mutex_unlock(&sendQHandleLock);
 		if(sendQSize>0){
-			LOG("send Q is handling\n");
+			//LOG("send Q is handling\n");
 			//pthread_mutex_lock(&sendQLock);
 			DataQElem* sendElem = dqm->getSendQElement();
 		//	pthread_mutex_unlock(&sendQLock);
@@ -522,10 +522,10 @@ void* sendQHandlerFunction(void* arg){
 					payloadSize = sendComplete(sendSocket,payload,(argSize));
 				else
 					payloadSize = sendComplete(sendSocket,payload,4);
-				LOG("-------------------------------------------------------------------------------------\n");
-				LOG("Send function call (DEVICE) -> sourceJobID = %d, functionID = %d\n", jobID, functionID);
-				hexdump("Args",sendElem->getArgs(),argSize-4);
-				LOG("-------------------------------------------------------------------------------------\n");
+				//LOG("-------------------------------------------------------------------------------------\n");
+				//LOG("Send function call (DEVICE) -> sourceJobID = %d, functionID = %d\n", jobID, functionID);
+				//hexdump("Args",sendElem->getArgs(),argSize-4);
+				//LOG("-------------------------------------------------------------------------------------\n");
 				//hexdump("send argument",payload+4,4);
 				//LOG("DEBUG :: send Q function call is ended with %d\n",payloadSize);
         
@@ -547,10 +547,10 @@ void* sendQHandlerFunction(void* arg){
           read(sendSocket,&ack,1);
           if(sendElem->getRetSize() >0)
             sendComplete(sendSocket,payload,sendElem->getRetSize());
-          LOG("-------------------------------------------------------------------------------------\n");
-          LOG("Send return value (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);
-          hexdump("Return",sendElem->getRetVal(),retSize);
-          LOG("-------------------------------------------------------------------------------------\n");
+          //LOG("-------------------------------------------------------------------------------------\n");
+          //LOG("Send return value (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);
+          //hexdump("Return",sendElem->getRetVal(),retSize);
+          //LOG("-------------------------------------------------------------------------------------\n");
 
           drm->deleteJobIDMapping(localJobID);
         } // send return value 
@@ -567,10 +567,10 @@ void* sendQHandlerFunction(void* arg){
           read(sendSocket,&ack,1);
           //LOG("register device : %lu, %d\n",sendElem->getRetVal(),sendElem->getRetVal()+4);
           sendComplete(sendSocket,payload,retSize);
-          LOG("-------------------------------------------------------------------------------------\n");
-          LOG("Send register device (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);
-          hexdump("Register",sendElem->getRetVal(),retSize);
-          LOG("-------------------------------------------------------------------------------------\n");
+          //LOG("-------------------------------------------------------------------------------------\n");
+          //LOG("Send register device (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);
+          //hexdump("Register",sendElem->getRetVal(),retSize);
+          //LOG("-------------------------------------------------------------------------------------\n");
 
 
         } // for device registration
@@ -584,7 +584,7 @@ void* sendQHandlerFunction(void* arg){
 
 void* localQHandlerFunction(void* arg){
 	//int* tempInt = (int*)malloc(sizeof(int));
-	LOG("DEBUG :: localQHandler function in device is started\n");
+	//LOG("DEBUG :: localQHandler function in device is started\n");
 	//ApiCallback fcn = *(ApiCallback*)arg;
 		/*pthread_mutex_lock(&settingLock);
 		LOG("localQ setting is complete\n");
@@ -622,10 +622,10 @@ void* localQHandlerFunction(void* arg){
 				else*/
 					drm->insertArgs(jobID, args);
 				pthread_mutex_unlock(&handleArgsLock);
-				LOG("-------------------------------------------------------------------------------------\n");
-				LOG("Handle function call (DEVICE) -> localJobID = %d, functionID = %d\n", jobID, functionID);
-				hexdump("Return",args,localElem->getArgsSize());
-				LOG("-------------------------------------------------------------------------------------\n");
+				//LOG("-------------------------------------------------------------------------------------\n");
+				//LOG("Handle function call (DEVICE) -> localJobID = %d, functionID = %d\n", jobID, functionID);
+				//hexdump("Return",args,localElem->getArgsSize());
+				//LOG("-------------------------------------------------------------------------------------\n");
 				int callbackArgs[2];
 				callbackArgs[0] = functionID;
 				callbackArgs[1] = jobID;
@@ -640,10 +640,10 @@ void* localQHandlerFunction(void* arg){
 			}
 			else{ // return from gateway
 				int jobID = localElem->getJobID();
-				LOG("-------------------------------------------------------------------------------------\n");
-				LOG("Handle return value (DEVICE) -> localJobID = %d\n", jobID);
-				hexdump("Return",localElem->getRetVal(),localElem->getRetSize());
-				LOG("-------------------------------------------------------------------------------------\n");
+				//LOG("-------------------------------------------------------------------------------------\n");
+				//LOG("Handle return value (DEVICE) -> localJobID = %d\n", jobID);
+				//hexdump("Return",localElem->getRetVal(),localElem->getRetSize());
+				//LOG("-------------------------------------------------------------------------------------\n");
 				drm->insertReturnValue(jobID,localElem->getRetVal());
 				drm->deleteRunningJob(jobID);
 				drm->onValueReturn(jobID);
@@ -665,9 +665,9 @@ tryConnect(void* arg){
 	int sendSocket = tcpHandlerIn.getSockDesc();
 	int recvSocket = tcpHandlerOut.getSockDesc();
 	initIOSocket(sendSocket, recvSocket);
-	LOG("initIOSocket\n");
+	//LOG("initIOSocket\n");
 	drm->setSockets(sendSocket, recvSocket);
-	LOG("setSocket\n");
+	//LOG("setSocket\n");
 	pthread_create(&listenThread,NULL,&listenerFunction,NULL);
 	pthread_create(&sendQHandlerThread,NULL,&sendQHandlerFunction,NULL);
 	pthread_create(&localQHandlerThread,NULL,&localQHandlerFunction, NULL);
@@ -683,7 +683,7 @@ void deviceInit(ApiCallback fcn, int id){
 	callback = fcn;
 	char filename[20];
 	sprintf(filename,"functionTable-%d",(int)id);
-	LOG("filename : %s\n",filename);
+	//LOG("filename : %s\n",filename);
 	pthread_barrier_init(&barrier,NULL,4);
 	pthread_barrier_init(&commBarrier,NULL,4);
 	pthread_t broadcastThread, connectThread;
@@ -697,13 +697,13 @@ void deviceInit(ApiCallback fcn, int id){
 	//sprintf(server->ip,"%s","141.223.197.224");
   server->port += 1000;
 	//server->port = 20000;
-  LOG("server ip = %s, port = %d\n",server->ip,server->port);
+  //LOG("server ip = %s, port = %d\n",server->ip,server->port);
   
 	//int k = dqm->getSendQSize();
 	//LOG("sendQ : %d\n",k);
 
 	if(updateMyFIDTable(filename)){
-		LOG("updateMyFIDTable\n");
+		//LOG("updateMyFIDTable\n");
 	dqm = new DataQManager();
 	char* dummy = (char*)malloc(10000);
 	drm = new DeviceRuntimeManager();  
@@ -740,8 +740,8 @@ void deviceInit(ApiCallback fcn, int id){
 	}*/
 	pthread_barrier_wait(&barrier);
 	pthread_barrier_destroy(&barrier);
-	LOG("DEBUG :: deviceInit end\n");
-  sleep(3);
+	//LOG("DEBUG :: deviceInit end\n");
+  //sleep(3);
 }
 
 
@@ -779,8 +779,8 @@ updateMyFIDTable(const char *fname){
 		return true;
 	}
 	LOG("Num : %d\n",myFID.num);
-	for(int i=0;i<myFID.num;i++)
-		LOG("functionID : %d\n",myFID.fids[i]);
+	//for(int i=0;i<myFID.num;i++)
+	//	LOG("functionID : %d\n",myFID.fids[i]);
 
 	return false;
 }

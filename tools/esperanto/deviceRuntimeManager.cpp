@@ -184,8 +184,8 @@ void* DeviceRuntimeManager::getArgs(int jobID){
 
 	if((*argsTable).find(jobID) != (*argsTable).end())
 		(*argsTable).erase((*argsTable).find(jobID));
-	else
-		printf("DRM :: getArgs error!! - no argument\n");
+	//else
+	//	printf("DRM :: getArgs error!! - no argument\n");
 	//pthread_mutex_unlock(argsLock);
 	return ret;
 }
