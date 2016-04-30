@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <vector>
 
-//#define XMEM_LOG_DEBUG
+#define XMEM_LOG_DEBUG
 
 using namespace std;
 

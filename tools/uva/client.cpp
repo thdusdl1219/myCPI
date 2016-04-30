@@ -16,7 +16,7 @@
 
 #define GET_PAGE_ADDR(x) ((x) & 0xFFFFF000)
 
-//#define DEBUG_UVA
+#define DEBUG_UVA
 
 #define LOCALTEST 0
 #define CORELAB_SERVER_TEST 1

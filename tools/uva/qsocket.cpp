@@ -25,7 +25,7 @@
 #include "overhead.h"
 #endif
 
-//#define DEBUG_UVA
+#define DEBUG_UVA
 
 //using namespace std;
 
