@@ -25,6 +25,8 @@
 #include "overhead.h"
 #endif
 
+#define DEBUG_UVA
+
 //using namespace std;
 
 namespace corelab {
@@ -133,7 +135,9 @@ DEBUG_STMT (fprintf (stderr, "direct_sendsize:%u\n", size));
     Queue* que;
 
     if(clientID) {
+#ifdef DEBUG_UVA
       printf("recvQues size : %d\n", recvQues.size());
+#endif
       que = recvQues[*clientID];
     }
     else {
@@ -211,9 +215,13 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 			  perror ("accept");
 			  return false;
       }
+#ifdef DEBUG_UVA
       printf("client ID : %d\n", *clientID);
+#endif
 		  inet_ntop (AF_INET, &eptClient.sin_addr, strClientIP, 20);
+#ifdef DEBUG_UVA
 		  DEBUG.PRINT ("connected. (ip:%s)", strClientIP);
+#endif
 
 		  initializeSocketOpt (clientID);
 

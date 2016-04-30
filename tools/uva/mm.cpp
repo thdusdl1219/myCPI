@@ -20,6 +20,8 @@
 #include "log.h"
 //#include "hexdump.h"
 
+//#define DEBUG_UVA
+
 #define getAlignedSize(s) (((s-1)/UNIT_SIZE + 1)*UNIT_SIZE)
 #define getAlignedPage(s) (((s-1)/PAGE_SIZE + 1)*PAGE_SIZE)
 
@@ -104,7 +106,9 @@ namespace corelab {
       // don't use server because I don't send mmap information to server
 			#ifdef XMEM_NO_APPLEVEL_MMAP
 			if (addr < HEAP_START_ADDR) {
+#ifdef DEBUG_UVA
 				fprintf (stderr, "weird addr mapped (addr:%p)\n", addr);
+#endif
 				assert (0);
 			}
 			#endif
@@ -116,7 +120,9 @@ namespace corelab {
       // don't use server because I don't send mmap information to server
 			#ifdef XMEM_NO_APPLEVEL_MMAP
 			if (addr < HEAP_START_ADDR) {
+#ifdef DEBUG_UVA
 				fprintf (stderr, "weird addr mapped (addr:%p)\n", addr);
+#endif
 				assert (0);
 			}
 			#endif
@@ -421,7 +427,9 @@ namespace corelab {
 
 		static inline void* allocatePage (void *addr, size_t size, unsigned protmode, bool isMmap, bool isServer) {
 
+#ifdef DEBUG_UVA
       printf("[mm] allocatePage: addr (%p) / size (%d) / protmode (%d) / isMmap (%d) / isServer (%d)\n", addr, size, protmode, isMmap, isServer);
+#endif
       if(!isMmap && !isServer) {
 
         // [client side] just send size he want and get addr allocated
@@ -432,19 +440,27 @@ namespace corelab {
         
         socket->receiveQue();
         int mode = socket->takeWord();
+#ifdef DEBUG_UVA
         fprintf(stderr, "mode : %d\n", mode);
+#endif
         assert(mode == 1);
         int len = socket->takeWord();
+#ifdef DEBUG_UVA
         fprintf(stderr, "len : %d\n", len);
+#endif
         char buf[len];
 
         socket->takeRange(buf, len);
         memcpy(&addr, buf, len);
+#ifdef DEBUG_UVA
         fprintf(stderr, "mapAddr : %p\n", addr);
+#endif
 
 
       } else if (isMmap && !isServer && protmode == 3) { /* XXX: is it safe ? */
+#ifdef DEBUG_UVA
         printf("[mm] [client] mmap allocatePage\n");
+#endif
 
         // [client side] just send size and addr
         socket->pushWordF(6); // mmap request mode
@@ -457,7 +473,9 @@ namespace corelab {
         
         socket->receiveQue();
         int mode = socket->takeWord();
+#ifdef DEBUG_UVA
         fprintf(stderr, "mode : %d\n", mode);
+#endif
         //assert(mode == 7);
         int ack = socket->takeWord();
         assert(ack == 0);

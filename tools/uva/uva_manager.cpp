@@ -21,6 +21,8 @@
 #include "log.h"
 #include "hexdump.h"
 
+//#define DEBUG_UVA
+
 #ifdef OVERHEAD_TEST
 #include "overhead.h"
 #endif
@@ -419,11 +421,17 @@ namespace corelab {
       }
 
       if(xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
+#ifdef DEBUG_UVA
         LOG("[client] Load : loadHandler start (%p)\n", addr);
+#endif
         if (xmemIsHeapAddr(addr)) {
+#ifdef DEBUG_UVA
           LOG("[client] Load : isHeapAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
+#endif
         } else if (isFixedGlobalAddr(addr)) {
+#ifdef DEBUG_UVA
           LOG("[client] Load : isFixedGlobalAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
+#endif
         }
         socket->pushWordF(LOAD_REQ); // mode 2 (client -> server : load request)
         //socket->pushWordF(sizeof(addr));
@@ -431,13 +439,17 @@ namespace corelab {
         //LOG("[client] DEBUG : may be before segfault?\n");
         
 
+#ifdef DEBUG_UVA
         LOG("[client] intAddr %d\n", intAddr);
+#endif
         socket->pushWordF(intAddr);
         socket->sendQue();
 
         socket->receiveQue();
         int mode = socket->takeWord();
+#ifdef DEBUG_UVA
         LOG("[client] mode : %d\n", mode); // should be 3
+#endif
         //assert(mode == LOAD_REQ_ACK && "wrong");
         int len = socket->takeWord();
         //LOG("[client] len : %d\n", len);
@@ -445,9 +457,11 @@ namespace corelab {
 
         socket->takeRangeF(buf, len);
         memcpy(addr, buf, len);
+#ifdef DEBUG_UVA
         hexdump("load", addr, typeLen);
         //xmemDumpRange(addr, typeLen);
         LOG("[client] Load : loadHandler END\n\n");
+#endif
       }
     }
 
@@ -460,11 +474,17 @@ namespace corelab {
       }
 
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
+#ifdef DEBUG_UVA
         LOG("[client] Store : storeHandler start (%p)\n", addr);
+#endif
         if (xmemIsHeapAddr(addr)) {
+#ifdef DEBUG_UVA
           LOG("[client] Store : isHeapAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
+#endif
         } else if (isFixedGlobalAddr(addr)) {
+#ifdef DEBUG_UVA
           LOG("[client] Store : isFixedGlobalAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
+#endif
         }
         socket->pushWordF(STORE_REQ);
         socket->pushWordF(typeLen);
@@ -472,21 +492,29 @@ namespace corelab {
         socket->pushWordF(intAddr);
         socket->pushRangeF(&data, typeLen);
         socket->sendQue();
+#ifdef DEBUG_UVA
         LOG("[client] Store : sizeof(addr) %d, data length %d\n", sizeof(addr), typeLen);
+#endif
 
         socket->receiveQue();
         int mode = socket->takeWord();
+#ifdef DEBUG_UVA
         LOG("[client] mode : %d\n", mode);
+#endif
         //assert(mode == STORE_REQ_ACK && "wrong");
         int len = socket->takeWord();
         if (len == 0) { // Normal ack
           //LOG("[client] TEST stored value : %d\n", *((int*)addr));
         } else if (len == -1) {
+#ifdef DEBUG_UVA
           LOG("[client] store request fail\n"); // TODO: have to handler failure situation.
+#endif
         } else {
           assert(0 && "error: undefined behavior");
         }
+#ifdef DEBUG_UVA
         LOG("[client] Store : storeHandler END\n\n");
+#endif
       }
     }
 
@@ -499,11 +527,17 @@ namespace corelab {
       }
 
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
+#ifdef DEBUG_UVA
         LOG("[client] Memset : memsetHandler start (%p)\n", addr);
+#endif
         if (xmemIsHeapAddr(addr)) {
+#ifdef DEBUG_UVA
           LOG("[client] Memset : isHeapAddr, is going to request | addr %p\n", addr);
+#endif
         } else if (isFixedGlobalAddr(addr)) {
+#ifdef DEBUG_UVA
           LOG("[client] Memset : isFixedGlobalAddr, is going to request | addr %p\n", addr);
+#endif
         }
         
         socket->pushWordF(MEMSET_REQ);
@@ -511,15 +545,21 @@ namespace corelab {
         socket->pushWordF(value);
         socket->pushWordF(num); // XXX check
         socket->sendQue();
+#ifdef DEBUG_UVA
         LOG("[client] Memset : memset(%p, %d, %d)\n", addr, value, num);
+#endif
 
         socket->receiveQue();
         int ack = socket->takeWordF();
+#ifdef DEBUG_UVA
         printf("MEMSET: ack %d\n", ack);
+#endif
         //assert(ack == MEMSET_REQ_ACK && "wrong");
         //assert(ack == 9 && "wrong");
 
+#ifdef DEBUG_UVA
         LOG("[client] Memset : memsetHandler END (%p)\n\n", addr);
+#endif
       }
     }
 
@@ -532,11 +572,17 @@ namespace corelab {
       }
 
       if (xmemIsHeapAddr(dest) || isFixedGlobalAddr(dest)) {
+#ifdef DEBUG_UVA
         LOG("[client] Memcpy : memcpyHandler start (%p <- %p)\n", dest, src);
+#endif
         if (xmemIsHeapAddr(dest)) {
+#ifdef DEBUG_UVA
           LOG("[client] Memcpy : isHeapAddr, is going to request | %p <- %p\n", dest, src);
+#endif
         } else if (isFixedGlobalAddr(dest)) {
+#ifdef DEBUG_UVA
           LOG("[client] Memcpy : isFixedGlobalAddr, is going to request | %p <- %p\n", dest, src);
+#endif
         }
         
         socket->pushWordF(MEMCPY_REQ);
@@ -545,15 +591,21 @@ namespace corelab {
         socket->pushRangeF(src, num);
         //socket->pushWordF(num); // XXX check
         socket->sendQue();
+#ifdef DEBUG_UVA
         LOG("[client] Memcpy : memcpy(%p, %p, %d)\n", dest, src, num);
+#endif
         //LOG("[client] Memcpy : src mem stat\n");
         //xmemDumpRange(src, num);
+#ifdef DEBUG_UVA
         hexdump("stack", src, num);
+#endif
         socket->receiveQue();
         int ack = socket->takeWord();
        // assert(ack == MEMCPY_REQ_ACK && "wrong");
 
+#ifdef DEBUG_UVA
         LOG("[client] Memcpy : memcpyHandler END (%p <- %p)\n\n", dest, src);
+#endif
       }
 
     }
@@ -565,7 +617,9 @@ namespace corelab {
 			//ptConstBegin = truncToPageAddr (begin_const);
 			//ptConstEnd = truncToPageAddr ((void *)((XmemUintPtr)end_const + XMEM_PAGE_SIZE - 1));
 
+#ifdef DEBUG_UVA
       printf("UVAManager::setConstantRange: ptNoConst (%p~%p) \n", ptNoConstBegin, ptNoConstEnd/*, ptConstBegin, ptConstEnd*/);
+#endif
 			// FIXME: To enforce the constantness of the given range,
 			// 	We should rule out pages in the range from the EXCLUSIVE set
 			// 	whenever consistency operations (such as 'synch', 'flush') are done.
@@ -612,7 +666,9 @@ namespace corelab {
 		/*** CallBack ***/
 		void UVAManager::pageMappedCallBack (XmemUintPtr paddr) {
 			/* set to MODIFIED/EXCLUSIVE state */
+#ifdef DEBUG_UVA
       printf("UVAManger::pageMappedCallBack: paddr (%p)\n", paddr);
+#endif
 			setMEPages.insert (paddr);
 		}
 

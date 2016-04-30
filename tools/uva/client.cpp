@@ -16,6 +16,8 @@
 
 #define GET_PAGE_ADDR(x) ((x) & 0xFFFFF000)
 
+//#define DEBUG_UVA
+
 #define LOCALTEST 0
 #define CORELAB_SERVER_TEST 1
 
@@ -66,7 +68,9 @@ namespace corelab {
         scanf("%10s", port);
       }
       
+#ifdef DEBUG_UVA
       printf("[CLIENT] ip (%s), port (%s)\n", ip, port);
+#endif
 
 #if FORKTEST
       pid_t pid;
@@ -109,7 +113,9 @@ namespace corelab {
         Msocket->receiveQue();
         int mayIstart = Msocket->takeWordF();
         if (mayIstart == 1) {
+#ifdef DEBUG_UVA
           printf("[CLIENT] I got start permission !!\n");
+#endif
           return;
         } else {
           assert(false && "[CLIENT] server doesn't allow me start.\n");
@@ -130,7 +136,9 @@ namespace corelab {
 		/*** Internals ***/
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused) {
 			void *fault_addr = si->si_addr;
+#ifdef DEBUG_UVA
       LOG("[client] segfaultHandler | fault_addr : %p\n", fault_addr);
+#endif
       
       if (fault_addr < (void*)0x15000000) assert(0 && "fault_addr : under 0x15000000");
       if (fault_addr > (void*)0x38000000) assert(0 && "fault_addr : above 0x38000000");
@@ -140,8 +148,10 @@ namespace corelab {
           PROT_WRITE | PROT_READ,
           MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, (off_t) 0);
       
+#ifdef DEBUG_UVA
       LOG("[client] segfaultHandler | mmap page_addr : %p, mmap size: %d | handling  complete\n", 
           (void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), PAGE_SIZE);
+#endif
       
       
       void *ptNoConstBegin;
@@ -149,7 +159,9 @@ namespace corelab {
       
       UVAManager::getFixedGlobalAddrRange(&ptNoConstBegin, &ptNoConstEnd/*, &ptConstBegin, &ptConstEnd*/);
       if (ptNoConstBegin <= fault_addr && fault_addr < (void*)0x16000000) {
+#ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | fault_addr is in FixedGlobalAddr space %p\n",ptNoConstBegin);
+#endif
         Msocket->pushWordF(GLOBAL_SEGFAULT_REQ); // send GLOBAL_SEGFAULT_REQ
         //uint32_t intAddrBegin = reinterpret_cast<uint32_t>(ptNoConstBegin);
         //uint32_t intAddrEnd = reinterpret_cast<uint32_t>(ptNoConstEnd);
@@ -167,9 +179,11 @@ namespace corelab {
         int ack = Msocket->takeWordF();
         assert(ack == GLOBAL_SEGFAULT_REQ_ACK && "wrong!!!");
         Msocket->takeRangeF(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin);
+#ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | get global variables done\n");
         LOG("[client] segfaultHandler (TEST print)\n");
         hexdump("segfault", ptNoConstBegin, 24);
+#endif
       }
       return;
       /*

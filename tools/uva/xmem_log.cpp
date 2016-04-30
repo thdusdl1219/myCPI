@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <vector>
 
-#define XMEM_LOG_DEBUG
+//#define XMEM_LOG_DEBUG
 
 using namespace std;
 
@@ -56,7 +56,9 @@ void xmemLogPrint() {
 				printf("chink_del ");
 				break;
 		}
+#ifdef XMEM_LOG_DEBUG
 		printf("addr - %p, size - %lu, id - %lu\n", log.addr, sizeof(corelab::XMemory::mchunk_t), log.id);
+#endif
 	}
 	return;
 }
