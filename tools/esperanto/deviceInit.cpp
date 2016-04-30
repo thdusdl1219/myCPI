@@ -154,7 +154,7 @@ int sendComplete(int socket, char* buffer, int size){
 
 void* callbackWrapper(void* arg){
 	//printf("callback wrapper is called\n");
-	LOG("tid : %u / pid : %u\n",(unsigned int)pthread_self(),(unsigned int)getpid());
+	//LOG("tid : %u / pid : %u\n",(unsigned int)pthread_self(),(unsigned int)getpid());
 
 	int* args = (int*)arg;
 	callback(args[0],args[1]);
