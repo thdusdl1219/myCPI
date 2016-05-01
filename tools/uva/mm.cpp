@@ -443,7 +443,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         fprintf(stderr, "mode : %d\n", mode);
 #endif
-        assert(mode == 1);
+        //assert(mode == 1);
         int len = socket->takeWord();
 #ifdef DEBUG_UVA
         fprintf(stderr, "len : %d\n", len);
