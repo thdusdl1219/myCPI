@@ -53,7 +53,7 @@ namespace corelab {
 
     extern "C" void UVAClientInitialize(uint32_t isGVInitializer) {
       // FIXME: for sync
-      sleep(1);
+      sleep(5);
       char ip[20];
       char port[10];
 
