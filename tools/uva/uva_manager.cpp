@@ -567,6 +567,7 @@ namespace corelab {
       uint32_t intAddr;
       memcpy(&intAddr, &dest, 4);
 
+      LOG("[client] Memcpy : destination = %u\n",intAddr);
       if (intAddr > 939524096 || intAddr < 352321536) {
         return dest;
       }
