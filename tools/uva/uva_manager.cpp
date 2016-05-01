@@ -21,7 +21,7 @@
 #include "log.h"
 #include "hexdump.h"
 
-#define DEBUG_UVA
+//#define DEBUG_UVA
 
 #ifdef OVERHEAD_TEST
 #include "overhead.h"

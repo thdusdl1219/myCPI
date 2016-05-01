@@ -20,7 +20,7 @@
 #include "log.h"
 //#include "hexdump.h"
 
-#define DEBUG_UVA
+//#define DEBUG_UVA
 
 #define getAlignedSize(s) (((s-1)/UNIT_SIZE + 1)*UNIT_SIZE)
 #define getAlignedPage(s) (((s-1)/PAGE_SIZE + 1)*PAGE_SIZE)

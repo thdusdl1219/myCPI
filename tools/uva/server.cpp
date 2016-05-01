@@ -12,7 +12,7 @@
 #include "hexdump.h"
 #include "xmem_info.h"
 
-#define DEBUG_UVA
+//#define DEBUG_UVA
 
 #define TEST 1
 
