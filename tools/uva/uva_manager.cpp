@@ -561,6 +561,7 @@ namespace corelab {
         LOG("[client] Memset : memsetHandler END (%p)\n\n", addr);
 #endif
       }
+      return addr;
     }
 
     void *UVAManager::memcpyHandler(QSocket *socket, void *dest, void *src, size_t num) {
@@ -608,7 +609,7 @@ namespace corelab {
         LOG("[client] Memcpy : memcpyHandler END (%p <- %p)\n\n", dest, src);
 #endif
       }
-
+      return dest;
     }
 
 		/*** Get/Set Interfaces ***/
