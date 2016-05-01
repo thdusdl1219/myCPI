@@ -172,9 +172,7 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 
 		initializeFields ();
 
-#ifdef DEBUG_UVA
 		DEBUG.BEGIN_TASK ("CONFIG", "configuring socket..");
-#endif
 		idHost = socket (PF_INET, SOCK_STREAM, 0);
 		if (idHost < 0) {
 			DEBUG.EXIT_TASK ("CONFIG", "failed: cannot assign socket id");

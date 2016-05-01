@@ -33,7 +33,7 @@
 #include <cstdlib>
 #include <cstdio>
 
-//#define DEBUG_MM
+#define DEBUG_MM
 
 using namespace corelab;
 
@@ -1134,16 +1134,29 @@ static void installMemAccessHandler(Module &M,
         src = castTo(src, temp, out, &dataLayout);
 
         uint64_t ci_num;
-        if(ConstantInt *CI_num = dyn_cast<ConstantInt>(num)) {
+        printf("num's type : ");
+        num->getType()->dump();
+
+        /*if(ConstantInt *CI_num = dyn_cast<ConstantInt>(num)) {
           unsigned int bitwidth = CI_num->getBitWidth();
+          printf("bitwidth : %d\n", bitwidth);
           ci_num = CI_num->getZExtValue();
           temp = ConstantInt::get(IntegerType::get(Context, bitwidth), ci_num);
+        } else {
+          printf("num (3rd arg) is not constant int\n");
+        }*/
+        /*if(is32) {
+          temp = ConstantInt::get(Type::getInt32Ty(Context), 0);
+        } else {
+          temp = ConstantInt::get(Type::getInt64Ty(Context), 0);
         }
-        num = castTo(num, temp, out, &dataLayout);
+        num = castTo(num, temp, out, &dataLayout);*/
         args[0] = dest; // void* (Int8Ptr)
-        args[1] = src; // voud* (Int8Ptr)
+        args[1] = src; // void* (Int8Ptr)
         args[2] = num; // size_t (Int64Ty or Int32Ty)
+        printf("Memcpy before CallInst\n");
         CallInst::Create(Memcpy, args, "", MCI);
+        printf("Memcpy after CallInst\n");
       } else if (MemMoveInst *MMI = dyn_cast<MemMoveInst>(instruction)) {
         printf("MemMoveInst! Unimplemented!!\n");
       }
@@ -1250,7 +1263,7 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
   } 
 #ifdef DEBUG_MM
   else if (from->getType()->isIntegerTy()){
-    printf("mm: castTo: from is IntegerTy\n");
+    //printf("mm: castTo: from is IntegerTy\n");
   }
 #endif
   // Next, make it have the same size
@@ -1266,7 +1279,7 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
     from = cast;
   }
 #ifdef DEBUG_MM
-  printf("mm: castTo: AFTER making same size\n");
+  //printf("mm: castTo: AFTER making same size\n");
 #endif
   // possibly bitcast it to the approriate type
   if( to->getType() != from->getType() ) {
@@ -1275,7 +1288,7 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
       cast = new IntToPtrInst(from, to->getType() );
     else {
 #ifdef DEBUG_MM
-      printf("mm: castTo: to's typeID is NOT PointerTyID\n");
+      //printf("mm: castTo: to's typeID is NOT PointerTyID\n");
 #endif
       cast = new BitCastInst(from, to->getType() );
     }
@@ -1284,7 +1297,7 @@ static Value* castTo(Value* from, Value* to, InstInsertPt &out, const DataLayout
     from = cast;
   }
 #ifdef DEBUG_MM
-  printf("mm: castTo: end of castTo()\n\n");
+  //printf("mm: castTo: end of castTo()\n\n");
 #endif
   return from;
 }
