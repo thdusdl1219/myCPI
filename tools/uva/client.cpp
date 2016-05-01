@@ -209,11 +209,11 @@ namespace corelab {
     }
 
     extern "C" void *uva_memset(void *addr, int value, size_t num) {
-      UVAManager::memsetHandler(Msocket, addr, value, num);
+      return UVAManager::memsetHandler(Msocket, addr, value, num);
     }
 
     extern "C" void *uva_memcpy(void *dest, void *src, size_t num) {
-      UVAManager::memcpyHandler(Msocket, dest, src, num);
+      return UVAManager::memcpyHandler(Msocket, dest, src, num);
     }
 
     extern "C" void sendInitCompleteSignal() {
