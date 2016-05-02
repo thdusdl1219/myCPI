@@ -440,20 +440,26 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
       Value* argValue = ci->getArgOperand(i);
       Type* type = argValue->getType();
       int currentAddrInt = addrInt + currentOffset;
-      Value* iAddr = ConstantInt::get(Type::getInt32Ty(Context),currentAddrInt);
+      Value* iAddr = BinaryOperator::CreateAdd(addrInInt,ConstantInt::get(Type::getInt32Ty(Context),currentOffset),"",insertBefore);
+        //ConstantInt::get(Type::getInt32Ty(Context),currentAddrInt);
       out = InstInsertPt::Before(insertBefore);
       if(type->isPointerTy()){
 
         Value* pointer32 = ConstantPointerNull::get(Type::getInt32PtrTy(Context));
+        out = InstInsertPt::Before(insertBefore);
+        Value* pointerVal = Casting::castTo(argValue,temp,out,&dataLayout);
+        out = InstInsertPt::Before(insertBefore);
         Value* destAddr = Casting::castTo(iAddr,pointer32,out,&dataLayout);
         //out = InstInsertPt::Before(insertBefore);
         //Value* addrIn32 = Casting::castTo(argValue,pointer,out,&dataLayout);
-        new StoreInst(iAddr,destAddr,insertBefore);
+        StoreInst* si = new StoreInst(pointerVal,destAddr,insertBefore);
+        setMD(si,1);
         currentOffset += 4;
       }
       else{
         Value* destAddr = Casting::castTo(iAddr,ConstantPointerNull::get(type->getPointerTo()),out,&dataLayout);
-        new StoreInst(argValue,destAddr,insertBefore);
+        StoreInst* si = new StoreInst(argValue,destAddr,insertBefore);
+        setMD(si,1);
         currentOffset += (int)(dataLayout.getTypeAllocSizeInBits(type)/8);
       }
     }
