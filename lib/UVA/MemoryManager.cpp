@@ -33,7 +33,7 @@
 #include <cstdlib>
 #include <cstdio>
 
-#define DEBUG_MM
+//#define DEBUG_MM
 
 using namespace corelab;
 
@@ -44,6 +44,7 @@ static Function *getCalledFunction_aux(Instruction* indCall); // From AliasAnaly
 static const Value *getCalledValueOfIndCall(const Instruction* indCall);
 static const User *isGEP(const Value *V);
 
+static void filterStackAddrAccess(Module &M); 
 static void installMemAccessHandler(Module &M, 
     Constant *Load, 
     Constant *Store, 
@@ -397,6 +398,7 @@ bool MemoryManagerX64::runOnModule(Module& M) {
 		if (F->isDeclaration()) continue;
 		runOnFunction(F, false);
 	}
+  filterStackAddrAccess(M);
   installMemAccessHandler(M, Load, Store, Memset, Memcpy, Memmove, false);
 	return false;
 }
@@ -419,6 +421,7 @@ bool MemoryManagerArm::runOnModule(Module& M) {
 		if (F->isDeclaration()) continue;
 		runOnFunction(F, true);
 	}
+  filterStackAddrAccess(M);
   installMemAccessHandler(M, Load, Store, Memset, Memcpy, Memmove, true);
   return false;
 }
@@ -935,6 +938,87 @@ bool MemoryManagerArm::runOnFunction(Function *F, bool is32) {
   return false;
 }
 
+static bool getIsStackValue(Value *V) {
+  if(AllocaInst *AI = dyn_cast<AllocaInst>(V)) {
+    //AI->dump();
+    //printf("return true!!\n");
+    return true; 
+  } else if (BitCastInst *BCI = dyn_cast<BitCastInst>(V)) {
+    //BCI->dump();
+    return getIsStackValue(BCI->getOperand(0)); 
+  } else if (IntToPtrInst *ITPI = dyn_cast<IntToPtrInst>(V)) {
+    return getIsStackValue(ITPI->getOperand(0));
+  } else if (PtrToIntInst *PTII = dyn_cast<PtrToIntInst>(V)) {
+    //PTII->dump();
+    return getIsStackValue(PTII->getOperand(0));
+  } else if (GetElementPtrInst *GEPI = dyn_cast<GetElementPtrInst>(V)) {
+    //GEPI->dump();
+    //GEPI->getOperand(0)->dump();
+    return getIsStackValue(GEPI->getOperand(0)); 
+  } else if (GlobalVariable *GV = dyn_cast<GlobalVariable>(V)) {
+    //GV->dump();
+    if (GV->isExternalLinkage(GV->getLinkage())){
+      //printf("return true!!\n");
+      return true;
+    }
+  /* XXX Esperanto-specific case XXX */
+  } else if (CallInst *CI = dyn_cast<CallInst>(V)) {
+    Function *F = CI->getCalledFunction();
+    if(F == NULL) return false;
+    if (strcmp(F->getName().data(), "consumeReturn") == 0) {
+      //printf("return true!!\n");
+      return true;
+    }
+  } else if (LoadInst *LI = dyn_cast<LoadInst>(V)) {
+    //LI->dump();
+    Function *F = LI->getFunction();
+    for (auto I = inst_begin(F); I != inst_end(F); ++I) {
+      if (StoreInst *SI = dyn_cast<StoreInst>(&*I)) {
+        //SI->dump();
+        if(strcmp(SI->getPointerOperand()->getName().data(),LI->getPointerOperand()->getName().data()) == 0) {
+          //SI->dump();
+          //SI->getOperand(0)->dump();
+          return getIsStackValue(SI->getOperand(0));
+        }
+      }
+    }
+  } 
+  return false;
+}
+
+std::vector<Instruction*> vecUVAInst;
+
+static void filterStackAddrAccess(Module &M) {
+  for (Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
+    Function &F = *fi;
+    LLVMContext &Context = M.getContext();
+    const DataLayout &dataLayout = M.getDataLayout();
+    std::vector<Value*> args(0);
+    if (F.isDeclaration()) continue;
+    for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I){
+      Instruction *instruction = &*I;
+      // For each load instructions
+      if(LoadInst *ld = dyn_cast<LoadInst>(instruction)) {
+        if(!getIsStackValue(ld->getPointerOperand())) {
+          vecUVAInst.push_back((Instruction*)ld);
+        }
+      } else if (StoreInst *st = dyn_cast<StoreInst>(instruction)) {
+        if(!getIsStackValue(st->getPointerOperand())) {
+          vecUVAInst.push_back((Instruction*)st);
+        }
+      } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(instruction)) {
+        if(!getIsStackValue(MSI->getDest())) {
+          vecUVAInst.push_back((Instruction*)MSI);
+        }
+      } else if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(instruction)) {
+        if(!getIsStackValue(MCI->getDest())) {
+          vecUVAInst.push_back((Instruction*)MCI);
+        }
+      }
+    } 
+  }
+  printf("\n\n################## num of uva mem access : %d\n", vecUVAInst.size());
+}
 /* installMemAccessHandler: for both X64, Arm */
 static void installMemAccessHandler(Module &M, 
     Constant *Load, 
@@ -942,6 +1026,7 @@ static void installMemAccessHandler(Module &M,
     Constant *Memset, 
     Constant *Memcpy, 
     Constant *Memmove, bool is32) {
+  int count = 0;
   for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
     Function &F = *fi;
     LLVMContext &Context = M.getContext();
@@ -952,9 +1037,35 @@ static void installMemAccessHandler(Module &M,
       Instruction *instruction = &*I;
       // For each load instructions
       if(LoadInst *ld = dyn_cast<LoadInst>(instruction)) {
+        count++;
         //if(isUseOfGetElementPtrInst(ld) == false){
+          //ld->dump();
+          if (find(vecUVAInst.begin(), vecUVAInst.end(), (Instruction*)ld) == vecUVAInst.end()) continue;
           args.resize (2);
           Value *addr = ld->getPointerOperand();
+
+          
+          /*if(AllocaInst *AI = dyn_cast<AllocaInst>(addr)) {
+            continue; 
+          } else if (BitCastInst *BCI = dyn_cast<BitCastInst>(addr)) {
+            continue; 
+          } else if (IntToPtrInst *ITPI = dyn_cast<IntToPtrInst>(addr)) {
+            continue;
+          } else if (GetElementPtrInst *GEPI = dyn_cast<GetElementPtrInst>(addr)) {
+            continue; 
+          } else if (GlobalVariable *GV = dyn_cast<GlobalVariable>(addr)) {
+            if (GV->isExternalLinkage(GV->getLinkage())) {
+              //GV->dump();
+              continue;
+            } else {
+              //GV->dump();
+              count++;
+            }
+          } else {
+            addr->dump();
+            count++;
+          }*/
+          
           Value *temp;
           //if(!is32){
           //  temp = ConstantInt::get(Type::getInt64Ty(Context), 0);
@@ -980,6 +1091,9 @@ static void installMemAccessHandler(Module &M,
       }
       // For each store instructions
       else if (StoreInst *st = dyn_cast<StoreInst>(instruction)) {
+        count++;
+        //st->dump();
+        if (find(vecUVAInst.begin(), vecUVAInst.end(), (Instruction*)st) == vecUVAInst.end()) continue;
         args.resize (3);
         Value *addr = st->getPointerOperand();
         Value *temp;
@@ -1088,7 +1202,9 @@ static void installMemAccessHandler(Module &M,
           CallInst::Create(Store, args, "", st);
         }
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(instruction)) {
-        printf("MemsetInst\n");
+        count++;
+        //MSI->dump();
+        if (find(vecUVAInst.begin(), vecUVAInst.end(), (Instruction*)MSI) == vecUVAInst.end()) continue;
         args.resize(3);
         
         Value *addr = MSI->getDest();
@@ -1119,7 +1235,9 @@ static void installMemAccessHandler(Module &M,
         args[2] = num; // size_t (Int64Ty or Int32Ty)
         CallInst::Create(Memset, args, "", MSI);
       } else if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(instruction)) {
-        printf("MemcpyInst\n");
+        count++;
+        //MCI->dump();
+        if (find(vecUVAInst.begin(), vecUVAInst.end(), (Instruction*)MCI) == vecUVAInst.end()) continue;
         args.resize(3);
         
         Value *dest = MCI->getDest();
@@ -1134,8 +1252,6 @@ static void installMemAccessHandler(Module &M,
         src = castTo(src, temp, out, &dataLayout);
 
         uint64_t ci_num;
-        printf("num's type : ");
-        num->getType()->dump();
 
         /*if(ConstantInt *CI_num = dyn_cast<ConstantInt>(num)) {
           unsigned int bitwidth = CI_num->getBitWidth();
@@ -1154,15 +1270,13 @@ static void installMemAccessHandler(Module &M,
         args[0] = dest; // void* (Int8Ptr)
         args[1] = src; // void* (Int8Ptr)
         args[2] = num; // size_t (Int64Ty or Int32Ty)
-        printf("Memcpy before CallInst\n");
         CallInst::Create(Memcpy, args, "", MCI);
-        printf("Memcpy after CallInst\n");
       } else if (MemMoveInst *MMI = dyn_cast<MemMoveInst>(instruction)) {
         printf("MemMoveInst! Unimplemented!!\n");
       }
     } // for
   } // for
-
+  printf("\n\n$$$$$$$$$$$$$$$ original uva operation : %d\n\n", count);
 }
 
 bool MemoryManagerX64::isCppDeleteOperator(Function* F) {
