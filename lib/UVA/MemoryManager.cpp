@@ -1095,6 +1095,8 @@ static void installMemAccessHandler(Module &M,
         count++;
         //st->dump();
         if (find(vecUVAInst.begin(), vecUVAInst.end(), (Instruction*)st) == vecUVAInst.end()) continue;
+        MDNode *metadata = st->getMetadata("nouva");
+        if (metadata != NULL) continue;
         args.resize (3);
         Value *addr = st->getPointerOperand();
         Value *temp;

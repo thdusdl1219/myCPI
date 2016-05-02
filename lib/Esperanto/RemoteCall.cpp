@@ -324,7 +324,8 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
           pointer = (Value*) alloca;
           isFirst = false;
         }
-        new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
+        StoreInst *si = new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
+        setMD(si,1);
         actuals.resize(0);
         actuals.resize(3);
 
@@ -448,12 +449,14 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
         Value* destAddr = Casting::castTo(iAddr,pointer32,out,&dataLayout);
         //out = InstInsertPt::Before(insertBefore);
         //Value* addrIn32 = Casting::castTo(argValue,pointer,out,&dataLayout);
-        new StoreInst(iAddr,destAddr,insertBefore);
+        StoreInst *si = new StoreInst(iAddr,destAddr,insertBefore);
+        setMD(si,1);
         currentOffset += 4;
       }
       else{
         Value* destAddr = Casting::castTo(iAddr,ConstantPointerNull::get(type->getPointerTo()),out,&dataLayout);
-        new StoreInst(argValue,destAddr,insertBefore);
+        StoreInst *si = new StoreInst(argValue,destAddr,insertBefore);
+        setMD(si,1);
         currentOffset += (int)(dataLayout.getTypeAllocSizeInBits(type)/8);
       }
     }
