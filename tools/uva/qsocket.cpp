@@ -21,6 +21,8 @@
 
 #include "hexdump.h" // BONGJUN
 
+#define OVERHEAD_TEST
+
 #ifdef OVERHEAD_TEST
 #include "overhead.h"
 #endif
