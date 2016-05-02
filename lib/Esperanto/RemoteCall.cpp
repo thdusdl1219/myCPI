@@ -41,6 +41,10 @@ using namespace std;
 char RemoteCall::ID = 0;
 static RegisterPass<RemoteCall> X("remote-call-test", "substitute remote call instructions.", false, false);
 
+//local functions
+static void setMD(Instruction* instruction, int Id);
+
+
 void RemoteCall::getAnalysisUsage(AnalysisUsage &AU) const {
 	//AU.addRequired< LoadNamer >();
 	//AU.addRequired< EsperantoNamer >();
@@ -339,7 +343,8 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
         AllocaInst* alloca = new AllocaInst(newType, one, 4,"", insertBefore); // allocate buffer on stack
         InstInsertPt out = InstInsertPt::Before(insertBefore);
         Value* addrIn32 = Casting::castTo(argValue, ConstantInt::get(Type::getInt32Ty(Context),0),out,&dataLayout);
-        new StoreInst(addrIn32,alloca,insertBefore);
+        StoreInst* si = new StoreInst(addrIn32,alloca,insertBefore);
+        setMD(si,1);
 
         actuals.resize(0);
         actuals.resize(3);
@@ -688,7 +693,21 @@ void RemoteCall::generateFunctionTableProfile(){
 
 }
 
-
+static void setMD(Instruction* instruction, int Id) {
+		LLVMContext &context = instruction->getModule()->getContext();
+		//XXX: Is it okay to cast Value* to Metadata* directly?
+		Constant* IdV = ConstantInt::get(Type::getInt64Ty(context), Id);
+		Metadata* IdM = (Metadata*)ConstantAsMetadata::get(IdV);
+		Metadata* valuesArray[] = {IdM};
+		ArrayRef<Metadata *> values(valuesArray, 1);
+		MDNode* mdNode = MDNode::get(context, values);
+		//NamedMDNode *namedMDNode = pM->getOrInsertNamedMetadata("corelab.namer");
+		//namedMDNode->addOperand(mdNode);
+		instruction->setMetadata("nouva", mdNode);
+		//instruction->dump();
+		//errs() <<" has namer metadata\n";
+		return;
+	}
 
 /*
 void RemoteCall::substituteRemoteCall(Module& M) {
