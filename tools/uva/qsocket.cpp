@@ -138,7 +138,7 @@ DEBUG_STMT (fprintf (stderr, "direct_sendsize:%u\n", size));
 
     if(clientID) {
 #ifdef DEBUG_UVA
-      printf("recvQues size : %d\n", recvQues.size());
+      //printf("recvQues size : %d\n", recvQues.size());
 #endif
       que = recvQues[*clientID];
     }
