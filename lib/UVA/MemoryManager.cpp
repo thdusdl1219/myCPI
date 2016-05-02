@@ -1033,6 +1033,7 @@ static void installMemAccessHandler(Module &M,
     const DataLayout &dataLayout = M.getDataLayout();
     std::vector<Value*> args(0);
     if (F.isDeclaration()) continue;
+    if (strcmp(F.getName().data(), "EsperantoExecFunction") == 0) continue;
     for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I){
       Instruction *instruction = &*I;
       // For each load instructions
