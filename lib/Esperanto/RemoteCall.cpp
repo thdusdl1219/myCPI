@@ -96,6 +96,7 @@ void RemoteCall::setFunctions(Module &M) {
 			"produceFunctionArgs",
 			Type::getVoidTy(Context),
 			Type::getInt32Ty(Context),
+      Type::getInt8PtrTy(Context),
 			Type::getInt32Ty(Context),
 			(Type*)0);
 	
@@ -402,10 +403,67 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
     CallInst* ci = (CallInst*)I;
     size_t argSize = f->arg_size();
     Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
+
     int sum = 0;
     bool isFirst = true;	
+    int total_arg_size = 0;
+    int addrInt = 0;
+    for(size_t i=0;i<argSize;++i){
+      Value* argValue = ci->getArgOperand(i);
+      Type* type = argValue->getType();
+      if(type->isPointerTy()){
+        total_arg_size +=32;
+      }
+      else{
+        const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type);
+        total_arg_size += (int)sizeInBits;
+      }
+    }
+    Type* i8Type = Type::getInt8Ty(Context);
+    Value* length = ConstantInt::get(Type::getInt32Ty(Context), (total_arg_size/8)); 
+    AllocaInst* alloca = new AllocaInst(i8Type,length,"",insertBefore);
+    InstInsertPt out = InstInsertPt::Before(insertBefore);
+    Value* temp = ConstantInt::get(Type::getInt32Ty(Context),0);
+    Value* addrInInt = Casting::castTo(alloca, temp, out, &dataLayout);
+    if(ConstantInt* CInt = dyn_cast<ConstantInt>(addrInInt)){
+      addrInt = (int)(CInt->getZExtValue());
+      printf("addr int : %d\n",addrInt);
+    }
+    
+    int currentOffset = 0;
+    for(size_t i=0;i<argSize;++i){
+      Value* argValue = ci->getArgOperand(i);
+      Type* type = argValue->getType();
+      int currentAddrInt = addrInt + currentOffset;
+      Value* iAddr = ConstantInt::get(Type::getInt32Ty(Context),currentAddrInt);
+      out = InstInsertPt::Before(insertBefore);
+      if(type->isPointerTy()){
+
+        Value* pointer32 = ConstantPointerNull::get(Type::getInt32PtrTy(Context));
+        Value* destAddr = Casting::castTo(iAddr,pointer32,out,&dataLayout);
+        //out = InstInsertPt::Before(insertBefore);
+        //Value* addrIn32 = Casting::castTo(argValue,pointer,out,&dataLayout);
+        new StoreInst(iAddr,destAddr,insertBefore);
+        currentOffset += 4;
+      }
+      else{
+        Value* destAddr = Casting::castTo(iAddr,ConstantPointerNull::get(type->getPointerTo()),out,&dataLayout);
+        new StoreInst(argValue,destAddr,insertBefore);
+        currentOffset += (int)(dataLayout.getTypeAllocSizeInBits(type)/8);
+      }
+    }
+
+
+    out = InstInsertPt::Before(insertBefore);
+    actuals.resize(0);
+    actuals.resize(3);
+    actuals[0] = jobId;
+    actuals[1] = Casting::castTo(alloca,pointer,out,&dataLayout);
+    actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (int)(total_arg_size/8));
+    CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
+    
     // for each func args, add it arg list.
-    for (size_t i = 0; i < argSize; ++i) {
+    /*for (size_t i = 0; i < argSize; ++i) {
       Value* argValue = ci->getArgOperand(i); // original argument
 
       Type* type = argValue->getType(); // original type
@@ -450,21 +508,21 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
         CallInst::Create(PushArgument,actuals,"",insertBefore);
 
       }
-    }
-    sum /= 8;
+    }*/
+    //sum /= 8;
 
     // XXX:'sum' can occur align problem.
-    actuals.resize(0);
-    actuals.resize(2);
-    actuals[0] = jobId;
+    //actuals.resize(0);
+    //actuals.resize(2);
+    //actuals[0] = jobId;
     //actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
-    actuals[1] = ConstantInt::get(Type::getInt32Ty(Context),rc_id);
+    //actuals[1] = ConstantInt::get(Type::getInt32Ty(Context),rc_id);
     //actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), sum);
-    CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
+    //CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
 
-    rc_id++;
+    //rc_id++;
   }
-  else if(isa<InvokeInst>(I)){
+  /*else if(isa<InvokeInst>(I)){
     InvokeInst* ci = (InvokeInst*)I;
     size_t argSize = f->arg_size();
     Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
@@ -529,7 +587,7 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
     CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
 
     rc_id++;
-  }
+  }*/
   return;
 }
 
