@@ -290,7 +290,7 @@ namespace corelab {
             valueToStore = malloc(num);
             socket->takeRangeF(valueToStore, num, clientId);
 #ifdef DEBUG_UVA
-            hexdump("server", valueToStore, num);
+            //hexdump("server", valueToStore, num);
 #endif
             
             
