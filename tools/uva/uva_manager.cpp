@@ -599,7 +599,7 @@ namespace corelab {
         //LOG("[client] Memcpy : src mem stat\n");
         //xmemDumpRange(src, num);
 #ifdef DEBUG_UVA
-        hexdump("stack", src, num);
+        // hexdump("stack", src, num);
 #endif
         socket->receiveQue();
         int ack = socket->takeWord();

@@ -277,7 +277,7 @@ int size = drm->getArgsTotalSize(rc_id);
 	
 		//LOG("produceFArgs device\n");
 		//LOG("args address : %p\n",buf);
-		//hexdump("produced args",buf,size);
+		hexdump("produced args",buf,size);
 		elem->setIsFunctionCall(true);
 		elem->setArgs(buf,size);
 		elem->setFunctionID(drm->getRunningJobFID(jobID));
@@ -297,7 +297,7 @@ void registerDevice(void* addr){
 	//LOG("Address of device is %p\n",addr);
   uint32_t temp;
   memcpy(&temp,&addr,4);
-  //hexdump("register",&addr,sizeof(addr));
+  hexdump("register",&addr,sizeof(addr));
   //hexdump("register temp",&temp,sizeof(temp));
   DataQElem* elem = new DataQElem();
   elem->setIsFunctionCall(false);
