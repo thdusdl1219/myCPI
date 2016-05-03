@@ -16,7 +16,7 @@
 #define BROADCAST_PORT 56700
 #define MAX_THREAD 16
 
-//#define DEBUG_ESP
+#define DEBUG_ESP
 
 // common variables
 int runningCallback = 0;;
