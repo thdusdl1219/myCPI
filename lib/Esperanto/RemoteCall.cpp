@@ -41,10 +41,6 @@ using namespace std;
 char RemoteCall::ID = 0;
 static RegisterPass<RemoteCall> X("remote-call-test", "substitute remote call instructions.", false, false);
 
-//local functions
-static void setMD(Instruction* instruction, int Id);
-
-
 void RemoteCall::getAnalysisUsage(AnalysisUsage &AU) const {
 	//AU.addRequired< LoadNamer >();
 	//AU.addRequired< EsperantoNamer >();
@@ -100,7 +96,6 @@ void RemoteCall::setFunctions(Module &M) {
 			"produceFunctionArgs",
 			Type::getVoidTy(Context),
 			Type::getInt32Ty(Context),
-      Type::getInt8PtrTy(Context),
 			Type::getInt32Ty(Context),
 			(Type*)0);
 	
@@ -324,8 +319,7 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
           pointer = (Value*) alloca;
           isFirst = false;
         }
-        StoreInst *si = new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
-        setMD(si,1);
+        new StoreInst(argValue, alloca, insertBefore); // copy values to buffer
         actuals.resize(0);
         actuals.resize(3);
 
@@ -344,8 +338,7 @@ void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instructio
         AllocaInst* alloca = new AllocaInst(newType, one, 4,"", insertBefore); // allocate buffer on stack
         InstInsertPt out = InstInsertPt::Before(insertBefore);
         Value* addrIn32 = Casting::castTo(argValue, ConstantInt::get(Type::getInt32Ty(Context),0),out,&dataLayout);
-        StoreInst* si = new StoreInst(addrIn32,alloca,insertBefore);
-        setMD(si,1);
+        new StoreInst(addrIn32,alloca,insertBefore);
 
         actuals.resize(0);
         actuals.resize(3);
@@ -409,73 +402,10 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
     CallInst* ci = (CallInst*)I;
     size_t argSize = f->arg_size();
     Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
-
     int sum = 0;
     bool isFirst = true;	
-    int total_arg_size = 0;
-    int addrInt = 0;
-    for(size_t i=0;i<argSize;++i){
-      Value* argValue = ci->getArgOperand(i);
-      Type* type = argValue->getType();
-      if(type->isPointerTy()){
-        total_arg_size +=32;
-      }
-      else{
-        const size_t sizeInBits = dataLayout.getTypeAllocSizeInBits(type);
-        total_arg_size += (int)sizeInBits;
-      }
-    }
-    Type* i8Type = Type::getInt8Ty(Context);
-    Value* length = ConstantInt::get(Type::getInt32Ty(Context), (total_arg_size/8)); 
-    AllocaInst* alloca = new AllocaInst(i8Type,length,"",insertBefore);
-    InstInsertPt out = InstInsertPt::Before(insertBefore);
-    Value* temp = ConstantInt::get(Type::getInt32Ty(Context),0);
-    Value* addrInInt = Casting::castTo(alloca, temp, out, &dataLayout);
-    if(ConstantInt* CInt = dyn_cast<ConstantInt>(addrInInt)){
-      addrInt = (int)(CInt->getZExtValue());
-      printf("addr int : %d\n",addrInt);
-    }
-    
-    int currentOffset = 0;
-    for(size_t i=0;i<argSize;++i){
-      Value* argValue = ci->getArgOperand(i);
-      Type* type = argValue->getType();
-      int currentAddrInt = addrInt + currentOffset;
-      Value* iAddr = BinaryOperator::CreateAdd(addrInInt,ConstantInt::get(Type::getInt32Ty(Context),currentOffset),"",insertBefore);
-        //ConstantInt::get(Type::getInt32Ty(Context),currentAddrInt);
-      out = InstInsertPt::Before(insertBefore);
-      if(type->isPointerTy()){
-
-        Value* pointer32 = ConstantPointerNull::get(Type::getInt32PtrTy(Context));
-        out = InstInsertPt::Before(insertBefore);
-        Value* pointerVal = Casting::castTo(argValue,temp,out,&dataLayout);
-        out = InstInsertPt::Before(insertBefore);
-        Value* destAddr = Casting::castTo(iAddr,pointer32,out,&dataLayout);
-        //out = InstInsertPt::Before(insertBefore);
-        //Value* addrIn32 = Casting::castTo(argValue,pointer,out,&dataLayout);
-        StoreInst* si = new StoreInst(pointerVal,destAddr,insertBefore);
-        setMD(si,1);
-        currentOffset += 4;
-      }
-      else{
-        Value* destAddr = Casting::castTo(iAddr,ConstantPointerNull::get(type->getPointerTo()),out,&dataLayout);
-        StoreInst *si = new StoreInst(argValue,destAddr,insertBefore);
-        setMD(si,1);
-        currentOffset += (int)(dataLayout.getTypeAllocSizeInBits(type)/8);
-      }
-    }
-
-
-    out = InstInsertPt::Before(insertBefore);
-    actuals.resize(0);
-    actuals.resize(3);
-    actuals[0] = jobId;
-    actuals[1] = Casting::castTo(alloca,pointer,out,&dataLayout);
-    actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), (int)(total_arg_size/8));
-    CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
-    
     // for each func args, add it arg list.
-    /*for (size_t i = 0; i < argSize; ++i) {
+    for (size_t i = 0; i < argSize; ++i) {
       Value* argValue = ci->getArgOperand(i); // original argument
 
       Type* type = argValue->getType(); // original type
@@ -520,21 +450,21 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
         CallInst::Create(PushArgument,actuals,"",insertBefore);
 
       }
-    }*/
-    //sum /= 8;
+    }
+    sum /= 8;
 
     // XXX:'sum' can occur align problem.
-    //actuals.resize(0);
-    //actuals.resize(2);
-    //actuals[0] = jobId;
+    actuals.resize(0);
+    actuals.resize(2);
+    actuals[0] = jobId;
     //actuals[1] = Casting::castTo(pointer, temp, out, &dataLayout);
-    //actuals[1] = ConstantInt::get(Type::getInt32Ty(Context),rc_id);
+    actuals[1] = ConstantInt::get(Type::getInt32Ty(Context),rc_id);
     //actuals[2] = ConstantInt::get(Type::getInt32Ty(Context), sum);
-    //CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
+    CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
 
-    //rc_id++;
+    rc_id++;
   }
-  /*else if(isa<InvokeInst>(I)){
+  else if(isa<InvokeInst>(I)){
     InvokeInst* ci = (InvokeInst*)I;
     size_t argSize = f->arg_size();
     Value* pointer = ConstantPointerNull::get(Type::getInt8PtrTy(Context));
@@ -599,7 +529,7 @@ void RemoteCall::createProduceFArgs(Function* f, Instruction* I, Value* jobId, I
     CallInst* new_ci = CallInst::Create(ProduceFunctionArgument,  actuals, "", insertBefore);
 
     rc_id++;
-  }*/
+  }
   return;
 }
 
@@ -700,21 +630,7 @@ void RemoteCall::generateFunctionTableProfile(){
 
 }
 
-static void setMD(Instruction* instruction, int Id) {
-		LLVMContext &context = instruction->getModule()->getContext();
-		//XXX: Is it okay to cast Value* to Metadata* directly?
-		Constant* IdV = ConstantInt::get(Type::getInt64Ty(context), Id);
-		Metadata* IdM = (Metadata*)ConstantAsMetadata::get(IdV);
-		Metadata* valuesArray[] = {IdM};
-		ArrayRef<Metadata *> values(valuesArray, 1);
-		MDNode* mdNode = MDNode::get(context, values);
-		//NamedMDNode *namedMDNode = pM->getOrInsertNamedMetadata("corelab.namer");
-		//namedMDNode->addOperand(mdNode);
-		instruction->setMetadata("nouva", mdNode);
-		//instruction->dump();
-		//errs() <<" has namer metadata\n";
-		return;
-	}
+
 
 /*
 void RemoteCall::substituteRemoteCall(Module& M) {
