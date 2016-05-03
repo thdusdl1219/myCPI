@@ -305,7 +305,7 @@ namespace corelab {
             socket->sendQue(clientId);
             //xmemDumpRange(dest, num);
 #ifdef DEBUG_UVA
-            hexdump("memcpy dest", dest, num); 
+            //hexdump("memcpy dest", dest, num); 
 #endif
             break;
           case GLOBAL_SEGFAULT_REQ:
