@@ -16,6 +16,8 @@
 #define BROADCAST_PORT 56700
 #define MAX_THREAD 16
 
+//#define DEBUG_ESP
+
 // common variables
 int runningCallback = 0;;
 int callbackIter = 0;
@@ -407,10 +409,12 @@ void* listenerFunction(void* arg){
           localJobID = drm->getJobID();
         else
           localJobID = -2;
+#ifdef DEBUG_ESP
 				LOG("-------------------------------------------------------------------------------------\n");
 				LOG("Recv function call (DEVICE) -> localJobID = %d, sourceJobID = %d, functionID = %d\n",localJobID, sourceJobID, FID);
 				hexdump("Args",args,payloadSize-4);
 				LOG("-------------------------------------------------------------------------------------\n");
+#endif
 				elem->setIsFunctionCall(true);
 				elem->setArgs(args,payloadSize-4);
 				elem->setFunctionID(FID);
@@ -428,10 +432,12 @@ void* listenerFunction(void* arg){
 				if(payloadSize !=0)
 					recvComplete(recvSocket,buffer,payloadSize);
 				void* retVal = (void*)buffer;
+#ifdef DEBUG_ESP
 				LOG("-------------------------------------------------------------------------------------\n");
 				LOG("Recv Return value (DEVICE) -> localJobID = %d\n",sourceJobID);
 				hexdump("Return",retVal,payloadSize);
 				LOG("-------------------------------------------------------------------------------------\n");
+#endif
 
 				elem->setIsFunctionCall(false);
 				elem->setArgs(NULL,0);
@@ -522,10 +528,12 @@ void* sendQHandlerFunction(void* arg){
 					payloadSize = sendComplete(sendSocket,payload,(argSize));
 				else
 					payloadSize = sendComplete(sendSocket,payload,4);
+#ifdef DEBUG_ESP
 				LOG("-------------------------------------------------------------------------------------\n");
 		    LOG("Send function call (DEVICE) -> sourceJobID = %d, functionID = %d\n", jobID, functionID);
 				hexdump("Args",sendElem->getArgs(),argSize-4);
 				LOG("-------------------------------------------------------------------------------------\n");
+#endif
 				//hexdump("send argument",payload+4,4);
 				//LOG("DEBUG :: send Q function call is ended with %d\n",payloadSize);
         
@@ -547,10 +555,12 @@ void* sendQHandlerFunction(void* arg){
           read(sendSocket,&ack,1);
           if(sendElem->getRetSize() >0)
             sendComplete(sendSocket,payload,sendElem->getRetSize());
+#ifdef DEBUG_ESP
           LOG("-------------------------------------------------------------------------------------\n");
           LOG("Send return value (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);
           hexdump("Return",sendElem->getRetVal(),retSize);
           LOG("-------------------------------------------------------------------------------------\n");
+#endif
 
           drm->deleteJobIDMapping(localJobID);
         } // send return value 
@@ -778,7 +788,9 @@ updateMyFIDTable(const char *fname){
 		fclose(fp);  
 		return true;
 	}
+#ifdef DEBUG_ESP
 	LOG("Num : %d\n",myFID.num);
+#endif
 	//for(int i=0;i<myFID.num;i++)
 	//	LOG("functionID : %d\n",myFID.fids[i]);
 
