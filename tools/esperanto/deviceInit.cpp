@@ -269,11 +269,11 @@ void produceReturn(int jobID, void* buf, int size){
 }
 
 extern "C"
-void produceFunctionArgs(int jobID, void* buf, int size){
+void produceFunctionArgs(int jobID, int rc_id){
 	//LOG("produce function Args / jobID = %d\n",jobID);
-//int size = drm->getArgsTotalSize(rc_id); 
-  //void* buf = drm->getArgsOfRC(rc_id);
-	  DataQElem* elem = new DataQElem();
+int size = drm->getArgsTotalSize(rc_id); 
+  void* buf = drm->getArgsOfRC(rc_id);
+	DataQElem* elem = new DataQElem();
 	
 		//LOG("produceFArgs device\n");
 		//LOG("args address : %p\n",buf);
@@ -297,7 +297,7 @@ void registerDevice(void* addr){
 	//LOG("Address of device is %p\n",addr);
   uint32_t temp;
   memcpy(&temp,&addr,4);
-  hexdump("register",&addr,sizeof(addr));
+  //hexdump("register",&addr,sizeof(addr));
   //hexdump("register temp",&temp,sizeof(temp));
   DataQElem* elem = new DataQElem();
   elem->setIsFunctionCall(false);
@@ -407,10 +407,10 @@ void* listenerFunction(void* arg){
           localJobID = drm->getJobID();
         else
           localJobID = -2;
-				//LOG("-------------------------------------------------------------------------------------\n");
-				//LOG("Recv function call (DEVICE) -> localJobID = %d, sourceJobID = %d, functionID = %d\n",localJobID, sourceJobID, FID);
-				//hexdump("Args",args,payloadSize-4);
-				//LOG("-------------------------------------------------------------------------------------\n");
+				LOG("-------------------------------------------------------------------------------------\n");
+				LOG("Recv function call (DEVICE) -> localJobID = %d, sourceJobID = %d, functionID = %d\n",localJobID, sourceJobID, FID);
+				hexdump("Args",args,payloadSize-4);
+				LOG("-------------------------------------------------------------------------------------\n");
 				elem->setIsFunctionCall(true);
 				elem->setArgs(args,payloadSize-4);
 				elem->setFunctionID(FID);
@@ -428,10 +428,10 @@ void* listenerFunction(void* arg){
 				if(payloadSize !=0)
 					recvComplete(recvSocket,buffer,payloadSize);
 				void* retVal = (void*)buffer;
-				//LOG("-------------------------------------------------------------------------------------\n");
-				//LOG("Recv Return value (DEVICE) -> localJobID = %d\n",sourceJobID);
-				//hexdump("Return",retVal,payloadSize);
-				//LOG("-------------------------------------------------------------------------------------\n");
+				LOG("-------------------------------------------------------------------------------------\n");
+				LOG("Recv Return value (DEVICE) -> localJobID = %d\n",sourceJobID);
+				hexdump("Return",retVal,payloadSize);
+				LOG("-------------------------------------------------------------------------------------\n");
 
 				elem->setIsFunctionCall(false);
 				elem->setArgs(NULL,0);
@@ -504,7 +504,7 @@ void* sendQHandlerFunction(void* arg){
 					functionID = sendElem->getFunctionID();
 					memcpy(payload,&functionID,4);
 					memcpy(payload+4,sendElem->getArgs(),argSize-4);
-					//hexdump("args",sendElem->getArgs(),argSize-4);
+					hexdump("args",sendElem->getArgs(),argSize-4);
 					//LOG("argument : %d\n",*(int*)sendElem->getArgs());
 					//sprintf(payload,"%d%s",sendElem->getFunctionID(),(char*)sendElem->getArgs());
 				}
@@ -522,10 +522,10 @@ void* sendQHandlerFunction(void* arg){
 					payloadSize = sendComplete(sendSocket,payload,(argSize));
 				else
 					payloadSize = sendComplete(sendSocket,payload,4);
-				//LOG("-------------------------------------------------------------------------------------\n");
-			//LOG("Send function call (DEVICE) -> sourceJobID = %d, functionID = %d\n", jobID, functionID);
-				//hexdump("Args",sendElem->getArgs(),argSize-4);
-				//LOG("-------------------------------------------------------------------------------------\n");
+				LOG("-------------------------------------------------------------------------------------\n");
+		    LOG("Send function call (DEVICE) -> sourceJobID = %d, functionID = %d\n", jobID, functionID);
+				hexdump("Args",sendElem->getArgs(),argSize-4);
+				LOG("-------------------------------------------------------------------------------------\n");
 				//hexdump("send argument",payload+4,4);
 				//LOG("DEBUG :: send Q function call is ended with %d\n",payloadSize);
         
@@ -547,10 +547,10 @@ void* sendQHandlerFunction(void* arg){
           read(sendSocket,&ack,1);
           if(sendElem->getRetSize() >0)
             sendComplete(sendSocket,payload,sendElem->getRetSize());
-          //LOG("-------------------------------------------------------------------------------------\n");
-          //LOG("Send return value (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);
-          //hexdump("Return",sendElem->getRetVal(),retSize);
-          //LOG("-------------------------------------------------------------------------------------\n");
+          LOG("-------------------------------------------------------------------------------------\n");
+          LOG("Send return value (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);
+          hexdump("Return",sendElem->getRetVal(),retSize);
+          LOG("-------------------------------------------------------------------------------------\n");
 
           drm->deleteJobIDMapping(localJobID);
         } // send return value 
