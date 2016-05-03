@@ -21,7 +21,8 @@
 
 #include "hexdump.h" // BONGJUN
 
-#define OVERHEAD_TEST
+#define SERVER_SIDE_OVERHEAD_TEST
+//#define OVERHEAD_TEST
 
 #ifdef OVERHEAD_TEST
 #include "overhead.h"
@@ -42,6 +43,10 @@ namespace corelab {
 	OVERHEAD_TEST_DECL
 	#endif
 
+#ifdef SERVER_SIDE_OVERHEAD_TEST
+    FILE *fp = NULL;
+#endif
+
 	QSocket::QSocket () {
 		initializeFields ();
     clientRoutine = NULL;
@@ -52,6 +57,10 @@ namespace corelab {
 		#ifdef OVERHEAD_TEST
 		OHDTEST_SETUP ();
 		#endif
+
+#ifdef SERVER_SIDE_OVERHEAD_TEST
+    fp = fopen("SERVER_SIDE_OVERHEAD_TEST_RESULT.txt", "w");
+#endif
 	}
 
 	// Send queue interface
@@ -447,9 +456,12 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 	inline void QSocket::send (const void *data, size_t size, int *clientID) {
 		const char *_data = (const char *)data;
     int id = idClient;
-    if(clientID)
+    if(clientID){
       id = *clientID;
-
+#ifdef SERVER_SIDE_OVERHEAD_TEST
+    fprintf(fp, "SEND %lu\n", size);
+#endif
+    }
 //int i = 0;
 //DEBUG_STMT (fprintf (stderr, "start sending.. (size:%u)\n", size));
 		while (size > 0) {
@@ -467,11 +479,14 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 	inline void QSocket::receive (void *buf, size_t size, int *clientID)	{
 		char *_buf = (char *)buf;
     int id = idClient;
-    if(clientID)
+    if(clientID){
       id = *clientID;
-
+#ifdef SERVER_SIDE_OVERHEAD_TEST
+    fprintf(fp, "RECV %lu\n", size);
+#endif
+    }
 //int i = 0;
-DEBUG_STMT (fprintf (stderr, "start receiving.. (size:%u)\n", size));
+//DEBUG_STMT (fprintf (stderr, "start receiving.. (size:%u)\n", size));
 		while (size > 0) {
 			size_t recvSize = read (id, _buf, size);
 

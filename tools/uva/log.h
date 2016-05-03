@@ -16,4 +16,7 @@
 #define LOG(fmt, ...)
 #endif
 
+#define LOG_BACKTRACE(addr) log_backtrace(addr)
+void log_backtrace(void *addr);
+
 #endif
