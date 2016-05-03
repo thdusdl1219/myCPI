@@ -5,6 +5,7 @@
 
 #define XMEM_LOG_DEBUG
 
+#define DEBUG_UVA
 using namespace std;
 
 static std::vector<XmemLog> logList;
@@ -17,7 +18,7 @@ void xmemLogAdd(ChunkModificationType type, void* addr) {
 	log.id = ++totalId;
 //	logList.push_back(log);
 
-#ifdef XMEM_LOG_DEBUG
+#ifdef DEBUG_UVA
 	switch(log.type) {
 		case CHUNK_NEW:
 			fprintf(stderr, "chunk_new ");
@@ -56,7 +57,7 @@ void xmemLogPrint() {
 				printf("chink_del ");
 				break;
 		}
-#ifdef XMEM_LOG_DEBUG
+#ifdef DEBUG_UVA
 		printf("addr - %p, size - %lu, id - %lu\n", log.addr, sizeof(corelab::XMemory::mchunk_t), log.id);
 #endif
 	}
