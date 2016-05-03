@@ -294,6 +294,9 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 		fclose (fres);
 		#endif
 
+#ifdef SERVER_SIDE_OVERHEAD_TEST_RESULT
+    fclose(fp);
+#endif
 		return true;
 	}
 
@@ -459,7 +462,9 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
     if(clientID){
       id = *clientID;
 #ifdef SERVER_SIDE_OVERHEAD_TEST
-    fprintf(fp, "SEND %lu\n", size);
+      fp = fopen("SERVER_SIDE_OVERHEAD_TEST_RESULT.txt", "a");
+      fprintf(fp, "SEND %lu\n", size);
+      fclose(fp);
 #endif
     }
 //int i = 0;
@@ -482,7 +487,9 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
     if(clientID){
       id = *clientID;
 #ifdef SERVER_SIDE_OVERHEAD_TEST
-    fprintf(fp, "RECV %lu\n", size);
+      fp = fopen("SERVER_SIDE_OVERHEAD_TEST_RESULT.txt", "a");
+      fprintf(fp, "RECV %lu\n", size);
+      fclose(fp);
 #endif
     }
 //int i = 0;
