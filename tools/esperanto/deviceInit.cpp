@@ -297,7 +297,7 @@ void registerDevice(void* addr){
 	//LOG("Address of device is %p\n",addr);
   uint32_t temp;
   memcpy(&temp,&addr,4);
-  //hexdump("register",&addr,sizeof(addr));
+  hexdump("register",&addr,sizeof(addr));
   //hexdump("register temp",&temp,sizeof(temp));
   DataQElem* elem = new DataQElem();
   elem->setIsFunctionCall(false);
