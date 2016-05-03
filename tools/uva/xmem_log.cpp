@@ -3,9 +3,7 @@
 #include <cstdlib>
 #include <vector>
 
-#define XMEM_LOG_DEBUG
-
-#define DEBUG_UVA
+//#define DEBUG_UVA
 using namespace std;
 
 static std::vector<XmemLog> logList;
