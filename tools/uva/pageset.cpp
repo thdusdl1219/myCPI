@@ -27,6 +27,8 @@
 
 #define PAGESET_END 0
 
+//#define DEBUG_UVA
+
 namespace corelab {
 	namespace UVA {
 		PageSet::PageSet () {
@@ -53,7 +55,9 @@ namespace corelab {
 			}
 
 			if (!org) count++;
+#ifdef DEBUG_UVA
 fprintf (stderr, "inserted (count: %u)\n", count);
+#endif
 		}
 
 		void PageSet::erase (XmemUintPtr addr) {
@@ -76,7 +80,9 @@ fprintf (stderr, "inserted (count: %u)\n", count);
 			BITVEC_RESET_NTH (tblL2[tag], idx);
 
 			if (org) count--;
+#ifdef DEBUG_UVA
 fprintf (stderr, "erased (count: %u)\n", count);
+#endif
 		}
 
 		void PageSet::clear () {
@@ -85,7 +91,9 @@ fprintf (stderr, "erased (count: %u)\n", count);
 
 			minaddr = PAGESET_END;
 			count = 0;
+#ifdef DEBUG_UVA
 fprintf (stderr, "cleared (count: %u, &count: %p)\n", count, (void*)&count);
+#endif
 		}
 
 	
