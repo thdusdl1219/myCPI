@@ -428,7 +428,7 @@ namespace corelab {
 		static inline void* allocatePage (void *addr, size_t size, unsigned protmode, bool isMmap, bool isServer) {
 
 #ifdef DEBUG_UVA
-      printf("[mm] allocatePage: addr (%p) / size (%d) / protmode (%d) / isMmap (%d) / isServer (%d)\n", addr, size, protmode, isMmap, isServer);
+      fprintf(stderr, "[mm] allocatePage: addr (%p) / size (%d) / protmode (%d) / isMmap (%d) / isServer (%d)\n", addr, size, protmode, isMmap, isServer);
 #endif
       if(!isMmap && !isServer) {
 
@@ -452,9 +452,9 @@ namespace corelab {
 
         socket->takeRange(buf, len);
         memcpy(&addr, buf, len);
-#ifdef DEBUG_UVA
-        fprintf(stderr, "mapAddr : %p\n", addr);
-#endif
+//#ifdef DEBUG_UVA
+        fprintf(stderr, "[mm] client get a page with mapAddr : %p\n", addr);
+//#endif
 
 
       } else if (isMmap && !isServer && protmode == 3) { /* XXX: is it safe ? */
