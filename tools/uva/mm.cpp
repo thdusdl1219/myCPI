@@ -18,9 +18,12 @@
 #include "mmapset.h"
 #include "xmem_log.h"
 #include "log.h"
+
+#include "TimeUtil.h"
 //#include "hexdump.h"
 
 //#define DEBUG_UVA
+#define UVA_EVAL
 
 #define getAlignedSize(s) (((s-1)/UNIT_SIZE + 1)*UNIT_SIZE)
 #define getAlignedPage(s) (((s-1)/PAGE_SIZE + 1)*PAGE_SIZE)
@@ -427,6 +430,12 @@ namespace corelab {
 
 		static inline void* allocatePage (void *addr, size_t size, unsigned protmode, bool isMmap, bool isServer) {
 
+#ifdef UVA_EVAL
+      StopWatch watch;
+      if(!isServer) {
+        watch.start();
+      }
+#endif
 #ifdef DEBUG_UVA
       fprintf(stderr, "[mm] allocatePage: addr (%p) / size (%d) / protmode (%d) / isMmap (%d) / isServer (%d)\n", addr, size, protmode, isMmap, isServer);
 #endif
@@ -506,7 +515,14 @@ namespace corelab {
 fprintf (stderr, "while allocating '%p'..\n", addr);
 				perror ("mmap failed");
 			}
-
+#ifdef UVA_EVAL
+      if(!isServer) {
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "MMAP %lf\n", watch.diff());
+        fclose(fp);
+      }
+#endif
 			return res;
 		}
 

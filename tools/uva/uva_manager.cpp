@@ -21,7 +21,9 @@
 #include "log.h"
 #include "hexdump.h"
 
+#include "TimeUtil.h"
 //#define DEBUG_UVA
+#define UVA_EVAL
 
 #ifdef OVERHEAD_TEST
 #include "overhead.h"
@@ -413,6 +415,10 @@ namespace corelab {
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
     void UVAManager::loadHandler(QSocket *socket, size_t typeLen, void *addr) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
       uint32_t intAddr;
       memcpy(&intAddr, &addr, 4);
 
@@ -463,9 +469,19 @@ namespace corelab {
         LOG("[client] Load : loadHandler END\n\n");
 #endif
       }
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "LOAD %lf\n", watch.diff());
+      fclose(fp);
+#endif
     }
 
     void UVAManager::storeHandler(QSocket *socket, size_t typeLen, void *data, void *addr) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
       uint32_t intAddr;
       memcpy(&intAddr, &addr, 4);
 
@@ -516,9 +532,19 @@ namespace corelab {
         LOG("[client] Store : storeHandler END\n\n");
 #endif
       }
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "STORE %lf\n", watch.diff());
+      fclose(fp);
+#endif
     }
 
     void *UVAManager::memsetHandler(QSocket *socket, void *addr, int value, size_t num) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
       uint32_t intAddr;
       memcpy(&intAddr, &addr, 4);
 
@@ -561,10 +587,20 @@ namespace corelab {
         LOG("[client] Memset : memsetHandler END (%p)\n\n", addr);
 #endif
       }
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "MEMSET %lf\n", watch.diff());
+      fclose(fp);
+#endif
       return addr;
     }
 
     void *UVAManager::memcpyHandler(QSocket *socket, void *dest, void *src, size_t num) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
       uint32_t intAddr;
       memcpy(&intAddr, &dest, 4);
 #ifdef DEBUG_UVA
@@ -610,6 +646,12 @@ namespace corelab {
         LOG("[client] Memcpy : memcpyHandler END (%p <- %p)\n\n", dest, src);
 #endif
       }
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "MEMCPY %lf\n", watch.diff());
+      fclose(fp);
+#endif
       return dest;
     }
 
