@@ -16,7 +16,7 @@
 #define BROADCAST_PORT 56700
 #define MAX_THREAD 16
 
-#define DEBUG_ESP
+//#define DEBUG_ESP
 
 // common variables
 int runningCallback = 0;;
@@ -351,7 +351,9 @@ void* consumeReturn(int jobID){
 				break;
 			}
 		}
+#ifdef DEBUG_ESP
     LOG("return value is successfully arrived\n");
+#endif
 	return ret;
 }
 
@@ -629,14 +631,18 @@ void* localQHandlerFunction(void* arg){
     localQSize = dqm->getLocalQSize();
     //LOG("local Q size : %d\n",localQSize);
     if(localQSize != 0){
+#ifdef DEBUG_ESP
       LOG("local Q is handling\n\n");
+#endif
     }
       
       //localQHandling = false;
     //}
     //pthread_mutex_unlock(&localQHandleLock);
     if(dqm->getLocalQSize()>0){
+#ifdef DEBUG_ESP
       LOG("local Q is handling / tid : %u / pid : %u\n",(unsigned int)pthread_self(),(unsigned int)getpid());
+#endif
 
       //pthread_mutex_lock(&localQLock);
       //printf("local Q size : %d\n",dqm->getLocalQSize());
@@ -672,10 +678,12 @@ void* localQHandlerFunction(void* arg){
 			}
 			else{ // return from gateway
 				int jobID = localElem->getJobID();
+#ifdef DEBUG_ESP
 				LOG("-------------------------------------------------------------------------------------\n");
 				LOG("Handle return value (DEVICE) -> localJobID = %d\n", jobID);
 				hexdump("Return",localElem->getRetVal(),localElem->getRetSize());
 				LOG("-------------------------------------------------------------------------------------\n");
+#endif
 				drm->insertReturnValue(jobID,localElem->getRetVal());
 				drm->deleteRunningJob(jobID);
 				drm->onValueReturn(jobID);
