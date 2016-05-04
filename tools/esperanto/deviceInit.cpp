@@ -279,7 +279,9 @@ int size = drm->getArgsTotalSize(rc_id);
 	
 		//LOG("produceFArgs device\n");
 		//LOG("args address : %p\n",buf);
-		hexdump("produced args",buf,size);
+#ifdef DEBUG_ESP	
+  hexdump("produced args",buf,size);
+#endif
 		elem->setIsFunctionCall(true);
 		elem->setArgs(buf,size);
 		elem->setFunctionID(drm->getRunningJobFID(jobID));
@@ -299,8 +301,10 @@ void registerDevice(void* addr){
 	//LOG("Address of device is %p\n",addr);
   uint32_t temp;
   memcpy(&temp,&addr,4);
+#ifdef DEBUG_ESP	
   hexdump("register",&addr,sizeof(addr));
   //hexdump("register temp",&temp,sizeof(temp));
+#endif
   DataQElem* elem = new DataQElem();
   elem->setIsFunctionCall(false);
   char* info = (char*)malloc(8);
@@ -529,8 +533,10 @@ void* sendQHandlerFunction(void* arg){
 					functionID = sendElem->getFunctionID();
 					memcpy(payload,&functionID,4);
 					memcpy(payload+4,sendElem->getArgs(),argSize-4);
+#ifdef DEBUG_ESP	
 					hexdump("args",sendElem->getArgs(),argSize-4);
-					//LOG("argument : %d\n",*(int*)sendElem->getArgs());
+#endif
+          //LOG("argument : %d\n",*(int*)sendElem->getArgs());
 					//sprintf(payload,"%d%s",sendElem->getFunctionID(),(char*)sendElem->getArgs());
 				}
 				else{

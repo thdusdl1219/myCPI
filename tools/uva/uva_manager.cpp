@@ -567,8 +567,9 @@ namespace corelab {
     void *UVAManager::memcpyHandler(QSocket *socket, void *dest, void *src, size_t num) {
       uint32_t intAddr;
       memcpy(&intAddr, &dest, 4);
-
+#ifdef DEBUG_UVA
       LOG("[client] Memcpy : destination = %u\n",intAddr);
+#endif
       if (intAddr > 939524096 || intAddr < 352321536) {
         return dest;
       }
