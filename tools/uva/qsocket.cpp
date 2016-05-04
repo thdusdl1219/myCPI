@@ -464,6 +464,7 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 #ifdef SERVER_SIDE_OVERHEAD_TEST
       fp = fopen("SERVER_SIDE_OVERHEAD_TEST_RESULT.txt", "a");
       fprintf(fp, "SEND %lu\n", size);
+      printf(stderr, "SEND %lu\n", size);
       fclose(fp);
 #endif
     }
@@ -489,6 +490,7 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 #ifdef SERVER_SIDE_OVERHEAD_TEST
       fp = fopen("SERVER_SIDE_OVERHEAD_TEST_RESULT.txt", "a");
       fprintf(fp, "RECV %lu\n", size);
+      printf(stderr, "RECV %lu\n", size);
       fclose(fp);
 #endif
     }
