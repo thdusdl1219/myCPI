@@ -261,7 +261,7 @@ void produceReturn(int jobID, void* buf, int size){
 		elem->setIsFunctionCall(false);
 		elem->setArgs(NULL,0);
 		elem->setFunctionID(drm->getRunningJobFID(jobID));
-		elem->setJobID(drm->getSourceJobID(jobID));
+		elem->setJobID(jobID);
 		elem->setRetVal(ret,size);
 		dqm->insertElementToSendQ(elem);
 
@@ -351,6 +351,7 @@ void* consumeReturn(int jobID){
 				break;
 			}
 		}
+    LOG("return value is successfully arrived\n");
 	return ret;
 }
 
@@ -385,7 +386,7 @@ void* listenerFunction(void* arg){
 	}*/
 	pthread_barrier_wait(&barrier);
 	while(1){
-
+    usleep(1);
 		int readSize = read(recvSocket,header,9);
 		if(readSize == 9){
 			type = header[0];
@@ -431,24 +432,39 @@ void* listenerFunction(void* arg){
 				//LOG("return is received\n");
 				if(payloadSize !=0)
 					recvComplete(recvSocket,buffer,payloadSize);
-				void* retVal = (void*)buffer;
-#ifdef DEBUG_ESP
-				LOG("-------------------------------------------------------------------------------------\n");
-				LOG("Recv Return value (DEVICE) -> localJobID = %d\n",sourceJobID);
-				hexdump("Return",retVal,payloadSize);
-				LOG("-------------------------------------------------------------------------------------\n");
-#endif
 
-				elem->setIsFunctionCall(false);
+        void* retVal = (void*)malloc(payloadSize);
+				memcpy(retVal,buffer,payloadSize);
+				
+				/*elem->setIsFunctionCall(false);
 				elem->setArgs(NULL,0);
 				elem->setFunctionID(0);
 				elem->setJobID(sourceJobID);
 				elem->setRetVal(retVal,payloadSize);
-				dqm->insertElementToLocalQ(elem);
+				dqm->insertElementToLocalQ(elem);*/
+#ifdef DEBUG_ESP
+        LOG("-------------------------------------------------------------------------------------\n");
+				LOG("Recv Return value (DEVICE) -> localJobID = %d\n",sourceJobID);
+				hexdump("Return",retVal,payloadSize);
+				LOG("-------------------------------------------------------------------------------------\n");
 
-				pthread_mutex_lock(&localQHandleLock);
-				localQHandling = true;
-				pthread_mutex_unlock(&localQHandleLock);
+				//pthread_mutex_lock(&localQHandleLock);
+				//localQHandling = true;
+				//pthread_mutex_unlock(&localQHandleLock);
+        LOG("\n\nlocal Q handling is true  : %d\n\n",dqm->getLocalQSize());
+
+        //int jobID = localElem->getJobID();
+				LOG("-------------------------------------------------------------------------------------\n");
+				LOG("Handle return value (DEVICE) -> localJobID = %d\n", sourceJobID);
+				hexdump("Return",retVal,payloadSize);
+				LOG("-------------------------------------------------------------------------------------\n");
+#endif
+
+        drm->insertReturnValue(sourceJobID,retVal);
+				drm->deleteRunningJob(sourceJobID);
+				drm->onValueReturn(sourceJobID);
+
+
 			}
 		}
 	}
@@ -470,6 +486,7 @@ void* sendQHandlerFunction(void* arg){
 	//LOG("DEBUG :: get send socket\n");
 	char ack = 1;
 	while(1){
+    usleep(1);
 		int sendQSize = 0;
 
 		pthread_mutex_lock(&sendQHandleLock);
@@ -541,6 +558,7 @@ void* sendQHandlerFunction(void* arg){
 			else{
 				//LOG("DEBUG :: send Q handle return value\n");
         int localJobID = sendElem->getJobID();
+        //int sourceJobID = sendElem->getJobID();
         if(localJobID != -1){
           int sourceJobID = drm->getSourceJobID(localJobID);
           int retSize = sendElem->getRetSize();
@@ -601,30 +619,34 @@ void* localQHandlerFunction(void* arg){
 		localQsetting = true;
 		
 		pthread_mutex_unlock(&settingLock);*/
-	pthread_barrier_wait(&barrier);
-	while(1){
-		int localQSize = 0;
+  pthread_barrier_wait(&barrier);
+  while(1){
+    usleep(1);
+    int localQSize = 0;
 
-			pthread_mutex_lock(&localQHandleLock);
-		if(localQHandling){
-			localQSize = dqm->getLocalQSize();
+    //pthread_mutex_lock(&localQHandleLock);
+    //if(localQHandling){
+    localQSize = dqm->getLocalQSize();
+    //LOG("local Q size : %d\n",localQSize);
+    if(localQSize != 0){
+      LOG("local Q is handling\n\n");
+    }
+      
+      //localQHandling = false;
+    //}
+    //pthread_mutex_unlock(&localQHandleLock);
+    if(dqm->getLocalQSize()>0){
+      LOG("local Q is handling / tid : %u / pid : %u\n",(unsigned int)pthread_self(),(unsigned int)getpid());
 
-			localQHandling = false;
-		}
-
-			pthread_mutex_unlock(&localQHandleLock);
-		if(localQSize>0){
-			//LOG("local Q is handling / tid : %u / pid : %u\n",(unsigned int)pthread_self(),(unsigned int)getpid());
-			
-				//pthread_mutex_lock(&localQLock);
-				//printf("local Q size : %d\n",dqm->getLocalQSize());
-			DataQElem* localElem = dqm->getLocalQElement();
-			//pthread_mutex_unlock(&localQLock);
-			if(localElem->getIsFunctionCall()){ // local function call
-				int functionID = localElem->getFunctionID();
-				int jobID = localElem->getJobID();
-				void* args = localElem->getArgs();
-				pthread_mutex_lock(&handleArgsLock);
+      //pthread_mutex_lock(&localQLock);
+      //printf("local Q size : %d\n",dqm->getLocalQSize());
+      DataQElem* localElem = dqm->getLocalQElement();
+      //pthread_mutex_unlock(&localQLock);
+      if(localElem->getIsFunctionCall()){ // local function call
+        int functionID = localElem->getFunctionID();
+        int jobID = localElem->getJobID();
+        void* args = localElem->getArgs();
+        pthread_mutex_lock(&handleArgsLock);
 				/*if(args == NULL){
 					drm->insertArgs(jobID,(void*)tempInt);
 					printf("inserted pointer value is %p\n",tempInt);
@@ -650,10 +672,10 @@ void* localQHandlerFunction(void* arg){
 			}
 			else{ // return from gateway
 				int jobID = localElem->getJobID();
-				//LOG("-------------------------------------------------------------------------------------\n");
-				//LOG("Handle return value (DEVICE) -> localJobID = %d\n", jobID);
-				//hexdump("Return",localElem->getRetVal(),localElem->getRetSize());
-				//LOG("-------------------------------------------------------------------------------------\n");
+				LOG("-------------------------------------------------------------------------------------\n");
+				LOG("Handle return value (DEVICE) -> localJobID = %d\n", jobID);
+				hexdump("Return",localElem->getRetVal(),localElem->getRetSize());
+				LOG("-------------------------------------------------------------------------------------\n");
 				drm->insertReturnValue(jobID,localElem->getRetVal());
 				drm->deleteRunningJob(jobID);
 				drm->onValueReturn(jobID);
