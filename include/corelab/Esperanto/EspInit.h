@@ -174,14 +174,14 @@ namespace corelab
 				}
 				return -1;
 			}
-			void insertDevice(StringRef deviceName){
+			void insertDevice(StringRef deviceName, int id){
 				if(deviceInfoTable.find(deviceName) == deviceInfoTable.end()){
 					deviceInfoTable[deviceName] = id;
-					id++;
+					// id++;
 				}
 			}
 		private:
-			int id = 0;
+			// int id = 0;
 			std::map<StringRef,int> deviceInfoTable;
 	};
 
@@ -211,7 +211,7 @@ namespace corelab
 		public:
 
 			bool runOnModule(Module& M);
-			void buildMetadataTable();
+			void buildMetadataTable(Module& M);
 			void buildDriverTable();
 			void buildProtocolTable();
 			void buildFunctionTable(Module& M);

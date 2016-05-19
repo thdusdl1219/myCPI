@@ -208,8 +208,15 @@ namespace corelab {
         size_t pos = async_func.find("::");
        
         struct AsyncFunc async_info;
-        async_info.className = new StringRef(async_func.substr(0, pos)); 
-        async_info.funcName = new StringRef(async_func.substr(pos+2));       
+
+        char *temp = (char*)malloc(async_func.substr(0, pos).size()+1);
+		    strcpy(temp, async_func.substr(0, pos).c_str());
+        async_info.className = new StringRef(temp); 
+
+        temp = (char*)malloc(async_func.substr(pos+2).size()+1);
+		    strcpy(temp, async_func.substr(pos+2).c_str());
+        async_info.funcName = new StringRef(temp);       
+        
         async_functions.push_back(async_info);
       }
     }
@@ -233,18 +240,27 @@ namespace corelab {
       ConstantInt* didConstant = cast<ConstantInt>(cast<Constant>(didValue));
       int did = (int)didConstant->getZExtValue();
 
-      DITable.insertDevice(device, did); 
-
       // restore constructor & destructor
       std::string constructor = cast<MDString>(MD->getOperand(1).get())->getString().str();
       std::string destructor = cast<MDString>(MD->getOperand(2).get())->getString().str();
 
 			struct MetadataInfo mi;
-      mi.arg1 = new StringRef(device);
-      mi.arg2 = new StringRef(constructor);
-      mi.arg3 = new StringRef(destructor);
+
+      // XXX: Why should I use malloc here...?
+      char *temp = (char*)malloc(device.size()+1);
+		  strcpy(temp, device.c_str());
+      mi.arg1 = new StringRef(temp);
+     
+      temp = (char*)malloc(constructor.size()+1);
+		  strcpy(temp, constructor.c_str());
+      mi.arg2 = new StringRef(temp);
+
+      temp = (char*)malloc(destructor.size()+1);
+		  strcpy(temp, destructor.c_str());
+      mi.arg3 = new StringRef(temp);
 
       MDTable.insertEspDevDecl(mi);
+      DITable.insertDevice(*mi.arg1, did); 
     }
 
 
