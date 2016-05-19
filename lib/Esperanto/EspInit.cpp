@@ -47,9 +47,9 @@ namespace corelab {
 	bool EspInitializer::runOnModule(Module& M)
 	{
 		//LLVMContext &Context = getGlobalContext();
-		buildMetadataTable();
+		buildMetadataTable(M);
 		//buildDriverTable();
-		buildProtocolTable();
+		//buildProtocolTable();
 		buildFunctionTable(M);
 		return false;
 	}
@@ -144,7 +144,7 @@ namespace corelab {
 		char readBuffer[100];
 		char* temp;
 		char c = 1;
-		int type = -1;
+		// int type = -1;
 		std::map<StringRef,struct RuntimeFunctions> tempProtocols;
 
 		while(c != EOF){
@@ -195,10 +195,60 @@ namespace corelab {
 		buildProtocolTableImpl(tempProtocols);	
 	
 	}
-
 	
+  void EspInitializer::buildMetadataTable(Module &M){
 
-	void EspInitializer::buildMetadataTable(){
+    // esperanto.async
+    NamedMDNode *asyncNamedMD = M.getNamedMetadata("esperanto.async");
+    if(asyncNamedMD != NULL) {
+      MDNode *asyncMD = asyncNamedMD->getOperand(0);
+      for(auto it = asyncMD->op_begin(), iend = asyncMD->op_end(); 
+          it != iend; it++) {
+        std::string async_func = cast<MDString>(it->get())->getString().str();
+        size_t pos = async_func.find("::");
+       
+        struct AsyncFunc async_info;
+        async_info.className = new StringRef(async_func.substr(0, pos)); 
+        async_info.funcName = new StringRef(async_func.substr(pos+2));       
+        async_functions.push_back(async_info);
+      }
+    }
+
+    // esperanto.device
+    NamedMDNode *deviceNamedMD = M.getNamedMetadata("esperanto.device");
+    assert(deviceNamedMD != NULL);
+    MDNode *deviceMD = deviceNamedMD->getOperand(0);
+
+    for(auto it = deviceMD->op_begin(), iend = deviceMD->op_end(); 
+        it != iend; it++) {  
+      std::string device = cast<MDString>(it->get())->getString().str();
+      
+      // get the metadata of the device
+      NamedMDNode *namedMD = M.getNamedMetadata(device);
+      assert(namedMD != NULL);
+      MDNode *MD = namedMD->getOperand(0);
+
+      // restore the device id
+      Value *didValue = cast<ValueAsMetadata>(MD->getOperand(0).get())->getValue();
+      ConstantInt* didConstant = cast<ConstantInt>(cast<Constant>(didValue));
+      int did = (int)didConstant->getZExtValue();
+
+      DITable.insertDevice(device, did); 
+
+      // restore constructor & destructor
+      std::string constructor = cast<MDString>(MD->getOperand(1).get())->getString().str();
+      std::string destructor = cast<MDString>(MD->getOperand(2).get())->getString().str();
+
+			struct MetadataInfo mi;
+      mi.arg1 = new StringRef(device);
+      mi.arg2 = new StringRef(constructor);
+      mi.arg3 = new StringRef(destructor);
+
+      MDTable.insertEspDevDecl(mi);
+    }
+
+
+#if 0
 		FILE* metadataFile = fopen("EspMetadata.profile","r");
 		if(metadataFile == nullptr)
 			return;
@@ -288,6 +338,7 @@ namespace corelab {
 			struct MetadataInfo* t = *it;
 			printf("1. %s\n2. %s\n3. %s\n",t->arg1->str().c_str(),t->arg2->str().c_str(),t->arg3->str().c_str());
 		}
+#endif
 	}
 
 	void EspInitializer::buildDriverTable(){
