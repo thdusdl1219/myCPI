@@ -87,10 +87,11 @@ namespace corelab {
 		static inline size_t inflateData (void *data, size_t dsize, void *buf, size_t bsize);
 		#endif
 
+    static inline uint32_t makeInt32Addr(void *addr);
     /* not exact */
-    static inline bool isUVAaddr(int intAddr);
-    static inline bool isUVAheapAddr(int intAddr);
-    static inline bool isUVAglobalAddr(int intAddr);
+    static inline bool isUVAaddr(uint32_t intAddr);
+    static inline bool isUVAheapAddr(uint32_t intAddr);
+    static inline bool isUVAglobalAddr(uint32_t intAddr);
 		
     /*** Interfaces ***/
 		//void UVAManager::initialize (UVAOwnership _uvaown) {
@@ -425,26 +426,18 @@ namespace corelab {
       StopWatch watch;
       watch.start();
 #endif
-      uint32_t intAddr;
-      memcpy(&intAddr, &addr, 4);
-
-      if (intAddr > 939524096 || intAddr < 352321536) {
-        return;
-      }
+      uint32_t intAddr = makeInt32Addr(addr);
+      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
 
       if(xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
 #ifdef DEBUG_UVA
         LOG("[client] Load : loadHandler start (%p)\n", addr);
-#endif
         if (xmemIsHeapAddr(addr)) {
-#ifdef DEBUG_UVA
           LOG("[client] Load : isHeapAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
-#endif
         } else if (isFixedGlobalAddr(addr)) {
-#ifdef DEBUG_UVA
           LOG("[client] Load : isFixedGlobalAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
-#endif
         }
+#endif
         socket->pushWordF(LOAD_REQ); // mode 2 (client -> server : load request)
         //socket->pushWordF(sizeof(addr));
         socket->pushWordF(typeLen); // type length
@@ -488,12 +481,8 @@ namespace corelab {
       StopWatch watch;
       watch.start();
 #endif
-      uint32_t intAddr;
-      memcpy(&intAddr, &addr, 4);
-
-      if (intAddr > 939524096 || intAddr < 352321536) {
-        return;
-      }
+      uint32_t intAddr = makeInt32Addr(addr);
+      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
 
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
 #ifdef DEBUG_UVA
@@ -551,12 +540,8 @@ namespace corelab {
       StopWatch watch;
       watch.start();
 #endif
-      uint32_t intAddr;
-      memcpy(&intAddr, &addr, 4);
-
-      if (intAddr > 939524096 || intAddr < 352321536) {
-        return addr;
-      }
+      uint32_t intAddr = makeInt32Addr(addr);
+      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return addr;
 
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
 #ifdef DEBUG_UVA
@@ -607,16 +592,26 @@ namespace corelab {
       StopWatch watch;
       watch.start();
 #endif
-      uint32_t intDest;
-      uint32_t intSrc;
-      memcpy(&intDest, &dest, 4);
-      memcpy(&intSrc, &src, 4);
+      uint32_t intDest = makeInt32Addr(dest);
+      uint32_t intSrc = makeInt32Addr(src);
+      /** typeMemcpy
+       * 0: not related with UVA
+       * 1: dest is in UVA addr space (src is in wherever)
+       * 2: src is in UVA addr space (dest is not in UVA addr space)
+       **/
+      int typeMemcpy = 0;
 #ifdef DEBUG_UVA
       LOG("[client] Memcpy : destination = %u, src = %u\n",intDest, intSrc);
 #endif
-      if (!isUVAaddr(intDest) && !isUVAaddr(intSrc)) return dest;
+      if(isUVAheapAddr(intDest) || isUVAglobalAddr(intDest)) {
+        typeMemcpy = 1;
+      } else if (isUVAheapAddr(intSrc) || isUVAglobalAddr(intSrc)) {
+        typeMemcpy = 2;
+      } else {
+        return dest;
+      }
 
-      if (xmemIsHeapAddr(dest) || isFixedGlobalAddr(dest) || xmemIsHeapAddr(src) || isFixedGlobalAddr(src)) {
+      if (typeMemcpy) {
 #ifdef DEBUG_UVA
         LOG("[client] Memcpy : memcpyHandler start (%p <- %p)\n", dest, src);
         if (xmemIsHeapAddr(dest)) {
@@ -631,9 +626,21 @@ namespace corelab {
 #endif
         
         socket->pushWordF(MEMCPY_REQ);
-        socket->pushWordF(intDest);
-        socket->pushWordF(num);
-        socket->pushRangeF(src, num);
+        socket->pushWordF(typeMemcpy);
+        if (typeMemcpy == 1) {
+          socket->pushWordF(intDest);
+          socket->pushWordF(num);
+          socket->pushRangeF(src, num);
+        } else if (typeMemcpy == 2) {
+          socket->pushWordF(intSrc);
+          socket->pushWordF(num);
+          socket->sendQue();
+
+          socket->receiveQue();
+          socket->takeRangeF(src, num);
+        } else {
+          assert(0);
+        }
         //socket->pushWordF(num); // XXX check
         socket->sendQue();
 #ifdef DEBUG_UVA
@@ -714,23 +721,29 @@ namespace corelab {
       //*end_const = ptConstEnd;
     }
 
+    static inline uint32_t makeInt32Addr(void *addr) {
+      uint32_t intAddr;
+      memcpy(&intAddr, &addr, 4);
+      return intAddr;
+    }
+
     /* not exact */
-    static inline bool isUVAaddr(int intAddr) {
+    static inline bool isUVAaddr(uint32_t intAddr) {
       if (352321536 <= intAddr && intAddr < 939524096)
         return true;
       else
         return false;
     }
 
-    static inline bool isUVAheapAddr(int intAddr) {
+    static inline bool isUVAheapAddr(uint32_t intAddr) {
       if (402653184 <= intAddr && intAddr < 939524096)
         return true;
       else
         return false;
     }
     
-    static inline bool isUVAglobalAddr(int intAddr) {
-      if (352321536 <= intAddr || 369098752 < intAddr)
+    static inline bool isUVAglobalAddr(uint32_t intAddr) {
+      if (352321536 <= intAddr && 369098752 < intAddr)
         return true;
       else
         return false;

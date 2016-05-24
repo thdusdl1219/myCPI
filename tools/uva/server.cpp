@@ -90,6 +90,7 @@ namespace corelab {
       void *castedAddr;
 
       /* for memset, memcpy */
+      int typeMemcpy;
       int value;
       size_t num;
       void *dest;
@@ -265,28 +266,39 @@ namespace corelab {
 #ifdef DEBUG_UVA
             LOG("[server] get memcpy request from client\n");
 #endif
-            dest = reinterpret_cast<void*>(socket->takeWordF(clientId));
-            num = socket->takeWordF(clientId);
-            valueToStore = malloc(num);
-            socket->takeRangeF(valueToStore, num, clientId);
+            typeMemcpy = socket->takeWordF(clientId);
+            if (typeMemcpy == 1) {
+              dest = reinterpret_cast<void*>(socket->takeWordF(clientId));
+              num = socket->takeWordF(clientId);
+              valueToStore = malloc(num);
+              socket->takeRangeF(valueToStore, num, clientId);
 #ifdef DEBUG_UVA
-            //hexdump("server", valueToStore, num);
+              //hexdump("server", valueToStore, num);
 #endif
             
             
 #ifdef DEBUG_UVA
-            LOG("[server] memcpy(%p, , %d)\n", dest, num);
+              LOG("[server] memcpy(%p, , %d)\n", dest, num);
 #endif
-            //LOG("[server] below are src mem stat\n");
-            //xmemDumpRange(src, num);
-            memcpy(dest, valueToStore, num);
+              //LOG("[server] below are src mem stat\n");
+              //xmemDumpRange(src, num);
+              memcpy(dest, valueToStore, num);
 
-            socket->pushWordF(MEMCPY_REQ_ACK, clientId);
-            socket->sendQue(clientId);
-            //xmemDumpRange(dest, num);
+              socket->pushWordF(MEMCPY_REQ_ACK, clientId);
+              socket->sendQue(clientId);
+              //xmemDumpRange(dest, num);
 #ifdef DEBUG_UVA
-            //hexdump("memcpy dest", dest, num); 
+              //hexdump("memcpy dest", dest, num); 
 #endif
+            } else if (typeMemcpy == 2) {
+              src = reinterpret_cast<void*>(socket->takeWordF(clientId));
+              num = socket->takeWordF(clientId);
+              socket->pushRangeF(src, num);
+
+              // don't need to do memcpy in server
+
+              socket->sendQue(clientId);
+            }
             break;
           case GLOBAL_SEGFAULT_REQ:
 #ifdef DEBUG_UVA
