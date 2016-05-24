@@ -11,6 +11,7 @@
 #include "log.h"
 #include "hexdump.h"
 #include "xmem_info.h"
+#include "uva_macro.h"
 
 //#define DEBUG_UVA
 
@@ -20,27 +21,6 @@ using namespace corelab::XMemory;
 namespace corelab {
   namespace UVA {
 
-    enum {
-      THREAD_EXIT = -1,
-      HEAP_ALLOC_REQ = 0,
-      HEAP_ALLOC_REQ_ACK = 1,
-      LOAD_REQ = 2,
-      LOAD_REQ_ACK = 3,
-      STORE_REQ = 4,
-      STORE_REQ_ACK = 5,
-      MMAP_REQ = 6,
-      MMAP_REQ_ACK = 7,
-      MEMSET_REQ = 8,
-      MEMSET_REQ_ACK = 9,
-      MEMCPY_REQ = 10,
-      MEMCPY_REQ_ACK = 11,
-      MEMMOVE_REQ = 12,
-      MEMMOVE_REQ_ACK = 13,
-      GLOBAL_SEGFAULT_REQ = 30, 
-      GLOBAL_SEGFAULT_REQ_ACK = 31, 
-      GLOBAL_INIT_COMPLETE_SIG = 32,
-      GLOBAL_INIT_COMPLETE_SIG_ACK = 33
-    };
     static QSocket* socket;
     pthread_t openThread; 
     

@@ -1,3 +1,5 @@
+#ifndef __UVA_MANAGER_H__
+#define __UVA_MANAGER_H__
 /***
  * uva_manager.h: UVA Manager
  *
@@ -6,6 +8,8 @@
  * modified by: bongjun
  *
  * **/
+
+#include <set>
 
 #include "qsocket.h"
 #include "xmem_spec.h"
@@ -21,6 +25,12 @@ namespace corelab {
     /* UVAOwnership is deprecated (BONGJUN) */
 		enum UVAOwnership { OWN_MASTER, OWN_SLAVE };
 
+    struct Diff {
+      void *addr;
+      int32_t size;
+      void *data;
+    };
+
 		namespace UVAManager {
 			void initialize (QSocket *socket);
 
@@ -32,6 +42,10 @@ namespace corelab {
 			void flushIn (QSocket *socket);
 			void flushOut (QSocket *socket);
 			void resolveModified (void *addr);
+
+      // HLRC (Home-based Lazy Release Consistency)
+      void acquire(QSocket *socket);
+      void release(QSocket *socket);
 
       // Memory Access handler (BONGJUN)
       void loadHandler(QSocket *socket, size_t typeLen, void *addr);
@@ -52,3 +66,4 @@ namespace corelab {
 		}
 	}
 }
+#endif

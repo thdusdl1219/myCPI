@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <cassert>
 #include <inttypes.h>
+
 #include "uva_manager.h"
 #include "packet_header.h"
 #include "pageset.h"
@@ -20,6 +21,7 @@
 #include "debug.h"
 #include "log.h"
 #include "hexdump.h"
+#include "uva_macro.h"
 
 #include "TimeUtil.h"
 //#define DEBUG_UVA
@@ -85,29 +87,12 @@ namespace corelab {
 		static inline size_t inflateData (void *data, size_t dsize, void *buf, size_t bsize);
 		#endif
 
-    enum {
-      THREAD_EXIT = -1,
-      HEAP_ALLOC_REQ = 0,
-      HEAP_ALLOC_REQ_ACK = 1,
-      LOAD_REQ = 2,
-      LOAD_REQ_ACK = 3,
-      STORE_REQ = 4,
-      STORE_REQ_ACK = 5,
-      MMAP_REQ = 6,
-      MMAP_REQ_ACK = 7,
-      MEMSET_REQ = 8,
-      MEMSET_REQ_ACK = 9,
-      MEMCPY_REQ = 10,
-      MEMCPY_REQ_ACK = 11,
-      MEMMOVE_REQ = 12,
-      MEMMOVE_REQ_ACK = 13,
-      GLOBAL_SEGFAULT_REQ = 30, 
-      GLOBAL_SEGFAULT_REQ_ACK = 31, 
-      GLOBAL_INIT_COMPLETE_SIG = 32,
-      GLOBAL_INIT_COMPLETE_SIG_ACK = 33
-    };
-
-		/*** Interfaces ***/
+    /* not exact */
+    static inline bool isUVAaddr(int intAddr);
+    static inline bool isUVAheapAddr(int intAddr);
+    static inline bool isUVAglobalAddr(int intAddr);
+		
+    /*** Interfaces ***/
 		//void UVAManager::initialize (UVAOwnership _uvaown) {
 		void UVAManager::initialize (QSocket *socket) {
 			// XMemoryManager must not have an initializer,
@@ -412,6 +397,27 @@ namespace corelab {
 			xmemSetProtMode (paddr, XMEM_PAGE_SIZE, PROT_READ | PROT_WRITE);
 		}
 
+    /* @detail acquire */
+    void UVAManager::acquire(QSocket *socket) {
+      // get access permission from home
+      // maybe invalidation ?
+      // get diff from home
+      socket->receiveQue();
+      int ack = socket->takeWordF();
+      if (ack == 1) { // acquire success
+        //startMakingDiff = true;
+      } else {
+        assert(0 && "fail acquiring");
+      }
+    }
+
+    /* @detail release */
+    /*void UVAManager::release(QSocket *socket) {
+      // send diff to home
+      socket->pushWordF();
+      // send release signal
+      socket->receiveQue();
+    }*/
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
     void UVAManager::loadHandler(QSocket *socket, size_t typeLen, void *addr) {
@@ -601,31 +607,31 @@ namespace corelab {
       StopWatch watch;
       watch.start();
 #endif
-      uint32_t intAddr;
-      memcpy(&intAddr, &dest, 4);
+      uint32_t intDest;
+      uint32_t intSrc;
+      memcpy(&intDest, &dest, 4);
+      memcpy(&intSrc, &src, 4);
 #ifdef DEBUG_UVA
-      LOG("[client] Memcpy : destination = %u\n",intAddr);
+      LOG("[client] Memcpy : destination = %u, src = %u\n",intDest, intSrc);
 #endif
-      if (intAddr > 939524096 || intAddr < 352321536) {
-        return dest;
-      }
+      if (!isUVAaddr(intDest) && !isUVAaddr(intSrc)) return dest;
 
-      if (xmemIsHeapAddr(dest) || isFixedGlobalAddr(dest)) {
+      if (xmemIsHeapAddr(dest) || isFixedGlobalAddr(dest) || xmemIsHeapAddr(src) || isFixedGlobalAddr(src)) {
 #ifdef DEBUG_UVA
         LOG("[client] Memcpy : memcpyHandler start (%p <- %p)\n", dest, src);
-#endif
         if (xmemIsHeapAddr(dest)) {
-#ifdef DEBUG_UVA
-          LOG("[client] Memcpy : isHeapAddr, is going to request | %p <- %p\n", dest, src);
-#endif
+          LOG("[client] Memcpy : dest isHeapAddr, is going to request | %p <- %p\n", dest, src);
         } else if (isFixedGlobalAddr(dest)) {
-#ifdef DEBUG_UVA
-          LOG("[client] Memcpy : isFixedGlobalAddr, is going to request | %p <- %p\n", dest, src);
-#endif
+          LOG("[client] Memcpy : dest isFixedGlobalAddr, is going to request | %p <- %p\n", dest, src);
+        } else if (xmemIsHeapAddr(src)) {
+          LOG("[client] Memcpy : src isHeapAddr, is going to request | %p <- %p\n", dest, src);
+        } else if (isFixedGlobalAddr(src)) {
+          LOG("[client] Memcpy : src isFixedGlobalAddr, is going to request | %p <- %p\n", dest, src);
         }
+#endif
         
         socket->pushWordF(MEMCPY_REQ);
-        socket->pushWordF(intAddr);
+        socket->pushWordF(intDest);
         socket->pushWordF(num);
         socket->pushRangeF(src, num);
         //socket->pushWordF(num); // XXX check
@@ -706,6 +712,28 @@ namespace corelab {
       *end_noconst = ptNoConstEnd;
       //*begin_const = ptConstBegin;
       //*end_const = ptConstEnd;
+    }
+
+    /* not exact */
+    static inline bool isUVAaddr(int intAddr) {
+      if (352321536 <= intAddr && intAddr < 939524096)
+        return true;
+      else
+        return false;
+    }
+
+    static inline bool isUVAheapAddr(int intAddr) {
+      if (402653184 <= intAddr && intAddr < 939524096)
+        return true;
+      else
+        return false;
+    }
+    
+    static inline bool isUVAglobalAddr(int intAddr) {
+      if (352321536 <= intAddr || 369098752 < intAddr)
+        return true;
+      else
+        return false;
     }
 
 		/*** CallBack ***/
