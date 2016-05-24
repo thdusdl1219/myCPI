@@ -13,6 +13,7 @@
 #include <inttypes.h>
 #include <vector>
 #include <sys/mman.h>
+#include <stdint.h>
 
 #include "uva_manager.h"
 #include "packet_header.h"
@@ -54,6 +55,9 @@ namespace corelab {
 
 		static UVAOwnership uvaown;
 		static PageSet setMEPages;
+
+    static std::vector<struct StoreLog> vecStoreLogs;
+    static int sizeStoreLogs = 0;
 
     // BONGJUN
     static void *ptNoConstBegin;
@@ -400,7 +404,7 @@ namespace corelab {
 			xmemSetProtMode (paddr, XMEM_PAGE_SIZE, PROT_READ | PROT_WRITE);
 		}
 
-    /* @detail acquire */
+    /* @detail HLRC (Home-based Lazy Release Consistency): acquire */
     void UVAManager::acquire(QSocket *socket) {
 
       // send invalidate address request.
@@ -431,13 +435,41 @@ namespace corelab {
       }
     }
 
-    /* @detail release */
-    /*void UVAManager::release(QSocket *socket) {
-      // send diff to home
-      socket->pushWordF();
-      // send release signal
-      socket->receiveQue();
-    }*/
+    /* @detail HLRC (Home-based Lazy Release Consistency): release */
+    void UVAManager::release(QSocket *socket) {
+      /* At first, make store logs to be send to Home */
+      void *storeLogs = malloc(sizeStoreLogs);
+#if UINTPTR_MAX == 0xffffffff
+      /* 32-bit */
+      uint32_t intAddrOfStoreLogs;
+      memcpy(&intAddrOfStoreLogs, storeLogs, 4); 
+      uint32_t current = intAddrStoreLogs;
+#elif UINTPTR_MAX == 0xffffffffffffffff
+      /* 64-bit */
+      uint64_t intAddrOfStoreLogs;
+      memcpy(&intAddrOfStoreLogs, storeLogs, 8); 
+      uint64_t current = intAddrOfStoreLogs;
+#else
+      /* hmm ... */
+      assert(0);
+#endif
+      int i = 0;
+      while (current != intAddrOfStoreLogs + sizeStoreLogs) {
+        struct StoreLog curStoreLog = vecStoreLogs[i];
+        uint32_t intAddr;
+        memcpy((void*)current, &curStoreLog.size, 4);
+        memcpy((void*)(current+4), curStoreLog.data, curStoreLog.size);
+        memcpy(&intAddr, &curStoreLog.addr, 4);
+        memcpy((void*)(current+4+curStoreLog.size), &intAddr, 4);
+        current = current + 8 + curStoreLog.size;
+        i++;
+      }
+      
+      /* Second, send them all */
+      socket->pushWordF(16);
+      socket->pushRange(storeLogs, sizeStoreLogs);
+      socket->sendQue();
+    }
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
     void UVAManager::loadHandler(QSocket *socket, size_t typeLen, void *addr) {
@@ -711,6 +743,52 @@ namespace corelab {
 				setMEPages.erase (upt);
 			}*/
 		}
+
+    void UVAManager::storeHandlerForHLRC(QSocket *socket, size_t typeLen, void *data, void *addr) {
+      uint32_t intAddr = makeInt32Addr(addr);
+      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
+
+      struct StoreLog slog = { static_cast<int>(typeLen), data, addr };
+      vecStoreLogs.push_back(slog);
+      sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
+    }
+
+    void *UVAManager::memsetHandlerForHLRC(QSocket *socket, void *addr, int value, size_t num) {
+      uint32_t intAddr = makeInt32Addr(addr);
+      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
+      
+      struct StoreLog slog = { static_cast<int>(num), &value, addr };
+      vecStoreLogs.push_back(slog);
+      sizeStoreLogs = sizeStoreLogs + 8 + num;
+    }
+
+    void *UVAManager::memcpyHandlerForHLRC(QSocket *socket, void *dest, void *src, size_t num) {
+      uint32_t intDest = makeInt32Addr(dest);
+      uint32_t intSrc = makeInt32Addr(src);
+      /** typeMemcpy
+       * 0: not related with UVA
+       * 1: dest is in UVA addr space (src is in wherever)
+       * 2: src is in UVA addr space (dest is not in UVA addr space)
+       **/
+      int typeMemcpy = 0;
+#ifdef DEBUG_UVA
+      LOG("[client] HLRC Memcpy : destination = %u, src = %u\n",intDest, intSrc);
+#endif
+      if(isUVAheapAddr(intDest) || isUVAglobalAddr(intDest)) {
+        typeMemcpy = 1;
+      } else if (isUVAheapAddr(intSrc) || isUVAglobalAddr(intSrc)) {
+        typeMemcpy = 2;
+      } else {
+        return dest;
+      }
+
+      /* CONCERN: */
+      if (typeMemcpy == 1) {
+        struct StoreLog slog = { static_cast<int>(num), src, dest };
+        vecStoreLogs.push_back(slog);
+        sizeStoreLogs = sizeStoreLogs + 8 + num;
+      }
+    }
 
 		size_t UVAManager::getHeapSize () {
 			return xmemGetHeapSize ();
