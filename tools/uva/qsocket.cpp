@@ -228,7 +228,7 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
         int *clientID = (int *) malloc(sizeof(int));
         *clientID = accept (idHost, (sockaddr *)&eptClient, &sizeEptClient);
 		   
-      if (idClient == -1) {
+      if (*clientID == -1) {
 			  DEBUG.EXIT_TASK ("LISTEN", "failed: cannot accept client");
 			  perror ("accept");
 			  return false;

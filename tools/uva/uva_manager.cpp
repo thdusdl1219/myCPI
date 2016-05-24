@@ -11,6 +11,8 @@
 #include <cstdlib>
 #include <cassert>
 #include <inttypes.h>
+#include <vector>
+#include <sys/mman.h>
 
 #include "uva_manager.h"
 #include "packet_header.h"
@@ -42,7 +44,7 @@
   #endif
 #endif
 
-//using namespace std;
+using namespace std;
 
 namespace corelab {
 	namespace UVA {
@@ -400,15 +402,32 @@ namespace corelab {
 
     /* @detail acquire */
     void UVAManager::acquire(QSocket *socket) {
-      // get access permission from home
-      // maybe invalidation ?
-      // get diff from home
+
+      // send invalidate address request.
+     
+      socket->sendWord(INVALID_REQ);
+      
+      // recv invalidate address list.
       socket->receiveQue();
-      int ack = socket->takeWordF();
-      if (ack == 1) { // acquire success
-        //startMakingDiff = true;
-      } else {
-        assert(0 && "fail acquiring");
+      int mode = socket->takeWordF();
+      
+      assert(mode == INVALID_REQ_ACK && "wrong");
+
+      int addressSize = socket->takeWordF();
+      int addressNum = socket->takeWordF();
+      vector<void*> addressVector;
+      void** addressbuf = (void **) malloc(addressSize);
+      for(int i = 0; i < addressNum; i++) {
+        socket->takeRangeF(addressbuf, addressSize);
+        addressVector.push_back(*addressbuf);
+      }
+      free(addressbuf);
+      // all address invalidate.
+      
+      for(vector<void*>::iterator it = addressVector.begin(); it != addressVector.end(); it++) {
+        void* address = *it;
+        LOG("invalidate address : %p", address);
+        mprotect(address, getAlignedPage((long)address), PROT_NONE);
       }
     }
 

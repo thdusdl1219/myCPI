@@ -3,13 +3,25 @@
 
 #include "qsocket.h"
 #include <map>
+#include <list>
 
+using namespace std;
 namespace corelab {
   namespace UVA {
     extern "C" void UVAServerInitialize();
     extern "C" void UVAServerFinalize();
     void* ServerOpenRoutine(void*);
     void* ClientRoutine(void*);
+    void heapAllocHandler(int*);
+    void loadHandler(int*);
+    void storeHandler(int*);
+    void mmapHandler(int*);
+    void memsetHandler(int*);
+    void memcpyHandler(int*);
+    void globalSegfaultHandler(int*);
+    void globalInitCompleteHandler(int*);
+    void invalidHandler(int*);
+
 
     /* These two function do nothing. Everybody are client */
     extern "C" void uva_server_load(void *addr, size_t len);
@@ -29,6 +41,14 @@ namespace corelab {
      */
     static std::map<int *, QSocket *> *RuntimeClientConnTb;
     static bool isInitEnd = false;
+
+
+    struct pageInfo {
+      set<int> accessS; 
+    };
+
+    // first argumant in map is address / 0x1000(PAGE_SIZE) 
+    map<long, struct pageInfo*> pageMap;
   }
 }
 
