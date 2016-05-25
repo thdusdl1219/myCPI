@@ -96,19 +96,15 @@ namespace corelab {
             LOG("[server] thread exit!");
 #endif
             break;
-
           case HEAP_ALLOC_REQ: /*** heap allocate request ***/
             heapAllocHandler(clientId); 
             break;
-
           case LOAD_REQ: /*** load request ***/
             loadHandler(clientId);
             break;
-
           case STORE_REQ: /*** store request ***/
             storeHandler(clientId);
             break;
-
           case MMAP_REQ: /*** mmap request ***/
             mmapHandler(clientId);
             break;
@@ -126,6 +122,8 @@ namespace corelab {
             break;
           case INVALID_REQ:
             invalidHandler(clientId);
+          case RELEASE_REQ:
+            releaseHandler(clientId);
           default:
             assert(0 && "wrong request mode");
             break;
@@ -148,6 +146,9 @@ namespace corelab {
 
     }
 
+    void releaseHandler(int *clientId) {
+      // impl
+    }
 
     void heapAllocHandler(int* clientId) {
       int lenbuf;

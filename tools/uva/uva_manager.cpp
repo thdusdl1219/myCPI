@@ -466,7 +466,7 @@ namespace corelab {
       }
       
       /* Second, send them all */
-      socket->pushWordF(16);
+      socket->pushWordF(RELEASE_REQ);
       socket->pushRange(storeLogs, sizeStoreLogs);
       socket->sendQue();
     }
@@ -755,7 +755,7 @@ namespace corelab {
 
     void *UVAManager::memsetHandlerForHLRC(QSocket *socket, void *addr, int value, size_t num) {
       uint32_t intAddr = makeInt32Addr(addr);
-      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
+      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return addr;
       
       struct StoreLog slog = { static_cast<int>(num), &value, addr };
       vecStoreLogs.push_back(slog);
@@ -778,12 +778,22 @@ namespace corelab {
         typeMemcpy = 1;
       } else if (isUVAheapAddr(intSrc) || isUVAglobalAddr(intSrc)) {
         typeMemcpy = 2;
+        return dest; // CHECK
       } else {
         return dest;
       }
 
-      /* CONCERN: */
-      if (typeMemcpy == 1) {
+      /* XXX CONCERN: what if typeMemcpy is 2? XXX 
+       * 
+       * If the page which "src" is included was invalidated in acquire,
+       * segmentation fault will be occurred at real memcpy call after this
+       * memcpyHandlerForHLRC function and be handled properly.  
+       * 
+       * If not, memcpy will be executed normally. In both case, "Home" doesn't
+       * need to know that this memcpy into src is occurred.
+       * 
+       */
+      if (typeMemcpy == 1) { // dest is in UVA
         struct StoreLog slog = { static_cast<int>(num), src, dest };
         vecStoreLogs.push_back(slog);
         sizeStoreLogs = sizeStoreLogs + 8 + num;

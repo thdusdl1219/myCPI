@@ -21,6 +21,7 @@ namespace corelab {
     void globalSegfaultHandler(int*);
     void globalInitCompleteHandler(int*);
     void invalidHandler(int*);
+    void releaseHandler(int*);
 
 
     /* These two function do nothing. Everybody are client */
