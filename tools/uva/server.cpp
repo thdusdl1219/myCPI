@@ -25,6 +25,10 @@ namespace corelab {
     pthread_t openThread; 
     pthread_mutex_t acquireLock =PTHREAD_MUTEX_INITIALIZER;
 
+		static inline void* truncToPageAddr (void *addr) {
+			return (void *)((XmemUintPtr)addr & XMEM_PAGE_MASK);
+		}
+
     extern "C" void UVAServerInitialize() {
 #ifdef DEBUG_UVA
       LOG("UVA manager(server) : initialize\n");
@@ -209,11 +213,11 @@ namespace corelab {
       void *data;
       void **addr;
       while (current != intAddrOfStoreLogs + sizeStoreLogs) {
-        memcpy(&size, reinterpret_cast<void*>(current), sizeof(void*));
+        memcpy(&size, reinterpret_cast<void*>(current), 4);
         data = malloc(size);
         memcpy(data, reinterpret_cast<void*>(current+4), size);
         addr = (void **)malloc(sizeof(void*));
-        memcpy(addr, reinterpret_cast<void*>(current+4+size), sizeof(void*));
+        memcpy(addr, reinterpret_cast<void*>(current+4+size), 4);
         
 #ifdef DEBUG_UVA
         LOG("[server] in while | curStoreLog (size:%d, addr:%p, data:%d)\n", size, *addr, *(int*)data);
@@ -221,6 +225,7 @@ namespace corelab {
         memcpy(*addr, data, size);
         free(addr);
         free(data);
+        current = current + 8 + size;
       } // while END
       pthread_mutex_unlock(&acquireLock);
     }
@@ -427,8 +432,11 @@ namespace corelab {
 #ifdef DEBUG_UVA
       LOG("[server] get HEAP_SEGFALUT_REQ from client (%d)\n", *clientId);
 #endif
-      void *fault_heap_addr = reinterpret_cast<void*>(socket->takeWordF(clientId));
-      socket->pushRangeF((void*)(*((uintptr_t*)(uintptr_t)(&fault_heap_addr))), 0x1000, clientId);
+      void ** fault_heap_addr = reinterpret_cast<void**>(socket->takeWordF(clientId));
+#ifdef DEBUG_UVA
+      LOG("[server] get fault_heap_addr (%p)\n", fault_heap_addr);
+#endif
+      socket->pushRangeF(truncToPageAddr(fault_heap_addr), 0x1000, clientId);
       socket->sendQue(clientId);
       return;
     }

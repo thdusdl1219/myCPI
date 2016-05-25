@@ -34,6 +34,9 @@ namespace corelab {
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused);
 		static void segfaultHandlerForHLRC (int sig, siginfo_t* si, void* unused);
 
+		static inline void* truncToPageAddr (void *addr) {
+			return (void *)((XmemUintPtr)addr & XMEM_PAGE_MASK);
+		}
     extern "C" void UVAClientInitialize(uint32_t isGVInitializer) {
       // FIXME: for sync
       sleep(5);
@@ -253,13 +256,13 @@ namespace corelab {
         LOG("[client] segfaultHandler | fault_addr is in UVA HeapAddr space %p\n",fault_addr);
 #endif
         uint32_t intFaultAddr;
-        memcpy(&intFaultAddr, fault_addr, 4);
+        memcpy(&intFaultAddr, &fault_addr, 4);
         Msocket->pushWordF(HEAP_SEGFAULT_REQ);
         Msocket->pushWordF(intFaultAddr);
         Msocket->sendQue();
         
         Msocket->receiveQue();
-        Msocket->takeRangeF(fault_addr, PAGE_SIZE);
+        Msocket->takeRangeF(truncToPageAddr(fault_addr), PAGE_SIZE);
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | getting a page in heap is done\n");
         LOG("[client] segfaultHandler (TEST print)\n");

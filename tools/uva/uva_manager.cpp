@@ -440,7 +440,7 @@ namespace corelab {
       for(vector<void*>::iterator it = addressVector.begin(); it != addressVector.end(); it++) {
         void* address = *it;
         LOG("invalidate address : %p", address);
-        mprotect(address, getAlignedPage((long)address), PROT_NONE);
+        mprotect(truncToPageAddr(address), PAGE_SIZE, PROT_NONE);
       }
 
       isInCriticalSection = true;
@@ -498,7 +498,7 @@ namespace corelab {
       watch.start();
 #endif
       uint32_t intAddr = makeInt32Addr(addr);
-      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
+      if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
 
       if(xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
 #ifdef DEBUG_UVA
@@ -554,7 +554,7 @@ namespace corelab {
         watch.start();
 #endif
         uint32_t intAddr = makeInt32Addr(addr);
-        if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
+        if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
 
         if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
 #ifdef DEBUG_UVA
@@ -615,7 +615,7 @@ namespace corelab {
       watch.start();
 #endif
       uint32_t intAddr = makeInt32Addr(addr);
-      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return addr;
+      if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return addr;
 
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
 #ifdef DEBUG_UVA
@@ -768,20 +768,23 @@ namespace corelab {
 		}
 
     void UVAManager::storeHandlerForHLRC(QSocket *socket, size_t typeLen, void *data, void *addr) {
+#ifdef DEBUG_UVA
+        LOG("[client] 1 in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
+#endif
       uint32_t intAddr = makeInt32Addr(addr);
-      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
+      if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
+#ifdef DEBUG_UVA
+        LOG("[client] 2 in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
+#endif
 
       struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), data, addr);
-#ifdef DEBUG_UVA
-        LOG("[client] in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
-#endif
       vecStoreLogs->push_back(slog);
       sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
     }
 
     void *UVAManager::memsetHandlerForHLRC(QSocket *socket, void *addr, int value, size_t num) {
       uint32_t intAddr = makeInt32Addr(addr);
-      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return addr;
+      if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return addr;
       
       struct StoreLog* slog = new StoreLog (static_cast<int>(num), &value, addr);
       vecStoreLogs->push_back(slog);
@@ -878,7 +881,7 @@ namespace corelab {
     }
     
     static inline bool isUVAglobalAddr(uint32_t intAddr) {
-      if (352321536 <= intAddr && 369098752 < intAddr)
+      if (352321536 <= intAddr && intAddr < 369098752)
         return true;
       else
         return false;
