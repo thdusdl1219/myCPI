@@ -180,9 +180,15 @@ namespace corelab {
       // impl
       int sizeStoreLogs;
       void *storeLogs;
-      socket->receiveQue(clientId);
+//      socket->receiveQue(clientId);
       sizeStoreLogs = socket->takeWordF(clientId);
+#ifdef DEBUG_UVA
+          LOG("[server] sizeStoreLogs : (%d)\n", sizeStoreLogs);
+#endif
       storeLogs = malloc(sizeStoreLogs);
+#ifdef DEBUG_UVA
+          LOG("[server] StoreLogs address : (%p)\n", storeLogs);
+#endif
       socket->takeRangeF(storeLogs, sizeStoreLogs, clientId);
       
 #if UINTPTR_MAX == 0xffffffff
@@ -199,18 +205,22 @@ namespace corelab {
       /* hmm ... */
       assert(0);
 #endif
-      int i = 0;
       uint32_t size;
       void *data;
-      void *addr;
+      void **addr;
       while (current != intAddrOfStoreLogs + sizeStoreLogs) {
-        memcpy(&size, reinterpret_cast<void*>(current), 4);
+        memcpy(&size, reinterpret_cast<void*>(current), sizeof(void*));
         data = malloc(size);
         memcpy(data, reinterpret_cast<void*>(current+4), size);
-        addr = malloc(sizeof(void*));
-        memcpy(&addr, reinterpret_cast<void*>(current+4+size), sizeof(void*));
+        addr = (void **)malloc(sizeof(void*));
+        memcpy(addr, reinterpret_cast<void*>(current+4+size), sizeof(void*));
         
-        memcpy(addr, data, size);
+#ifdef DEBUG_UVA
+        LOG("[server] in while | curStoreLog (size:%d, addr:%p, data:%d)\n", size, *addr, *(int*)data);
+#endif        
+        memcpy(*addr, data, size);
+        free(addr);
+        free(data);
       } // while END
       pthread_mutex_unlock(&acquireLock);
     }

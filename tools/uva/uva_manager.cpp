@@ -772,6 +772,9 @@ namespace corelab {
       if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
 
       struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), data, addr);
+#ifdef DEBUG_UVA
+        LOG("[client] in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
+#endif
       vecStoreLogs->push_back(slog);
       sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
     }
