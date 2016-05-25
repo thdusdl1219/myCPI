@@ -470,6 +470,9 @@ namespace corelab {
       int i = 0;
       while (current != intAddrOfStoreLogs + sizeStoreLogs) {
         struct StoreLog* curStoreLog = (*vecStoreLogs)[i];
+#ifdef DEBUG_UVA
+        LOG("[client] in while | curStoreLog (size:%d, addr:%p)\n", curStoreLog->size, curStoreLog->addr);
+#endif        
         uint32_t intAddr;
         memcpy((void*)current, &curStoreLog->size, 4);
         memcpy((void*)(current+4), &curStoreLog->data, curStoreLog->size);
@@ -478,7 +481,9 @@ namespace corelab {
         current = current + 8 + curStoreLog->size;
         i++;
       }
-      
+#ifdef DEBUG_UVA
+      LOG("[client] # of vecStoreLogs %d | sizeStoreLogs %d\n", vecStoreLogs->size(), sizeStoreLogs);
+#endif 
       /* Second, send them all */
       socket->pushWordF(RELEASE_REQ);
       socket->pushWordF(sizeStoreLogs);
