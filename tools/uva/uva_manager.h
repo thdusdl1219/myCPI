@@ -42,8 +42,8 @@ namespace corelab {
 			void resolveModified (void *addr);
 
       // synchronization for HLRC (Home-based Lazy Release Consistency)
-      void acquire(QSocket *socket);
-      void release(QSocket *socket);
+      void acquireHandler(QSocket *socket);
+      void releaseHandler(QSocket *socket);
 
       // Memory Access handler (BONGJUN)
       void loadHandler(QSocket *socket, size_t typeLen, void *addr);

@@ -405,7 +405,7 @@ namespace corelab {
 		}
 
     /* @detail HLRC (Home-based Lazy Release Consistency): acquire */
-    void UVAManager::acquire(QSocket *socket) {
+    void UVAManager::acquireHandler(QSocket *socket) {
 
       // send invalidate address request.
      
@@ -436,7 +436,7 @@ namespace corelab {
     }
 
     /* @detail HLRC (Home-based Lazy Release Consistency): release */
-    void UVAManager::release(QSocket *socket) {
+    void UVAManager::releaseHandler(QSocket *socket) {
       /* At first, make store logs to be send to Home */
       void *storeLogs = malloc(sizeStoreLogs);
 #if UINTPTR_MAX == 0xffffffff

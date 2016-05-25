@@ -10,5 +10,8 @@ namespace corelab {
     extern "C" void uva_store(size_t len, void *data, void *addr); 
     extern "C" void *uva_memset(void *addr, int value, size_t num);
     extern "C" void *uva_memcpy(void *dest, void *src, size_t num);
+    
+    extern "C" void uva_acquire();
+    extern "C" void uva_release();
   }
 }
