@@ -27,6 +27,11 @@ namespace corelab {
       int32_t size;
       void *data;
       void *addr;
+      StoreLog(int _size, void* _data, void* _addr) {
+        size = _size;
+        data = _data;
+        addr = _addr;
+      }
     };
 
 		namespace UVAManager {

@@ -56,7 +56,7 @@ namespace corelab {
 		static UVAOwnership uvaown;
 		static PageSet setMEPages;
 
-    static std::vector<struct StoreLog> vecStoreLogs;
+    static std::vector<struct StoreLog*> *vecStoreLogs;
     static int sizeStoreLogs = 0;
     static bool isInCriticalSection = false;
 
@@ -113,7 +113,7 @@ namespace corelab {
 
       /* BONGJUN : for telling "socket" to XMemoryManager */
       xmemInitialize(socket); // above from gwangmu implmentation. but I want to use
-
+      vecStoreLogs = new vector<struct StoreLog*>;
 			setMEPages.clear ();
 			//uvaown = _uvaown;
       //socket = socket;
@@ -469,13 +469,13 @@ namespace corelab {
 #endif
       int i = 0;
       while (current != intAddrOfStoreLogs + sizeStoreLogs) {
-        struct StoreLog curStoreLog = vecStoreLogs[i];
+        struct StoreLog* curStoreLog = (*vecStoreLogs)[i];
         uint32_t intAddr;
-        memcpy((void*)current, &curStoreLog.size, 4);
-        memcpy((void*)(current+4), curStoreLog.data, curStoreLog.size);
-        memcpy(&intAddr, &curStoreLog.addr, 4);
-        memcpy((void*)(current+4+curStoreLog.size), &intAddr, 4);
-        current = current + 8 + curStoreLog.size;
+        memcpy((void*)current, &curStoreLog->size, 4);
+        memcpy((void*)(current+4), &curStoreLog->data, curStoreLog->size);
+        memcpy(&intAddr, &curStoreLog->addr, 4);
+        memcpy((void*)(current+4+curStoreLog->size), &intAddr, 4);
+        current = current + 8 + curStoreLog->size;
         i++;
       }
       
@@ -766,8 +766,8 @@ namespace corelab {
       uint32_t intAddr = makeInt32Addr(addr);
       if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
 
-      struct StoreLog slog = { static_cast<int>(typeLen), data, addr };
-      vecStoreLogs.push_back(slog);
+      struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), data, addr);
+      vecStoreLogs->push_back(slog);
       sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
     }
 
@@ -775,9 +775,10 @@ namespace corelab {
       uint32_t intAddr = makeInt32Addr(addr);
       if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return addr;
       
-      struct StoreLog slog = { static_cast<int>(num), &value, addr };
-      vecStoreLogs.push_back(slog);
+      struct StoreLog* slog = new StoreLog (static_cast<int>(num), &value, addr);
+      vecStoreLogs->push_back(slog);
       sizeStoreLogs = sizeStoreLogs + 8 + num;
+      return addr;
     }
 
     void *UVAManager::memcpyHandlerForHLRC(QSocket *socket, void *dest, void *src, size_t num) {
@@ -812,10 +813,11 @@ namespace corelab {
        * 
        */
       if (typeMemcpy == 1) { // dest is in UVA
-        struct StoreLog slog = { static_cast<int>(num), src, dest };
-        vecStoreLogs.push_back(slog);
+        struct StoreLog *slog = new StoreLog ( static_cast<int>(num), src, dest );
+        vecStoreLogs->push_back(slog);
         sizeStoreLogs = sizeStoreLogs + 8 + num;
       }
+      return dest;
     }
 
 		size_t UVAManager::getHeapSize () {
