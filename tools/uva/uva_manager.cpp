@@ -58,6 +58,7 @@ namespace corelab {
 
     static std::vector<struct StoreLog> vecStoreLogs;
     static int sizeStoreLogs = 0;
+    static bool isInCriticalSection = false;
 
     // BONGJUN
     static void *ptNoConstBegin;
@@ -441,6 +442,8 @@ namespace corelab {
         LOG("invalidate address : %p", address);
         mprotect(address, getAlignedPage((long)address), PROT_NONE);
       }
+
+      isInCriticalSection = true;
 #ifdef DEBUG_UVA
           LOG("[client] acquire handler end (%d)\n", addressNum);
 #endif
@@ -540,62 +543,65 @@ namespace corelab {
     }
 
     void UVAManager::storeHandler(QSocket *socket, size_t typeLen, void *data, void *addr) {
+      if(isInCriticalSection) {
 #ifdef UVA_EVAL
-      StopWatch watch;
-      watch.start();
+        StopWatch watch;
+        watch.start();
 #endif
-      uint32_t intAddr = makeInt32Addr(addr);
-      if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
+        uint32_t intAddr = makeInt32Addr(addr);
+        if(!isUVAheapAddr(intAddr) && !isUVAglobalAddr(intAddr)) return;
 
-      if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
+        if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
 #ifdef DEBUG_UVA
-        LOG("[client] Store : storeHandler start (%p)\n", addr);
+          LOG("[client] Store : storeHandler start (%p)\n", addr);
 #endif
-        if (xmemIsHeapAddr(addr)) {
+          if (xmemIsHeapAddr(addr)) {
 #ifdef DEBUG_UVA
-          LOG("[client] Store : isHeapAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
+            LOG("[client] Store : isHeapAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
 #endif
-        } else if (isFixedGlobalAddr(addr)) {
+          } else if (isFixedGlobalAddr(addr)) {
 #ifdef DEBUG_UVA
-          LOG("[client] Store : isFixedGlobalAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
+            LOG("[client] Store : isFixedGlobalAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
+#endif
+          }
+          socket->pushWordF(STORE_REQ);
+          socket->pushWordF(typeLen);
+
+          socket->pushWordF(intAddr);
+          socket->pushRangeF(&data, typeLen);
+          socket->sendQue();
+#ifdef DEBUG_UVA
+          LOG("[client] Store : sizeof(addr) %d, data length %d\n", sizeof(addr), typeLen);
+#endif
+
+          socket->receiveQue();
+          int mode = socket->takeWord();
+#ifdef DEBUG_UVA
+          LOG("[client] mode : %d\n", mode);
+#endif
+          //assert(mode == STORE_REQ_ACK && "wrong");
+          int len = socket->takeWord();
+          if (len == 0) { // Normal ack
+            //LOG("[client] TEST stored value : %d\n", *((int*)addr));
+          } else if (len == -1) {
+#ifdef DEBUG_UVA
+            LOG("[client] store request fail\n"); // TODO: have to handler failure situation.
+#endif
+          } else {
+            assert(0 && "error: undefined behavior");
+          }
+#ifdef DEBUG_UVA
+          LOG("[client] Store : storeHandler END\n\n");
 #endif
         }
-        socket->pushWordF(STORE_REQ);
-        socket->pushWordF(typeLen);
-
-        socket->pushWordF(intAddr);
-        socket->pushRangeF(&data, typeLen);
-        socket->sendQue();
-#ifdef DEBUG_UVA
-        LOG("[client] Store : sizeof(addr) %d, data length %d\n", sizeof(addr), typeLen);
+#ifdef UVA_EVAL
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "STORE %lf\n", watch.diff());
+        fclose(fp);
 #endif
-
-        socket->receiveQue();
-        int mode = socket->takeWord();
-#ifdef DEBUG_UVA
-        LOG("[client] mode : %d\n", mode);
-#endif
-        //assert(mode == STORE_REQ_ACK && "wrong");
-        int len = socket->takeWord();
-        if (len == 0) { // Normal ack
-          //LOG("[client] TEST stored value : %d\n", *((int*)addr));
-        } else if (len == -1) {
-#ifdef DEBUG_UVA
-          LOG("[client] store request fail\n"); // TODO: have to handler failure situation.
-#endif
-        } else {
-          assert(0 && "error: undefined behavior");
-        }
-#ifdef DEBUG_UVA
-        LOG("[client] Store : storeHandler END\n\n");
-#endif
+        isInCriticalSection = false;
       }
-#ifdef UVA_EVAL
-      watch.end();
-      FILE *fp = fopen("uva-eval.txt", "a");
-      fprintf(fp, "STORE %lf\n", watch.diff());
-      fclose(fp);
-#endif
     }
 
     void *UVAManager::memsetHandler(QSocket *socket, void *addr, int value, size_t num) {
