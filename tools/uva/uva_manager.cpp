@@ -478,6 +478,7 @@ namespace corelab {
       
       /* Second, send them all */
       socket->pushWordF(RELEASE_REQ);
+      socket->pushWordF(sizeStoreLogs);
       socket->pushRange(storeLogs, sizeStoreLogs);
       socket->sendQue();
     }

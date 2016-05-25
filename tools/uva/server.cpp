@@ -115,6 +115,9 @@ namespace corelab {
           case MEMCPY_REQ:
             memcpyHandler(clientId);
             break;
+          case HEAP_SEGFAULT_REQ:
+            heapSegfaultHandler(clientId);
+            break;
           case GLOBAL_SEGFAULT_REQ:
             globalSegfaultHandler(clientId);
             break;
@@ -166,8 +169,47 @@ namespace corelab {
 #endif
     }
 
+    /* @detail releaseHandler 
+     *  1. take store logs (aka diff or changes) from releaser
+     *  2. apply store logs into Home's corresponding pages
+     *  
+     */
     void releaseHandler(int *clientId) {
       // impl
+      int sizeStoreLogs;
+      void *storeLogs;
+      socket->receiveQue(clientId);
+      sizeStoreLogs = socket->takeWordF(clientId);
+      storeLogs = malloc(sizeStoreLogs);
+      socket->takeRangeF(storeLogs, sizeStoreLogs, clientId);
+      
+#if UINTPTR_MAX == 0xffffffff
+      /* 32-bit */
+      uint32_t intAddrOfStoreLogs;
+      memcpy(&intAddrOfStoreLogs, storeLogs, 4); 
+      uint32_t current = intAddrStoreLogs;
+#elif UINTPTR_MAX == 0xffffffffffffffff
+      /* 64-bit */
+      uint64_t intAddrOfStoreLogs;
+      memcpy(&intAddrOfStoreLogs, storeLogs, 8); 
+      uint64_t current = intAddrOfStoreLogs;
+#else
+      /* hmm ... */
+      assert(0);
+#endif
+      int i = 0;
+      uint32_t size;
+      void *data;
+      void *addr;
+      while (current != intAddrOfStoreLogs + sizeStoreLogs) {
+        memcpy(&size, reinterpret_cast<void*>(current), 4);
+        data = malloc(size);
+        memcpy(data, reinterpret_cast<void*>(current+4), size);
+        addr = malloc(sizeof(void*));
+        memcpy(&addr, reinterpret_cast<void*>(current+4+size), sizeof(void*));
+        
+        memcpy(addr, data, size);
+      } // while END
     }
 
     void heapAllocHandler(int* clientId) {
@@ -305,6 +347,7 @@ namespace corelab {
       socket->pushWordF(MMAP_REQ_ACK, clientId); // ACK
       socket->pushWordF(0, clientId); // ACK (0: normal, -1:abnormal)
       socket->sendQue(clientId);
+      return;
     }
     void memsetHandler(int* clientId) {
 #ifdef DEBUG_UVA
@@ -325,6 +368,7 @@ namespace corelab {
       hexdump("memset", requestedAddr, num);
 #endif
       //xmemDumpRange(requestedAddr, num);
+      return;
     }
     void memcpyHandler(int* clientId) {
 #ifdef DEBUG_UVA
@@ -363,6 +407,43 @@ namespace corelab {
 
         socket->sendQue(clientId);
       }
+      return;
+    }
+
+    void heapSegfaultHandler(int* clientId) {
+#ifdef DEBUG_UVA
+      LOG("[server] get HEAP_SEGFALUT_REQ from client (%d)\n", *clientId);
+#endif
+      void *fault_heap_addr = reinterpret_cast<void*>(socket->takeWordF(clientId));
+      socket->pushRangeF((void*)(*((uintptr_t*)(uintptr_t)(&fault_heap_addr))), 0x1000, clientId);
+      socket->sendQue(clientId);
+      return;
+    }
+    
+    void globalInitCompleteHandler(int* clientId) {
+#ifdef DEBUG_UVA
+      LOG("[server] get GLOBAL_INIT_COMPLETE_SIG from client (%d)\n", *clientId);
+#endif
+      if (isInitEnd) {
+#ifdef DEBUG_UVA
+        LOG("[server] already complete... somthing wrong..\n");
+#endif
+        return;
+      }
+
+      isInitEnd = true;
+      for(auto &i : *RuntimeClientConnTb) {
+        if(*(i.first) != *clientId) {
+#ifdef DEBUG_UVA
+          LOG("[server] send 'start permission' signal to client (%d)\n", *(i.first));
+#endif
+          socket->pushWordF(1, i.first);
+          socket->sendQue(i.first);
+        }
+      }
+      socket->pushWordF(GLOBAL_INIT_COMPLETE_SIG_ACK, clientId);
+      socket->sendQue(clientId);
+      return;
     }
 
     void globalSegfaultHandler(int* clientId) {
@@ -387,31 +468,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
       LOG("[server] GLOBAL_SEGFALUT_REQ process end (%d)\n", *clientId);
 #endif
-    }
-
-    void globalInitCompleteHandler(int* clientId) {
-#ifdef DEBUG_UVA
-      LOG("[server] get GLOBAL_INIT_COMPLETE_SIG from client (%d)\n", *clientId);
-#endif
-      if (isInitEnd) {
-#ifdef DEBUG_UVA
-        LOG("[server] already complete... somthing wrong..\n");
-#endif
-        return;
-      }
-
-      isInitEnd = true;
-      for(auto &i : *RuntimeClientConnTb) {
-        if(*(i.first) != *clientId) {
-#ifdef DEBUG_UVA
-          LOG("[server] send 'start permission' signal to client (%d)\n", *(i.first));
-#endif
-          socket->pushWordF(1, i.first);
-          socket->sendQue(i.first);
-        }
-      }
-      socket->pushWordF(GLOBAL_INIT_COMPLETE_SIG_ACK, clientId);
-      socket->sendQue(clientId);
+      return;
     }
 
 

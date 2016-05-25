@@ -10,6 +10,7 @@
 #include "mm.h" // FIXME
 #include "uva_manager.h"
 #include "xmem_info.h"
+#include "uva_macro.h"
 
 #include "log.h"
 #include "hexdump.h"
@@ -27,31 +28,11 @@
 
 namespace corelab {
   namespace UVA {
-    enum {
-      THREAD_EXIT = -1,
-      HEAP_ALLOC_REQ = 0,
-      HEAP_ALLOC_REQ_ACK = 1,
-      LOAD_REQ = 2,
-      LOAD_REQ_ACK = 3,
-      STORE_REQ = 4,
-      STORE_REQ_ACK = 5,
-      MMAP_REQ = 6,
-      MMAP_REQ_ACK = 7,
-      MEMSET_REQ = 8,
-      MEMSET_REQ_ACK = 9,
-      MEMCPY_REQ = 10,
-      MEMCPY_REQ_ACK = 11,
-      MEMMOVE_REQ = 12,
-      MEMMOVE_REQ_ACK = 13,
-      GLOBAL_SEGFAULT_REQ = 30, 
-      GLOBAL_SEGFAULT_REQ_ACK = 31, 
-      GLOBAL_INIT_COMPLETE_SIG = 32,
-      GLOBAL_INIT_COMPLETE_SIG_ACK = 33
-    };
     static QSocket *Msocket;
 
 		struct sigaction segvAction;
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused);
+		static void segfaultHandlerForHLRC (int sig, siginfo_t* si, void* unused);
 
     extern "C" void UVAClientInitialize(uint32_t isGVInitializer) {
       // FIXME: for sync
@@ -107,7 +88,11 @@ namespace corelab {
       // segfault handler
 			segvAction.sa_flags = SA_SIGINFO | SA_NODEFER;
 			sigemptyset (&segvAction.sa_mask);
+#ifdef HLRC
+			segvAction.sa_sigaction = segfaultHandlerForHLRC;
+#else
 			segvAction.sa_sigaction = segfaultHandler;
+#endif
 			int hr = sigaction (SIGSEGV, &segvAction, NULL);
 			assert (hr != -1);
 #endif
@@ -206,9 +191,98 @@ namespace corelab {
 
 				UVAManager::fetchIn (socket, addr);
 			}*/
-		}
+		} // segfaultHandler
+
+		static void segfaultHandlerForHLRC (int sig, siginfo_t* si, void* unused) {
+			void *fault_addr = si->si_addr;
+#ifdef DEBUG_UVA
+      LOG("[client] segfaultHandler | fault_addr : %p\n", fault_addr);
+#endif
+      
+      if (fault_addr < (void*)0x15000000) {
+        LOG_BACKTRACE(fault_addr);
+        assert(0 && "fault_addr : under 0x15000000");
+      }
+      if (fault_addr > (void*)0x38000000) {
+        LOG_BACKTRACE(fault_addr);
+        assert(0 && "fault_addr : above 0x38000000");
+      }
+      mmap((void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), 
+          PAGE_SIZE, 
+          PROT_WRITE | PROT_READ,
+          MAP_PRIVATE|MAP_ANONYMOUS|MAP_FIXED, -1, (off_t) 0);
+      
+#ifdef DEBUG_UVA
+      LOG("[client] segfaultHandler | mmap page_addr : %p, mmap size: %d | handling  complete\n", 
+          (void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), PAGE_SIZE);
+#endif
+      
+      
+      void *ptNoConstBegin;
+      void *ptNoConstEnd;
+      
+      UVAManager::getFixedGlobalAddrRange(&ptNoConstBegin, &ptNoConstEnd/*, &ptConstBegin, &ptConstEnd*/);
+      if (ptNoConstBegin <= fault_addr && fault_addr < (void*)0x16000000) {
+#ifdef DEBUG_UVA
+        LOG("[client] segfaultHandler | fault_addr is in FixedGlobalAddr space %p\n",ptNoConstBegin);
+#endif
+        Msocket->pushWordF(GLOBAL_SEGFAULT_REQ); // send GLOBAL_SEGFAULT_REQ
+        //uint32_t intAddrBegin = reinterpret_cast<uint32_t>(ptNoConstBegin);
+        //uint32_t intAddrEnd = reinterpret_cast<uint32_t>(ptNoConstEnd);
+        uint32_t intAddrBegin;
+        uint32_t intAddrEnd;
+        
+        memcpy(&intAddrBegin, &ptNoConstBegin, 4);
+        memcpy(&intAddrEnd, &ptNoConstEnd, 4);
+        
+        Msocket->pushWordF(intAddrBegin);
+        Msocket->pushWordF(intAddrEnd);
+        Msocket->sendQue();
+
+        Msocket->receiveQue();
+        int ack = Msocket->takeWordF();
+        assert(ack == GLOBAL_SEGFAULT_REQ_ACK && "wrong!!!");
+        Msocket->takeRangeF(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin);
+#ifdef DEBUG_UVA
+        LOG("[client] segfaultHandler | get global variables done\n");
+        LOG("[client] segfaultHandler (TEST print)\n");
+        hexdump("segfault", ptNoConstBegin, 24);
+#endif
+      } else if ((void*)0x18000000 <= fault_addr && fault_addr < (void*)0x38000000) {
+#ifdef DEBUG_UVA
+        LOG("[client] segfaultHandler | fault_addr is in UVA HeapAddr space %p\n",fault_addr);
+#endif
+        uint32_t intFaultAddr;
+        memcpy(&intFaultAddr, fault_addr, 4);
+        Msocket->pushWordF(HEAP_SEGFAULT_REQ);
+        Msocket->pushWordF(intFaultAddr);
+        Msocket->sendQue();
+        
+        Msocket->receiveQue();
+        Msocket->takeRangeF(fault_addr, PAGE_SIZE);
+#ifdef DEBUG_UVA
+        LOG("[client] segfaultHandler | getting a page in heap is done\n");
+        LOG("[client] segfaultHandler (TEST print)\n");
+        hexdump("segfault", ptNoConstBegin, 24);
+#endif
+      }
+      return;
+      /*
+			if (hasPage (addr)) {
+				UVAManager::resolveModified (addr);
+			}
+			else {
+				socket->pushWord (CLIENT_REQUEST);
+				socket->pushWord (QSOCKET_WORD (addr));
+				socket->sendQue ();
+
+				UVAManager::fetchIn (socket, addr);
+			}*/
+		} // segfaultHandler
     extern "C" void uva_load(size_t len, void *addr) {
+#ifndef HLRC
       UVAManager::loadHandler(Msocket, len, addr);
+#endif
     }
 
     extern "C" void uva_store(size_t len, void *data, void *addr) {

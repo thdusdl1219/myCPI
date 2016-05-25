@@ -18,6 +18,7 @@ namespace corelab {
     void mmapHandler(int*);
     void memsetHandler(int*);
     void memcpyHandler(int*);
+    void heapSegfaultHandler(int*);
     void globalSegfaultHandler(int*);
     void globalInitCompleteHandler(int*);
     void invalidHandler(int*);
