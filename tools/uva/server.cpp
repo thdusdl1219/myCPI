@@ -23,6 +23,7 @@ namespace corelab {
 
     static QSocket* socket;
     pthread_t openThread; 
+    pthread_mutex_t mutex=PTHREAD_MUTEX_INITIALIZER;
 
     extern "C" void UVAServerInitialize() {
 #ifdef DEBUG_UVA
@@ -73,7 +74,6 @@ namespace corelab {
         socket->sendQue((int*)data);
       }
       int *clientId = (int *)data;
-      pthread_mutex_t mutex=PTHREAD_MUTEX_INITIALIZER;
       int mode;
       int rval = 0;
 
@@ -92,10 +92,11 @@ namespace corelab {
 
         switch(mode) {
           case THREAD_EXIT:
-            pthread_exit(&rval);
 #ifdef DEBUG_UVA
             LOG("[server] thread exit!");
 #endif
+            pthread_mutex_unlock(&mutex);
+            pthread_exit(&rval);
             break;
           case HEAP_ALLOC_REQ: /*** heap allocate request ***/
             heapAllocHandler(clientId); 
