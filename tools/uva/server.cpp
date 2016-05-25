@@ -23,7 +23,7 @@ namespace corelab {
 
     static QSocket* socket;
     pthread_t openThread; 
-    pthread_mutex_t mutex=PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_t acquireLock =PTHREAD_MUTEX_INITIALIZER;
 
     extern "C" void UVAServerInitialize() {
 #ifdef DEBUG_UVA
@@ -83,7 +83,7 @@ namespace corelab {
       /* // for memset, memcpy */
 
       while(true) {
-        pthread_mutex_lock(&mutex);
+//        pthread_mutex_lock(&mutex);
         socket->receiveQue(clientId);
         mode = socket->takeWordF(clientId);
 #ifdef DEBUG_UVA
@@ -95,7 +95,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
             LOG("[server] thread exit!");
 #endif
-            pthread_mutex_unlock(&mutex);
+            //pthread_mutex_unlock(&mutex);
             pthread_exit(&rval);
             break;
           case HEAP_ALLOC_REQ: /*** heap allocate request ***/
@@ -135,12 +135,13 @@ namespace corelab {
             assert(0 && "wrong request mode");
             break;
         }
-        pthread_mutex_unlock(&mutex);
+        //pthread_mutex_unlock(&mutex); // TODO need acquire & release lock
       }
       return NULL;
     }
 
     void invalidHandler(int* clientId) {
+      pthread_mutex_lock(&acquireLock);
       set<long> sendAddrSet;
       // find same cliendId in accessSet in pageInfo
       for(map<long, struct pageInfo*>::iterator it = pageMap->begin(); it != pageMap->end(); it++) {
@@ -211,6 +212,7 @@ namespace corelab {
         
         memcpy(addr, data, size);
       } // while END
+      pthread_mutex_unlock(&acquireLock);
     }
 
     void heapAllocHandler(int* clientId) {

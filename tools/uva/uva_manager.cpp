@@ -456,12 +456,12 @@ namespace corelab {
 #if UINTPTR_MAX == 0xffffffff
       /* 32-bit */
       uint32_t intAddrOfStoreLogs;
-      memcpy(&intAddrOfStoreLogs, storeLogs, 4); 
+      memcpy(&intAddrOfStoreLogs, &storeLogs, 4); 
       uint32_t current = intAddrStoreLogs;
 #elif UINTPTR_MAX == 0xffffffffffffffff
       /* 64-bit */
       uint64_t intAddrOfStoreLogs;
-      memcpy(&intAddrOfStoreLogs, storeLogs, 8); 
+      memcpy(&intAddrOfStoreLogs, &storeLogs, 8); 
       uint64_t current = intAddrOfStoreLogs;
 #else
       /* hmm ... */
