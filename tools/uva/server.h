@@ -55,7 +55,7 @@ namespace corelab {
     };
 
     // first argumant in map is address / 0x1000(PAGE_SIZE) 
-    static map<long, struct pageInfo*> pageMap;
+    static map<long, struct pageInfo*> *pageMap;
   }
 }
 

@@ -29,6 +29,7 @@ namespace corelab {
       LOG("UVA manager(server) : initialize\n");
 #endif
       RuntimeClientConnTb = new map<int *, QSocket *>(); 
+      pageMap = new map<long, struct pageInfo*>();
       assert(!isInitEnd && "When server init, isInitEnd value should be false.");
       pthread_create(&openThread, NULL, ServerOpenRoutine, NULL);
     }
@@ -122,8 +123,10 @@ namespace corelab {
             break;
           case INVALID_REQ:
             invalidHandler(clientId);
+            break;
           case RELEASE_REQ:
             releaseHandler(clientId);
+            break;
           default:
             assert(0 && "wrong request mode");
             break;
@@ -136,12 +139,16 @@ namespace corelab {
     void invalidHandler(int* clientId) {
       set<long> sendAddrSet;
       // find same cliendId in accessSet in pageInfo
-      for(map<long, struct pageInfo*>::iterator it = pageMap.begin(); it != pageMap.end(); it++) {
+      for(map<long, struct pageInfo*>::iterator it = pageMap->begin(); it != pageMap->end(); it++) {
         set<int>* my_var = it->second->accessS;
-        if(my_var->find(*clientId) != my_var->end()) 
+        if(my_var->find(*clientId) == my_var->end()) { 
            sendAddrSet.insert(it->first);
+#ifdef DEBUG_UVA
+          LOG("[server] find clientId address  (%x)\n", (it->first * 0x1000));
+#endif
+        }
       }
-      
+      socket->pushWord(INVALID_REQ_ACK, clientId); 
       socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
       socket->pushWord(sendAddrSet.size(), clientId); // send addressNum 
 
@@ -154,6 +161,9 @@ namespace corelab {
       free(addressbuf);
       socket->sendQue(clientId);
 
+#ifdef DEBUG_UVA
+          LOG("[server] send invalid Address");
+#endif
     }
 
     void releaseHandler(int *clientId) {
@@ -186,7 +196,7 @@ namespace corelab {
       // insert pageTable into pageMap
       struct pageInfo* newPageInfo = new pageInfo();
       newPageInfo->accessS->insert(-1);
-      pageMap.insert(map<long, struct pageInfo*>::value_type((long)allocAddr / 1000, newPageInfo));
+      pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
       
       // memory operation end
       socket->pushWordF(HEAP_ALLOC_REQ_ACK, clientId);
@@ -283,10 +293,13 @@ namespace corelab {
 #endif
 
       void* allocAddr = xmemPagemap(requestedAddr, lenMmap, true);
+#ifdef DEBUG_UVA
+      LOG("[server] allocAddr : %p\n", allocAddr);
+#endif
 
       struct pageInfo* newPageInfo = new pageInfo();
       newPageInfo->accessS->insert(-1);
-      pageMap.insert(map<long, struct pageInfo*>::value_type((long)allocAddr / 1000, newPageInfo));
+      pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
       assert(allocAddr != NULL && "mmap alloc failed in server");
 
       socket->pushWordF(MMAP_REQ_ACK, clientId); // ACK

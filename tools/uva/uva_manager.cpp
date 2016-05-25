@@ -409,13 +409,21 @@ namespace corelab {
 
       // send invalidate address request.
      
-      socket->sendWord(INVALID_REQ);
+      socket->pushWordF(INVALID_REQ);
+      socket->sendQue();
+#ifdef DEBUG_UVA
+          LOG("[client] send invalid request (%d)\n", INVALID_REQ);
+#endif
       
       // recv invalidate address list.
       socket->receiveQue();
+#ifdef DEBUG_UVA
+          LOG("[client] recv address list");
+#endif
       int mode = socket->takeWordF();
-      
+      LOG("[client] recv mode (%d)\n", mode); 
       assert(mode == INVALID_REQ_ACK && "wrong");
+      
 
       int addressSize = socket->takeWordF();
       int addressNum = socket->takeWordF();
@@ -433,6 +441,9 @@ namespace corelab {
         LOG("invalidate address : %p", address);
         mprotect(address, getAlignedPage((long)address), PROT_NONE);
       }
+#ifdef DEBUG_UVA
+          LOG("[client] acquire handler end (%d)\n", addressNum);
+#endif
     }
 
     /* @detail HLRC (Home-based Lazy Release Consistency): release */
