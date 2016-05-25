@@ -284,6 +284,9 @@ namespace corelab {
 
       void* allocAddr = xmemPagemap(requestedAddr, lenMmap, true);
 
+      struct pageInfo* newPageInfo = new pageInfo();
+      newPageInfo->accessS->insert(-1);
+      pageMap.insert(map<long, struct pageInfo*>::value_type((long)allocAddr / 1000, newPageInfo));
       assert(allocAddr != NULL && "mmap alloc failed in server");
 
       socket->pushWordF(MMAP_REQ_ACK, clientId); // ACK
