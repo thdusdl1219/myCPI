@@ -39,6 +39,16 @@ namespace corelab {
       pthread_create(&openThread, NULL, ServerOpenRoutine, NULL);
     }
 
+    static void resetServer() {
+      if (RuntimeClientConnTb->empty()) {
+        delete RuntimeClientConnTb;
+        delete pageMap;
+        RuntimeClientConnTb = new map<int *, QSocket *>(); 
+        pageMap = new map<long, struct pageInfo*>();
+        isInitEnd = false;
+      }
+    }
+
     extern "C" void UVAServerFinalize() {
       pthread_join(openThread, NULL);
     }
@@ -100,6 +110,7 @@ namespace corelab {
             LOG("[server] thread exit!");
 #endif
             //pthread_mutex_unlock(&mutex);
+            RuntimeClientConnTb->erase(clientId);
             pthread_exit(&rval);
             break;
           case HEAP_ALLOC_REQ: /*** heap allocate request ***/
