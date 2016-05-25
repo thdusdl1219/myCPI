@@ -474,10 +474,10 @@ namespace corelab {
         LOG("[client] in while | curStoreLog (size:%d, addr:%p)\n", curStoreLog->size, curStoreLog->addr);
 #endif        
         uint32_t intAddr;
-        memcpy((void*)current, &curStoreLog->size, 4);
-        memcpy((void*)(current+4), &curStoreLog->data, curStoreLog->size);
+        memcpy(reinterpret_cast<void*>(current), &curStoreLog->size, 4);
+        memcpy(reinterpret_cast<void*>(current+4), &curStoreLog->data, curStoreLog->size);
         memcpy(&intAddr, &curStoreLog->addr, 4);
-        memcpy((void*)(current+4+curStoreLog->size), &intAddr, 4);
+        memcpy(reinterpret_cast<void*>(current+4+curStoreLog->size), &intAddr, 4);
         current = current + 8 + curStoreLog->size;
         i++;
       }
