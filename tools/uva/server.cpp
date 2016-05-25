@@ -134,15 +134,25 @@ namespace corelab {
     }
 
     void invalidHandler(int* clientId) {
-      list<long> sendAddrList;
+      set<long> sendAddrSet;
+      // find same cliendId in accessSet in pageInfo
       for(map<long, struct pageInfo*>::iterator it = pageMap.begin(); it != pageMap.end(); it++) {
-        set<int> my_var = it->second->accessS;
-        if(my_var.find(*clientId) != my_var.end()) 
-           sendAddrList.push_back(it->first);
+        set<int>* my_var = it->second->accessS;
+        if(my_var->find(*clientId) != my_var->end()) 
+           sendAddrSet.insert(it->first);
       }
-      // TODO start here!
-      //socket->sendWord();
+      
+      socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
+      socket->pushWord(sendAddrSet.size(), clientId); // send addressNum 
 
+      // send address
+      long* addressbuf = (long *) malloc(sizeof(void*));
+      for(set<long>::iterator it = sendAddrSet.begin(); it != sendAddrSet.end(); it++) {
+        *addressbuf = *it * PAGE_SIZE;
+        socket->pushRange(addressbuf, sizeof(void*), clientId); 
+      }
+      free(addressbuf);
+      socket->sendQue(clientId);
 
     }
 
@@ -174,8 +184,8 @@ namespace corelab {
       LOG("[server] new heapTop : %p\n", HeapTop);
 #endif
       // insert pageTable into pageMap
-      struct pageInfo* newPageInfo = (struct pageInfo *)malloc(sizeof(struct pageInfo));
-      newPageInfo->accessS.insert(-1);
+      struct pageInfo* newPageInfo = new pageInfo();
+      newPageInfo->accessS->insert(-1);
       pageMap.insert(map<long, struct pageInfo*>::value_type((long)allocAddr / 1000, newPageInfo));
       
       // memory operation end

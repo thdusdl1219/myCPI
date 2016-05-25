@@ -3,7 +3,7 @@
 
 #include "qsocket.h"
 #include <map>
-#include <list>
+#include <set>
 
 using namespace std;
 namespace corelab {
@@ -45,7 +45,13 @@ namespace corelab {
 
 
     struct pageInfo {
-      set<int> accessS; 
+      set<int>* accessS;
+      pageInfo() {
+        accessS = new set<int>;
+      }
+      ~pageInfo() {
+        delete accessS;
+      }
     };
 
     // first argumant in map is address / 0x1000(PAGE_SIZE) 
