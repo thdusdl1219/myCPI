@@ -18,7 +18,7 @@
 
 #define HLRC
 
-//#define DEBUG_UVA
+#define DEBUG_UVA
 
 #define LOCALTEST 0
 #define CORELAB_SERVER_TEST 1

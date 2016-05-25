@@ -22,7 +22,7 @@
 #include "TimeUtil.h"
 //#include "hexdump.h"
 
-//#define DEBUG_UVA
+#define DEBUG_UVA
 #define UVA_EVAL
 
 

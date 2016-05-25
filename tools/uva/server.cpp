@@ -13,7 +13,7 @@
 #include "xmem_info.h"
 #include "uva_macro.h"
 
-//#define DEBUG_UVA
+#define DEBUG_UVA
 
 #define TEST 1
 
