@@ -419,7 +419,7 @@ namespace corelab {
       // recv invalidate address list.
       socket->receiveQue();
 #ifdef DEBUG_UVA
-          LOG("[client] recv address list");
+      LOG("[client] recv address list\n");
 #endif
       int mode = socket->takeWordF();
       LOG("[client] recv mode (%d)\n", mode); 
@@ -439,7 +439,9 @@ namespace corelab {
       
       for(vector<void*>::iterator it = addressVector.begin(); it != addressVector.end(); it++) {
         void* address = *it;
-        LOG("invalidate address : %p", address);
+#ifdef DEBUG_UVA
+        LOG("invalidate address : %p\n", address);
+#endif
         mprotect(truncToPageAddr(address), PAGE_SIZE, PROT_NONE);
       }
 
@@ -471,7 +473,7 @@ namespace corelab {
       while (current != intAddrOfStoreLogs + sizeStoreLogs) {
         struct StoreLog* curStoreLog = (*vecStoreLogs)[i];
 #ifdef DEBUG_UVA
-        LOG("[client] in while | curStoreLog (size:%d, addr:%p)\n", curStoreLog->size, curStoreLog->addr);
+        LOG("[client] in while | curStoreLog (size:%d, data:%d, addr:%p)\n", curStoreLog->size, *((int*)curStoreLog->data), curStoreLog->addr);
 #endif        
         uint32_t intAddr;
         memcpy(reinterpret_cast<void*>(current), &curStoreLog->size, 4);
@@ -759,16 +761,18 @@ namespace corelab {
 
     void UVAManager::storeHandlerForHLRC(QSocket *socket, size_t typeLen, void *data, void *addr) {
       if(isInCriticalSection) {
-#ifdef DEBUG_UVA
-        LOG("[client] 1 in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
-#endif
         uint32_t intAddr = makeInt32Addr(addr);
         if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
 #ifdef DEBUG_UVA
-        LOG("[client] 2 in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
+        LOG("[client] in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
 #endif
 
-        struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), data, addr);
+        void *tmpData = malloc(typeLen);
+        memcpy(tmpData, &data, typeLen);
+#ifdef DEBUG_UVA
+        LOG("[client] tmpData (data:%d)\n", *((int*)tmpData));
+#endif
+        struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), tmpData, addr);
         vecStoreLogs->push_back(slog);
         sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
         isInCriticalSection = false;
@@ -779,7 +783,9 @@ namespace corelab {
       uint32_t intAddr = makeInt32Addr(addr);
       if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return addr;
       
-      struct StoreLog* slog = new StoreLog (static_cast<int>(num), &value, addr);
+      void *tmpValue = malloc(num);
+      memcpy(tmpValue, &value, num);
+      struct StoreLog* slog = new StoreLog (static_cast<int>(num), tmpValue, addr);
       vecStoreLogs->push_back(slog);
       sizeStoreLogs = sizeStoreLogs + 8 + num;
       return addr;
@@ -817,7 +823,15 @@ namespace corelab {
        * 
        */
       if (typeMemcpy == 1) { // dest is in UVA
-        struct StoreLog *slog = new StoreLog ( static_cast<int>(num), src, dest );
+#ifdef DEBUG_UVA
+        LOG("[client] HLRC Memcpy : typeMemcpy (1), slog { %d, %p, %p }\n", num, src, dest);
+#endif
+        void *tmpData = malloc(num);
+        memcpy(tmpData, src, num);
+#ifdef DEBUG_UVA
+        LOG("[client] HLRC Memcpy : tmpData (%d)\n", *((int*)tmpData));
+#endif
+        struct StoreLog *slog = new StoreLog ( static_cast<int>(num), tmpData, dest );
         vecStoreLogs->push_back(slog);
         sizeStoreLogs = sizeStoreLogs + 8 + num;
       }

@@ -234,6 +234,9 @@ namespace corelab {
         LOG("[server] in while | curStoreLog (size:%d, addr:%p, data:%d)\n", size, *addr, *(int*)data);
 #endif        
         memcpy(*addr, data, size);
+#ifdef DEBUG_UVA
+        hexdump("release", *addr, size);
+#endif
         free(addr);
         free(data);
         current = current + 8 + size;
