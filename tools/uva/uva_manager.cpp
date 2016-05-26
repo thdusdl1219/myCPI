@@ -548,65 +548,62 @@ namespace corelab {
     }
 
     void UVAManager::storeHandler(QSocket *socket, size_t typeLen, void *data, void *addr) {
-      if(isInCriticalSection) {
 #ifdef UVA_EVAL
-        StopWatch watch;
-        watch.start();
+      StopWatch watch;
+      watch.start();
 #endif
-        uint32_t intAddr = makeInt32Addr(addr);
-        if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
+      uint32_t intAddr = makeInt32Addr(addr);
+      if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
 
-        if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
+      if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) { 
 #ifdef DEBUG_UVA
-          LOG("[client] Store : storeHandler start (%p)\n", addr);
+        LOG("[client] Store : storeHandler start (%p)\n", addr);
 #endif
-          if (xmemIsHeapAddr(addr)) {
+        if (xmemIsHeapAddr(addr)) {
 #ifdef DEBUG_UVA
-            LOG("[client] Store : isHeapAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
+          LOG("[client] Store : isHeapAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
 #endif
-          } else if (isFixedGlobalAddr(addr)) {
+        } else if (isFixedGlobalAddr(addr)) {
 #ifdef DEBUG_UVA
-            LOG("[client] Store : isFixedGlobalAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
-#endif
-          }
-          socket->pushWordF(STORE_REQ);
-          socket->pushWordF(typeLen);
-
-          socket->pushWordF(intAddr);
-          socket->pushRangeF(&data, typeLen);
-          socket->sendQue();
-#ifdef DEBUG_UVA
-          LOG("[client] Store : sizeof(addr) %d, data length %d\n", sizeof(addr), typeLen);
-#endif
-
-          socket->receiveQue();
-          int mode = socket->takeWord();
-#ifdef DEBUG_UVA
-          LOG("[client] mode : %d\n", mode);
-#endif
-          //assert(mode == STORE_REQ_ACK && "wrong");
-          int len = socket->takeWord();
-          if (len == 0) { // Normal ack
-            //LOG("[client] TEST stored value : %d\n", *((int*)addr));
-          } else if (len == -1) {
-#ifdef DEBUG_UVA
-            LOG("[client] store request fail\n"); // TODO: have to handler failure situation.
-#endif
-          } else {
-            assert(0 && "error: undefined behavior");
-          }
-#ifdef DEBUG_UVA
-          LOG("[client] Store : storeHandler END\n\n");
+          LOG("[client] Store : isFixedGlobalAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
 #endif
         }
-#ifdef UVA_EVAL
-        watch.end();
-        FILE *fp = fopen("uva-eval.txt", "a");
-        fprintf(fp, "STORE %lf\n", watch.diff());
-        fclose(fp);
+        socket->pushWordF(STORE_REQ);
+        socket->pushWordF(typeLen);
+
+        socket->pushWordF(intAddr);
+        socket->pushRangeF(&data, typeLen);
+        socket->sendQue();
+#ifdef DEBUG_UVA
+        LOG("[client] Store : sizeof(addr) %d, data length %d\n", sizeof(addr), typeLen);
 #endif
-        isInCriticalSection = false;
+
+        socket->receiveQue();
+        int mode = socket->takeWord();
+#ifdef DEBUG_UVA
+        LOG("[client] mode : %d\n", mode);
+#endif
+        //assert(mode == STORE_REQ_ACK && "wrong");
+        int len = socket->takeWord();
+        if (len == 0) { // Normal ack
+          //LOG("[client] TEST stored value : %d\n", *((int*)addr));
+        } else if (len == -1) {
+#ifdef DEBUG_UVA
+          LOG("[client] store request fail\n"); // TODO: have to handler failure situation.
+#endif
+        } else {
+          assert(0 && "error: undefined behavior");
+        }
+#ifdef DEBUG_UVA
+        LOG("[client] Store : storeHandler END\n\n");
+#endif
       }
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "STORE %lf\n", watch.diff());
+      fclose(fp);
+#endif
     }
 
     void *UVAManager::memsetHandler(QSocket *socket, void *addr, int value, size_t num) {
@@ -620,16 +617,12 @@ namespace corelab {
       if (xmemIsHeapAddr(addr) || isFixedGlobalAddr(addr)) {
 #ifdef DEBUG_UVA
         LOG("[client] Memset : memsetHandler start (%p)\n", addr);
-#endif
         if (xmemIsHeapAddr(addr)) {
-#ifdef DEBUG_UVA
           LOG("[client] Memset : isHeapAddr, is going to request | addr %p\n", addr);
-#endif
         } else if (isFixedGlobalAddr(addr)) {
-#ifdef DEBUG_UVA
           LOG("[client] Memset : isFixedGlobalAddr, is going to request | addr %p\n", addr);
-#endif
         }
+#endif
         
         socket->pushWordF(MEMSET_REQ);
         socket->pushWordF(intAddr);
@@ -687,7 +680,7 @@ namespace corelab {
 
       if (typeMemcpy) {
 #ifdef DEBUG_UVA
-        LOG("[client] Memcpy : memcpyHandler start (%p <- %p)\n", dest, src);
+        LOG("[client] Memcpy : memcpyHandler start (%p <- %p) | typeMemcpy (%d)\n", dest, src, typeMemcpy);
         if (xmemIsHeapAddr(dest)) {
           LOG("[client] Memcpy : dest isHeapAddr, is going to request | %p <- %p\n", dest, src);
         } else if (isFixedGlobalAddr(dest)) {
@@ -698,14 +691,25 @@ namespace corelab {
           LOG("[client] Memcpy : src isFixedGlobalAddr, is going to request | %p <- %p\n", dest, src);
         }
 #endif
-        
+         
         socket->pushWordF(MEMCPY_REQ);
         socket->pushWordF(typeMemcpy);
         if (typeMemcpy == 1) {
           socket->pushWordF(intDest);
           socket->pushWordF(num);
           socket->pushRangeF(src, num);
+        
+          socket->sendQue();
+          socket->receiveQue();
+          int ack = socket->takeWord();
+          assert(ack == MEMCPY_REQ_ACK && "wrong");
         } else if (typeMemcpy == 2) {
+          /*  if typeMemcpy is 2, we have to load "src".  
+           *  dest is out of scope in this case.
+           */
+#ifdef DEBUG_UVA
+          LOG("[client] Memcpy : intSrc %d\n", intSrc);
+#endif
           socket->pushWordF(intSrc);
           socket->pushWordF(num);
           socket->sendQue();
@@ -715,22 +719,8 @@ namespace corelab {
         } else {
           assert(0);
         }
-        //socket->pushWordF(num); // XXX check
-        socket->sendQue();
 #ifdef DEBUG_UVA
-        LOG("[client] Memcpy : memcpy(%p, %p, %d)\n", dest, src, num);
-#endif
-        //LOG("[client] Memcpy : src mem stat\n");
-        //xmemDumpRange(src, num);
-#ifdef DEBUG_UVA
-        // hexdump("stack", src, num);
-#endif
-        socket->receiveQue();
-        int ack = socket->takeWord();
-       // assert(ack == MEMCPY_REQ_ACK && "wrong");
-
-#ifdef DEBUG_UVA
-        LOG("[client] Memcpy : memcpyHandler END (%p <- %p)\n\n", dest, src);
+        LOG("[client] Memcpy : memcpyHandler END (%p <- %p, %d)\n\n", dest, src, num);
 #endif
       }
 #ifdef UVA_EVAL
@@ -768,18 +758,21 @@ namespace corelab {
 		}
 
     void UVAManager::storeHandlerForHLRC(QSocket *socket, size_t typeLen, void *data, void *addr) {
+      if(isInCriticalSection) {
 #ifdef DEBUG_UVA
         LOG("[client] 1 in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
 #endif
-      uint32_t intAddr = makeInt32Addr(addr);
-      if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
+        uint32_t intAddr = makeInt32Addr(addr);
+        if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
 #ifdef DEBUG_UVA
         LOG("[client] 2 in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
 #endif
 
-      struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), data, addr);
-      vecStoreLogs->push_back(slog);
-      sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
+        struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), data, addr);
+        vecStoreLogs->push_back(slog);
+        sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
+        isInCriticalSection = false;
+      }
     }
 
     void *UVAManager::memsetHandlerForHLRC(QSocket *socket, void *addr, int value, size_t num) {
@@ -802,7 +795,7 @@ namespace corelab {
        **/
       int typeMemcpy = 0;
 #ifdef DEBUG_UVA
-      LOG("[client] HLRC Memcpy : destination = %u, src = %u\n",intDest, intSrc);
+      LOG("[client] HLRC Memcpy : destination = %u(%p), src = %u(%p)\n",intDest, dest, intSrc, src);
 #endif
       if(isUVAheapAddr(intDest) || isUVAglobalAddr(intDest)) {
         typeMemcpy = 1;

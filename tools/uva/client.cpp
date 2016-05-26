@@ -17,7 +17,7 @@
 
 #define GET_PAGE_ADDR(x) ((x) & 0xFFFFF000)
 
-#define HLRC
+//#define HLRC
 
 #define DEBUG_UVA
 
@@ -286,6 +286,7 @@ namespace corelab {
 #ifndef HLRC
       UVAManager::loadHandler(Msocket, len, addr);
 #endif
+      return;
     }
 
     extern "C" void uva_store(size_t len, void *data, void *addr) {
@@ -294,6 +295,7 @@ namespace corelab {
 #else
       UVAManager::storeHandler(Msocket, len, data, addr);
 #endif
+      return;
     }
 
     extern "C" void *uva_memset(void *addr, int value, size_t num) {

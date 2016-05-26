@@ -106,11 +106,11 @@ namespace corelab {
 
         switch(mode) {
           case THREAD_EXIT:
-#ifdef DEBUG_UVA
-            LOG("[server] thread exit!");
-#endif
             //pthread_mutex_unlock(&mutex);
             RuntimeClientConnTb->erase(clientId);
+#ifdef DEBUG_UVA
+            LOG("[server] thread exit! now # of connected clients : (%d)\n\n", RuntimeClientConnTb->size());
+#endif
             pthread_exit(&rval);
             break;
           case HEAP_ALLOC_REQ: /*** heap allocate request ***/
@@ -164,7 +164,7 @@ namespace corelab {
         if(my_var->find(*clientId) == my_var->end()) { 
            sendAddrSet.insert(it->first);
 #ifdef DEBUG_UVA
-          LOG("[server] find clientId address  (%x)\n", (it->first * 0x1000));
+           LOG("[server] find clientId address  (%x)\n", (it->first * 0x1000));
 #endif
         }
       }
@@ -182,7 +182,7 @@ namespace corelab {
       socket->sendQue(clientId);
 
 #ifdef DEBUG_UVA
-          LOG("[server] send invalid Address");
+      LOG("[server] send invalid Address");
 #endif
     }
 
@@ -274,7 +274,7 @@ namespace corelab {
       socket->pushWordF(sizeof(allocAddr), clientId);
       socket->pushRangeF(&allocAddr, sizeof(allocAddr), clientId);
       socket->sendQue(clientId);
-
+      return;
     }
 
     void loadHandler(int* clientId) {
@@ -302,6 +302,7 @@ namespace corelab {
       LOG("[server] TEST loaded value (what): %d\n", *((int*)requestedAddr));
 #endif
       socket->sendQue(clientId);
+      return;
     }
     void storeHandler(int* clientId) {
 #ifdef DEBUG_UVA
@@ -340,7 +341,7 @@ namespace corelab {
       hexdump("store", requestedAddr, lenType);
       //xmemDumpRange(requestedAddr, lenType);
 #endif
-
+      return;
     }
     void mmapHandler(int* clientId) {
       size_t lenMmap;
@@ -405,16 +406,18 @@ namespace corelab {
 #endif
       int typeMemcpy = socket->takeWordF(clientId);
       if (typeMemcpy == 1) {
+#ifdef DEBUG_UVA
+        LOG("[server] typeMemcpy 1 | dest is in UVA\n");
+#endif
         void* dest = reinterpret_cast<void*>(socket->takeWordF(clientId));
+#ifdef DEBUG_UVA
+        LOG("[server] requested memcpy dest addr (%p)\n", dest);
+#endif
         size_t num = socket->takeWordF(clientId);
         void* valueToStore = malloc(num);
         socket->takeRangeF(valueToStore, num, clientId);
 #ifdef DEBUG_UVA
         //hexdump("server", valueToStore, num);
-#endif
-
-
-#ifdef DEBUG_UVA
         LOG("[server] memcpy(%p, , %d)\n", dest, num);
 #endif
         //LOG("[server] below are src mem stat\n");
@@ -423,17 +426,23 @@ namespace corelab {
 
         socket->pushWordF(MEMCPY_REQ_ACK, clientId);
         socket->sendQue(clientId);
-        //xmemDumpRange(dest, num);
 #ifdef DEBUG_UVA
         //hexdump("memcpy dest", dest, num); 
 #endif
       } else if (typeMemcpy == 2) {
+#ifdef DEBUG_UVA
+        LOG("[server] typeMemcpy 2 | src is in UVA, dest isn't in UVA\n");
+#endif
         void* src = reinterpret_cast<void*>(socket->takeWordF(clientId));
+#ifdef DEBUG_UVA
+        LOG("[server] requested memcpy src addr (%p)\n", src);
+#endif
         size_t num = socket->takeWordF(clientId);
-        socket->pushRangeF(src, num);
-
+#ifdef DEBUG_UVA
+        LOG("[server] requested memcpy num (%d)\n", num);
+#endif
+        socket->pushRangeF(src, num, clientId);
         // don't need to do memcpy in server
-
         socket->sendQue(clientId);
       }
       return;
