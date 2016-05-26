@@ -1,3 +1,5 @@
+#ifndef __UVA_MANAGER_H__
+#define __UVA_MANAGER_H__
 /***
  * uva_manager.h: UVA Manager
  *
@@ -21,6 +23,17 @@ namespace corelab {
     /* UVAOwnership is deprecated (BONGJUN) */
 		enum UVAOwnership { OWN_MASTER, OWN_SLAVE };
 
+    struct StoreLog {
+      int32_t size;
+      void *data;
+      void *addr;
+      StoreLog(int _size, void* _data, void* _addr) {
+        size = _size;
+        data = _data;
+        addr = _addr;
+      }
+    };
+
 		namespace UVAManager {
 			void initialize (QSocket *socket);
 
@@ -33,13 +46,22 @@ namespace corelab {
 			void flushOut (QSocket *socket);
 			void resolveModified (void *addr);
 
+      // synchronization for HLRC (Home-based Lazy Release Consistency)
+      void acquireHandler(QSocket *socket);
+      void releaseHandler(QSocket *socket);
+
       // Memory Access handler (BONGJUN)
       void loadHandler(QSocket *socket, size_t typeLen, void *addr);
       void storeHandler(QSocket *socket, size_t typeLen, void *data, void *addr);
     
       void *memsetHandler(QSocket *socket, void *addr, int value, size_t num);
       void *memcpyHandler(QSocket *socket, void *dest, void *src, size_t num);
-      
+     
+      // Memory Access handler for HLRC 
+      void storeHandlerForHLRC(QSocket *socket, size_t typeLen, void *data, void *addr);
+      void *memsetHandlerForHLRC(QSocket *socket, void *addr, int value, size_t num);
+      void *memcpyHandlerForHLRC(QSocket *socket, void *dest, void *src, size_t num);
+
       // Get/Set/Test interfaces
 			void setConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/);
       void getFixedGlobalAddrRange (void **begin_noconst, void **end_noconst/*, void **begin_const, void **end_const*/);
@@ -52,3 +74,4 @@ namespace corelab {
 		}
 	}
 }
+#endif
