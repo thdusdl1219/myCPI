@@ -21,7 +21,7 @@
 
 #include "hexdump.h" // BONGJUN
 
-#define SERVER_SIDE_OVERHEAD_TEST
+//#define SERVER_SIDE_OVERHEAD_TEST
 //#define OVERHEAD_TEST
 
 #ifdef OVERHEAD_TEST
