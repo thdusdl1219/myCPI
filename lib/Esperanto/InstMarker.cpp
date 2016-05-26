@@ -50,9 +50,9 @@ namespace corelab {
 	{
 		//LLVMContext &Context = getGlobalContext();
     handleAsyncFcn(M);
-		markClassInst(M);
-		markFunctionInst(M);
-		removeMarkedRegion(M);
+		// markClassInst(M);
+		// markFunctionInst(M);
+		// removeMarkedRegion(M);
 
     //for(auto ci : async_fcn_list)
     //  DEBUG(errs() << "async function is " << ci->getCalledFunction()->getName().data() << "\n");

@@ -7,6 +7,7 @@
  *
  * **/
 
+#include <stdio.h>
 #include <cstdlib>
 #include <cstring>
 #include <cassert>
@@ -28,7 +29,7 @@
 #include "overhead.h"
 #endif
 
-//#define DEBUG_UVA
+#define DEBUG_UVA
 
 //using namespace std;
 
@@ -227,7 +228,7 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
         int *clientID = (int *) malloc(sizeof(int));
         *clientID = accept (idHost, (sockaddr *)&eptClient, &sizeEptClient);
 		   
-      if (idClient == -1) {
+      if (*clientID == -1) {
 			  DEBUG.EXIT_TASK ("LISTEN", "failed: cannot accept client");
 			  perror ("accept");
 			  return false;
@@ -464,7 +465,7 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 #ifdef SERVER_SIDE_OVERHEAD_TEST
       fp = fopen("SERVER_SIDE_OVERHEAD_TEST_RESULT.txt", "a");
       fprintf(fp, "SEND %lu\n", size);
-      printf(stderr, "SEND %lu\n", size);
+      fprintf(stderr, "SEND %lu\n", size);
       fclose(fp);
 #endif
     }
@@ -490,7 +491,7 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 #ifdef SERVER_SIDE_OVERHEAD_TEST
       fp = fopen("SERVER_SIDE_OVERHEAD_TEST_RESULT.txt", "a");
       fprintf(fp, "RECV %lu\n", size);
-      printf(stderr, "RECV %lu\n", size);
+      fprintf(stderr, "RECV %lu\n", size);
       fclose(fp);
 #endif
     }

@@ -11,6 +11,9 @@
 #ifndef CORELAB_XMEMORY_HEAP_MANAGER_H
 #define CORELAB_XMEMORY_HEAP_MANAGER_H
 
+#define getAlignedSize(s) (((s-1)/UNIT_SIZE + 1)*UNIT_SIZE)
+#define getAlignedPage(s) (((s-1)/PAGE_SIZE + 1)*PAGE_SIZE)
+
 #include <inttypes.h>
 #include <sys/mman.h>
 #include "memspec.h"
