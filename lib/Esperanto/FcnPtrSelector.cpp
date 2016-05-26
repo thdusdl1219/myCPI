@@ -1,5 +1,4 @@
 #include <iostream>
-#include <fstream>
 #include <sstream>
 
 #include "llvm/IR/LLVMContext.h"
@@ -19,8 +18,8 @@ namespace corelab {
     AU.setPreservesAll();
   }
 
-  bool FcnPtrSelector::runOnModule (Module& M) {
-    parseDriverFile();
+  bool FcnPtrSelector::runOnModule (Module &M) {
+    parseDriverMetadata(M);
     setFunctionPointer(M);
     DriverImplMapType::iterator di, dend;
     for(di = DriverImplMap.begin(), dend = DriverImplMap.end(); 
@@ -32,7 +31,45 @@ namespace corelab {
     return true;
   }
 
-  void FcnPtrSelector::parseDriverFile() {
+  void FcnPtrSelector::parseDriverMetadata (Module &M) {
+    StringMap<int> checked;
+
+    NamedMDNode *driverNamedMD = M.getNamedMetadata("esperanto.driver");
+    if(driverNamedMD == NULL) 
+      return;
+
+    MDNode *driverMD = driverNamedMD->getOperand(0); // driver list
+    
+    for(auto it = driverMD->op_begin(), iend = driverMD->op_end(); 
+        it != iend; it++) {  
+      string driver = cast<MDString>(it->get())->getString().str();
+
+      // check whether it is duplicate
+      if(checked.find(driver) == checked.end()) {
+        NamedMDNode *namedMD = M.getNamedMetadata(driver); // driver impl list
+        if(namedMD == NULL) continue; // no implementation
+        
+        size_t pos = driver.find('.');
+        string drvname = driver.substr(0, pos);
+        string absname = driver.substr(pos+1);
+
+        for(auto dit = namedMD->op_begin(), diend = namedMD->op_end(); 
+          dit != diend; dit++) {
+          MDNode *driverImplMD = *dit;
+          string realname = cast<MDString>(driverImplMD->getOperand(0))->getString().str();
+          string rawcondition = cast<MDString>(driverImplMD->getOperand(1))->getString().str();
+
+          vector<string> condition;
+          parseCondition(condition, rawcondition);
+          
+          DriverKeyType key(drvname, absname); 
+          DriverImplInfo tempInfo(realname, condition);
+          pair<DriverKeyType, DriverImplInfo> value(key, tempInfo);
+          DriverImplMap.insert(value);
+        }
+      }
+    }
+    /*
     ifstream ifs("EspDriver.profile");
     assert(ifs.is_open() && "Error opening driver file");
 
@@ -58,6 +95,7 @@ namespace corelab {
         DriverImplMap.insert(value);
       }
     }
+    */
   }
 
   void FcnPtrSelector::parseCondition(vector<string> &emptyMap, string cond) {

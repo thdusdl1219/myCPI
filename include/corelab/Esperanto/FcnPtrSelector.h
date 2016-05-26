@@ -41,9 +41,9 @@ namespace corelab {
       void getAnalysisUsage (AnalysisUsage &AU) const override;
       const char* getPassName () const override { return "Function Pointer Selector Pass"; }
 
-      bool runOnModule (Module& M) override;
+      bool runOnModule (Module &M) override;
 
-      void parseDriverFile();
+      void parseDriverMetadata(Module &M);
       void setFunctionPointer(Module &M);
       void makeFcnPtrSelector(Module &M, pair<string, string> DeclInfo);
 
