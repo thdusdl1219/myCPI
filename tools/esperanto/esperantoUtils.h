@@ -10,7 +10,7 @@
 #include <arpa/inet.h>
 #include <string.h>
 
-
+const char* getRuntimeVariable(const char* VarName, const char* Condition);
 void broadcastSend(char* data, int size, int port);
 void getIP(char*);
 int getPort();

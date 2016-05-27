@@ -2,6 +2,10 @@
 #include <sys/types.h>
 #include <ifaddrs.h>
 
+const char* getRuntimeVariable(const char* VarName, const char* Condition){
+  return "Hue";
+}
+
 void broadcastSend(char* data, int size,int port){
 	int sockfd;
 	int clilen;

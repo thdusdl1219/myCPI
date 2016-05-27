@@ -750,9 +750,9 @@ void deviceInit(ApiCallback fcn, int id){
 
 	if(updateMyFIDTable(filename)){
 		//LOG("updateMyFIDTable\n");
-	dqm = new DataQManager();
-	char* dummy = (char*)malloc(10000);
 	drm = new DeviceRuntimeManager();  
+	dqm = new DataQManager();
+	// char* dummy = (char*)malloc(10000);
 	dqm->initQ();
 		//pthread_create(&handlerThread, NULL, &eventHandler, NULL);
 		//pthread_create(&sendQHandlerThread,NULL,
