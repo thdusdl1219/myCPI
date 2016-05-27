@@ -17,7 +17,7 @@
 
 #define GET_PAGE_ADDR(x) ((x) & 0xFFFFF000)
 
-#define HLRC
+//#define HLRC
 
 #define DEBUG_UVA
 

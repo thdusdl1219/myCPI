@@ -210,7 +210,7 @@ namespace corelab {
       /* 32-bit */
       uint32_t intAddrOfStoreLogs;
       memcpy(&intAddrOfStoreLogs, &storeLogs, 4); 
-      uint32_t current = intAddrStoreLogs;
+      uint32_t current = intAddrOfStoreLogs;
 #elif UINTPTR_MAX == 0xffffffffffffffff
       /* 64-bit */
       uint64_t intAddrOfStoreLogs;
