@@ -34,6 +34,8 @@
 #include <cstdio>
 #include <stdio.h>
 #include <string.h>
+#include <cxxabi.h>
+
 using namespace corelab;
 
 namespace corelab {
@@ -88,22 +90,29 @@ namespace corelab {
 
           }
 					if(calledFunction != nullptr){
-						StringRef functionName = getFunctionNameInFunction(calledFunction->getName());
-            StringRef className = getClassNameInFunction(calledFunction->getName());
-            if(className.size() != 0)
+						// StringRef functionName = getFunctionNameInFunction(calledFunction->getName());
+            // StringRef className = getClassNameInFunction(calledFunction->getName());
+            // if(className.size() != 0)
             //DEBUG(errs() << "Names " << className.data() << " - " << functionName.data() << "\n");
-						if(functionName.size() ==0) continue;
-            if(className.size() == 0) continue;
+						int status = 0;
+            char *demangled_data = abi::__cxa_demangle(calledFunction->getName().data(), 0, 0, &status);
+            string demangled = demangled_data != NULL ? demangled_data : calledFunction->getName().str();
+
+            size_t pos_paren = demangled.find("(");
+            size_t pos_colon = demangled.rfind("::");
+           
+            if(pos_colon == string::npos) continue;
+            
+            string className = demangled.substr(0, pos_colon);
+            string functionName = demangled.substr(pos_colon + 2, pos_paren - pos_colon - 2); 
+            
             //DEBUG(errs() << "async function size is " << database.async_functions.size() << "\n");
-            for(int i=0;i<database.async_functions.size();i++){
+            for(unsigned long i=0;i<database.async_functions.size();i++){
 
               if(strcmp(className.data(),(database.async_functions[i].className)->data()) != 0) continue;
               if(strcmp(functionName.data(),(database.async_functions[i].funcName)->data()) != 0) continue;
               async_fcn_list.push_back(calledFunction);
-              //DEBUG(errs() << "matching -----------------------------------\n");
-
               //DEBUG(errs() << "classNames " << className.data() << " - " << (database.async_functions[i].className)->data() << "\n");
-
               //DEBUG(errs() << "function Names " << functionName.data() << " - " << (database.async_functions[i].funcName)->data() << "\n");
             }
             /*if(strcmp(functionName.data(),"EspAsyncFcn") != 0) continue;
@@ -361,7 +370,7 @@ callInst->getArgOperand(i)->dump();
 					if(!isa<CallInst>(inst)) continue;
           Function* calledFunction;
           Value* calledValue;
-          bool isCallInst =false;
+          // bool isCallInst = false;
           CallInst* callInst = dyn_cast<CallInst>(inst);
 
           calledValue = callInst->getCalledValue();
