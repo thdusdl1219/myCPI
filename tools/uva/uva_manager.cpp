@@ -477,9 +477,11 @@ namespace corelab {
 #endif        
         uint32_t intAddr;
         memcpy(reinterpret_cast<void*>(current), &curStoreLog->size, 4);
-        memcpy(reinterpret_cast<void*>(current+4), &curStoreLog->data, curStoreLog->size);
+        memcpy(reinterpret_cast<void*>(current+4), curStoreLog->data, curStoreLog->size);
         memcpy(&intAddr, &curStoreLog->addr, 4);
         memcpy(reinterpret_cast<void*>(current+4+curStoreLog->size), &intAddr, 4);
+        //free(curStoreLog->data);
+        //vecStoreLogs->erase(vecStoreLogs->begin() + i);
         current = current + 8 + curStoreLog->size;
         i++;
       }
@@ -491,6 +493,8 @@ namespace corelab {
       socket->pushWordF(sizeStoreLogs);
       socket->pushRange(storeLogs, sizeStoreLogs);
       socket->sendQue();
+      free(storeLogs);
+      isInCriticalSection = false;
     }
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
@@ -535,6 +539,7 @@ namespace corelab {
 
         socket->takeRangeF(buf, len);
         memcpy(addr, buf, len);
+        free(buf);
 #ifdef DEBUG_UVA
         hexdump("load", addr, typeLen);
         //xmemDumpRange(addr, typeLen);
@@ -760,6 +765,9 @@ namespace corelab {
 		}
 
     void UVAManager::storeHandlerForHLRC(QSocket *socket, size_t typeLen, void *data, void *addr) {
+#ifdef DEBUG_UVA
+          LOG("[client] in storeLog (isInCriticalSection %d)\n", isInCriticalSection);
+#endif
       if(isInCriticalSection) {
         uint32_t intAddr = makeInt32Addr(addr);
         if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
@@ -775,7 +783,7 @@ namespace corelab {
         struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), tmpData, addr);
         vecStoreLogs->push_back(slog);
         sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
-        isInCriticalSection = false;
+        //isInCriticalSection = false;
       }
     }
 
