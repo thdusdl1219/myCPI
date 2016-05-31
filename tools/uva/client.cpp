@@ -315,10 +315,14 @@ namespace corelab {
     }
     
     extern "C" void uva_acquire() {
+#ifdef HLRC
       UVAManager::acquireHandler(Msocket);
+#endif
     }
     extern "C" void uva_release() {
+#ifdef HLRC
       UVAManager::releaseHandler(Msocket);
+#endif
     }
     extern "C" void sendInitCompleteSignal() {
       Msocket->pushWordF(GLOBAL_INIT_COMPLETE_SIG); // Init complete signal

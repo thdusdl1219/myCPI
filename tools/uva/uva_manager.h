@@ -32,6 +32,9 @@ namespace corelab {
         data = _data;
         addr = _addr;
       }
+      ~StoreLog() {
+        free(data);
+      }
     };
 
 		namespace UVAManager {

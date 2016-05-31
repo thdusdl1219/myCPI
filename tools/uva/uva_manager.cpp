@@ -473,16 +473,15 @@ namespace corelab {
       while (current != intAddrOfStoreLogs + sizeStoreLogs) {
         struct StoreLog* curStoreLog = (*vecStoreLogs)[i];
 #ifdef DEBUG_UVA
-        LOG("[client] in while | curStoreLog (size:%d, data:%d, addr:%p)\n", curStoreLog->size, *((int*)curStoreLog->data), curStoreLog->addr);
+        LOG("[client] in while | curStoreLog (size:%d, data:%p, data:%d, addr:%p)\n", curStoreLog->size, curStoreLog->data, *((int*)curStoreLog->data), curStoreLog->addr);
 #endif        
         uint32_t intAddr;
         memcpy(reinterpret_cast<void*>(current), &curStoreLog->size, 4);
         memcpy(reinterpret_cast<void*>(current+4), curStoreLog->data, curStoreLog->size);
         memcpy(&intAddr, &curStoreLog->addr, 4);
         memcpy(reinterpret_cast<void*>(current+4+curStoreLog->size), &intAddr, 4);
-        //free(curStoreLog->data);
-        //vecStoreLogs->erase(vecStoreLogs->begin() + i);
         current = current + 8 + curStoreLog->size;
+        //free(curStoreLog->data);
         i++;
       }
 #ifdef DEBUG_UVA
@@ -493,7 +492,9 @@ namespace corelab {
       socket->pushWordF(sizeStoreLogs);
       socket->pushRange(storeLogs, sizeStoreLogs);
       socket->sendQue();
+      sizeStoreLogs = 0;
       free(storeLogs);
+      vecStoreLogs->clear();
       isInCriticalSection = false;
     }
 
