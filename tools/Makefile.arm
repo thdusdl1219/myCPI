@@ -4,13 +4,13 @@
 #
 # Don't compile here  !! 
 #
-# Copy this Makefile.arm into "[path]/llvm-corelab-install/tools/[your tool]/"
+# goto tools/
 #
-# and go to there, modify the "TOOL_NAME" variable, then type "make -f Makefile.arm"
+# and make -f Makefile.arm
 #
 ######################################################
 
-TOOL_NAME=uva
+#TOOL_NAME=uva
 TOOLS=$(CORELAB)/src/llvm-corelab/tools/$(TOOL_NAME)
 TARGET=arm
 LLVM_CXX=clang++
@@ -32,10 +32,10 @@ XCFLAG = -target armv7l-unknown-linux-gnueabi \
 	-I/usr/arm-linux-gnueabi/include/c++/4.7.3/arm-linux-gnueabi \
   -I/usr/arm-linux-gnueabi/include/c++/4.7.3 \
   -I/usr/arm-linux-gnueabi/include \
-	-I$(CORELAB)/src/llvm-corelab/include \
-  -std=c++11
+	-I$(CORELAB)/src/llvm-corelab/include
 
-DFLAGS=-DINFLATE_READ 
+DFLAGS=
+#-DINFLATE_READ 
 #-DPRINT_MEMORY_TRANSFER_INFO 
 #-DOVERHEAD_TEST
 
@@ -51,7 +51,7 @@ shared : $(OBJS_DIR_SHARED)
 	mv $(LIBNAME_SHARED) $(LIBDIR)/
 
 clean :
-	rm -r $(TARGET)
+	rm -rf $(TARGET)
 	rm $(LIBDIR)/$(LIBNAME)
 
 $(TARGET)/%.o : $(TOOLS)/%.cpp
