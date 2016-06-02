@@ -17,7 +17,7 @@
 
 #define GET_PAGE_ADDR(x) ((x) & 0xFFFFF000)
 
-//#define HLRC
+#define HLRC
 
 #define DEBUG_UVA
 
@@ -249,7 +249,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | get global variables done\n");
         LOG("[client] segfaultHandler (TEST print)\n");
-        hexdump("segfault", ptNoConstBegin, 24);
+        hexdump("segfault", fault_addr, 24);
 #endif
       } else if ((void*)0x18000000 <= fault_addr && fault_addr < (void*)0x38000000) {
 #ifdef DEBUG_UVA
@@ -266,7 +266,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | getting a page in heap is done\n");
         LOG("[client] segfaultHandler (TEST print)\n");
-        hexdump("segfault", ptNoConstBegin, 24);
+        hexdump("segfault", fault_addr, 24);
 #endif
       }
       return;
@@ -315,10 +315,14 @@ namespace corelab {
     }
     
     extern "C" void uva_acquire() {
+#ifdef HLRC
       UVAManager::acquireHandler(Msocket);
+#endif
     }
     extern "C" void uva_release() {
+#ifdef HLRC
       UVAManager::releaseHandler(Msocket);
+#endif
     }
     extern "C" void sendInitCompleteSignal() {
       Msocket->pushWordF(GLOBAL_INIT_COMPLETE_SIG); // Init complete signal

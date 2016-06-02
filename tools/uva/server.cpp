@@ -178,8 +178,8 @@ namespace corelab {
         *addressbuf = *it * PAGE_SIZE;
         socket->pushRange(addressbuf, sizeof(void*), clientId); 
       }
-      free(addressbuf);
       socket->sendQue(clientId);
+      free(addressbuf);
 
 #ifdef DEBUG_UVA
       LOG("[server] send invalid Address");
@@ -223,24 +223,26 @@ namespace corelab {
       uint32_t size;
       void *data;
       void **addr;
+      addr = (void **)malloc(4);
       while (current != intAddrOfStoreLogs + sizeStoreLogs) {
         memcpy(&size, reinterpret_cast<void*>(current), 4);
         data = malloc(size);
         memcpy(data, reinterpret_cast<void*>(current+4), size);
-        addr = (void **)malloc(sizeof(void*));
+        memset(addr, 0, 8);
         memcpy(addr, reinterpret_cast<void*>(current+4+size), 4);
         
 #ifdef DEBUG_UVA
-        LOG("[server] in while | curStoreLog (size:%d, addr:%p, data:%d)\n", size, *addr, *(int*)data);
+        LOG("[server] in while | curStoreLog (size:%d, addr:%p, data:%x)\n", size, *addr, *(int*)data);
 #endif        
         memcpy(*addr, data, size);
 #ifdef DEBUG_UVA
         hexdump("release", *addr, size);
 #endif
-        free(addr);
         free(data);
         current = current + 8 + size;
       } // while END
+      free(addr);
+      free(storeLogs);
       pthread_mutex_unlock(&acquireLock);
     }
 
@@ -333,7 +335,7 @@ namespace corelab {
 
       // store value in UVA address.
       memcpy(requestedAddr, valueToStore, lenType);
-
+      free(valueToStore);
       // send ack
       socket->pushWordF(STORE_REQ_ACK, clientId); // ACK
       socket->pushWordF(0, clientId); // ACK ( 0: normal, -1: abnormal ) FIXME useless
@@ -426,6 +428,7 @@ namespace corelab {
         //LOG("[server] below are src mem stat\n");
         //xmemDumpRange(src, num);
         memcpy(dest, valueToStore, num);
+        free(valueToStore);
 
         socket->pushWordF(MEMCPY_REQ_ACK, clientId);
         socket->sendQue(clientId);

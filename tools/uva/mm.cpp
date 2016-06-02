@@ -485,7 +485,7 @@ namespace corelab {
 #endif
         //assert(mode == 7);
         int ack = socket->takeWord();
-        assert(ack == 0);
+        //assert(ack == 0);
         //fprintf(stderr, "len : %d\n", len);
         //char buf[len];
 
