@@ -667,6 +667,8 @@ namespace corelab {
       StopWatch watch;
       watch.start();
 #endif
+      if((long)dest > 0xffffffff || (long)src > 0xffffffff)
+        return dest;
       uint32_t intDest = makeInt32Addr(dest);
       uint32_t intSrc = makeInt32Addr(src);
       /** typeMemcpy
@@ -801,6 +803,8 @@ namespace corelab {
     }
 
     void *UVAManager::memcpyHandlerForHLRC(QSocket *socket, void *dest, void *src, size_t num) {
+      if((long)dest > 0xffffffff || (long)src > 0xffffffff)
+        return dest;
       uint32_t intDest = makeInt32Addr(dest);
       uint32_t intSrc = makeInt32Addr(src);
       /** typeMemcpy

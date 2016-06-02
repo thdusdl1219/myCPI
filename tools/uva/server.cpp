@@ -60,7 +60,9 @@ namespace corelab {
       char port[10];
 
 #if TEST
-      strcpy(port, "20000");
+      //strcpy(port, "20000");
+      fprintf(stderr, "system : Enter port to listen : ");
+      scanf("%s", port);
 #else
       fprintf(stderr, "system : Enter port to listen : ");
       scanf("%s", port);
