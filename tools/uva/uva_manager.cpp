@@ -498,6 +498,97 @@ namespace corelab {
       isInCriticalSection = false;
     }
 
+    /* XXX question XXX
+     * 1. all stores should be stored in slog for sync?
+     * 2. release -> acquire in sync? 
+     */
+    /* @detail Sync operation (mixing acquire & release) */
+    void UVAManager::syncHandler(QSocket *socket) {
+      /* At first, make store logs to be send to Home */
+      void *storeLogs = malloc(sizeStoreLogs);
+#if UINTPTR_MAX == 0xffffffff
+      /* 32-bit */
+      uint32_t intAddrOfStoreLogs;
+      memcpy(&intAddrOfStoreLogs, &storeLogs, 4); 
+      uint32_t current = intAddrOfStoreLogs;
+#elif UINTPTR_MAX == 0xffffffffffffffff
+      /* 64-bit */
+      uint64_t intAddrOfStoreLogs;
+      memcpy(&intAddrOfStoreLogs, &storeLogs, 8); 
+      uint64_t current = intAddrOfStoreLogs;
+#else
+      /* hmm ... */
+      assert(0);
+#endif
+      int i = 0;
+      while (current != intAddrOfStoreLogs + sizeStoreLogs) {
+        struct StoreLog* curStoreLog = (*vecStoreLogs)[i];
+#ifdef DEBUG_UVA
+        LOG("[client] in while | curStoreLog (size:%d, data:%p, data:%d, addr:%p)\n", curStoreLog->size, curStoreLog->data, *((int*)curStoreLog->data), curStoreLog->addr);
+#endif        
+        uint32_t intAddr;
+        memcpy(reinterpret_cast<void*>(current), &curStoreLog->size, 4);
+        memcpy(reinterpret_cast<void*>(current+4), curStoreLog->data, curStoreLog->size);
+        memcpy(&intAddr, &curStoreLog->addr, 4);
+        memcpy(reinterpret_cast<void*>(current+4+curStoreLog->size), &intAddr, 4);
+        current = current + 8 + curStoreLog->size;
+        //free(curStoreLog->data);
+        i++;
+      }
+#ifdef DEBUG_UVA
+      LOG("[client] # of vecStoreLogs %d | sizeStoreLogs %d\n", vecStoreLogs->size(), sizeStoreLogs);
+#endif 
+      /* Second, send them all */
+      socket->pushWordF(RELEASE_REQ);
+      socket->pushWordF(sizeStoreLogs);
+      socket->pushRange(storeLogs, sizeStoreLogs);
+      socket->sendQue();
+      sizeStoreLogs = 0;
+      free(storeLogs);
+      //vecStoreLogs->clear(); // XXX
+
+      // send invalidate address request.
+      socket->pushWordF(INVALID_REQ);
+      socket->sendQue();
+#ifdef DEBUG_UVA
+          LOG("[client] send invalid request (%d)\n", INVALID_REQ);
+#endif
+      
+      // recv invalidate address list.
+      socket->receiveQue();
+#ifdef DEBUG_UVA
+      LOG("[client] recv address list\n");
+#endif
+      int mode = socket->takeWordF();
+      LOG("[client] recv mode (%d)\n", mode); 
+      assert(mode == INVALID_REQ_ACK && "wrong");
+      
+
+      int addressSize = socket->takeWordF();
+      int addressNum = socket->takeWordF();
+      vector<void*> addressVector;
+      void** addressbuf = (void **) malloc(addressSize);
+      for(int i = 0; i < addressNum; i++) {
+        socket->takeRangeF(addressbuf, addressSize);
+        addressVector.push_back(*addressbuf);
+      }
+      free(addressbuf);
+      // all address invalidate.
+      
+      for(vector<void*>::iterator it = addressVector.begin(); it != addressVector.end(); it++) {
+        void* address = *it;
+#ifdef DEBUG_UVA
+        LOG("invalidate address : %p\n", address);
+#endif
+        mprotect(truncToPageAddr(address), PAGE_SIZE, PROT_NONE);
+      }
+
+      //isInCriticalSection = true;
+#ifdef DEBUG_UVA
+          LOG("[client] acquire handler end (%d)\n", addressNum);
+#endif
+    }
+
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
     void UVAManager::loadHandler(QSocket *socket, size_t typeLen, void *addr) {
 #ifdef UVA_EVAL
