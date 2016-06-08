@@ -8,6 +8,7 @@
  * modified by: bongjun
  *
  * **/
+#include <cstdlib>
 
 #include "qsocket.h"
 #include "xmem_spec.h"

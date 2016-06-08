@@ -32,7 +32,8 @@ XCFLAG = -target armv7l-unknown-linux-gnueabi \
 	-I/usr/arm-linux-gnueabi/include/c++/4.7.3/arm-linux-gnueabi \
   -I/usr/arm-linux-gnueabi/include/c++/4.7.3 \
   -I/usr/arm-linux-gnueabi/include \
-	-I$(CORELAB)/src/llvm-corelab/include
+	-I$(CORELAB)/src/llvm-corelab/include \
+  -std=c++11
 
 DFLAGS=
 #-DINFLATE_READ 
