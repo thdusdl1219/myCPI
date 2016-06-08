@@ -79,41 +79,23 @@ namespace corelab {
 				for(II Ii = B->begin(),IE = B->end();Ii != IE; ++Ii){
 					Instruction* inst = (Instruction*) &*Ii;
 					if(!isa<CallInst>(inst) && !isa<InvokeInst>(inst)) continue;
+          
           Function* calledFunction;
           if(isa<CallInst>(inst)){
-					CallInst* callInst = cast<CallInst>(inst);
-					calledFunction = callInst->getCalledFunction();
+					  CallInst* callInst = cast<CallInst>(inst);
+					  calledFunction = callInst->getCalledFunction();
           }
           else{
-          InvokeInst* invokeInst = cast<InvokeInst>(inst);
-					calledFunction = invokeInst->getCalledFunction();
-
+            InvokeInst* invokeInst = cast<InvokeInst>(inst);
+					  calledFunction = invokeInst->getCalledFunction();
           }
+
 					if(calledFunction != nullptr){
-						// StringRef functionName = getFunctionNameInFunction(calledFunction->getName());
-            // StringRef className = getClassNameInFunction(calledFunction->getName());
-            // if(className.size() != 0)
-            //DEBUG(errs() << "Names " << className.data() << " - " << functionName.data() << "\n");
-						int status = 0;
-            char *demangled_data = abi::__cxa_demangle(calledFunction->getName().data(), 0, 0, &status);
-            string demangled = demangled_data != NULL ? demangled_data : calledFunction->getName().str();
-
-            size_t pos_paren = demangled.find("(");
-            size_t pos_colon = demangled.rfind("::");
-           
-            if(pos_colon == string::npos) continue;
-            
-            string className = demangled.substr(0, pos_colon);
-            string functionName = demangled.substr(pos_colon + 2, pos_paren - pos_colon - 2); 
-            
-            //DEBUG(errs() << "async function size is " << database.async_functions.size() << "\n");
+            // no need to demangle functionName (async_functions.funcName is mangled)
+						StringRef functionName = calledFunction->getName(); 
             for(unsigned long i=0;i<database.async_functions.size();i++){
-
-              if(strcmp(className.data(),(database.async_functions[i].className)->data()) != 0) continue;
-              if(strcmp(functionName.data(),(database.async_functions[i].funcName)->data()) != 0) continue;
+              if(!functionName.equals(*database.async_functions[i].funcName)) continue;
               async_fcn_list.push_back(calledFunction);
-              //DEBUG(errs() << "classNames " << className.data() << " - " << (database.async_functions[i].className)->data() << "\n");
-              //DEBUG(errs() << "function Names " << functionName.data() << " - " << (database.async_functions[i].funcName)->data() << "\n");
             }
             /*if(strcmp(functionName.data(),"EspAsyncFcn") != 0) continue;
             DEBUG(errs() << "async function name is " << functionName.data() << "\n");

@@ -205,18 +205,10 @@ namespace corelab {
       for(auto it = asyncMD->op_begin(), iend = asyncMD->op_end(); 
           it != iend; it++) {
         std::string async_func = cast<MDString>(it->get())->getString().str();
-        size_t pos = async_func.rfind("::");
        
-        struct AsyncFunc async_info;
-
-        string classname = async_func.substr(0, pos);
-        char *temp = (char*)malloc(classname.size()+1);
-		    strcpy(temp, classname.c_str());
-        async_info.className = new StringRef(temp); 
-
-        string funname = async_func.substr(pos+2);
-        temp = (char*)malloc(funname.size()+1);
-		    strcpy(temp, funname.c_str());
+        struct AsyncFunc async_info; 
+        char *temp = (char*)malloc(async_func.size()+1);
+		    strcpy(temp, async_func.c_str());
         async_info.funcName = new StringRef(temp);       
         
         async_functions.push_back(async_info);
