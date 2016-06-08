@@ -91,11 +91,17 @@ namespace corelab {
           Instruction* inst = (Instruction*)&*Ii;
           MDNode* MD = inst->getMetadata("esperanto.constructor");
 				  if (MD == NULL) continue;
-     
-          InstInsertPt out = InstInsertPt::After(inst);
           actuals[0] = inst;
-          out << CallInst::Create(RegisterDevice, actuals);
 
+          InstInsertPt out;
+          // Invoke function jumps to a invoke destination 
+          if(InvokeInst* Invoke = dyn_cast<InvokeInst>(inst))
+            out = InstInsertPt::Beginning(Invoke->getNormalDest());
+          else
+            out = InstInsertPt::After(inst);
+
+          out << CallInst::Create(RegisterDevice, actuals);
+          
           /*
           if(CallInst* ci = dyn_cast<CallInst>(inst)){
             Value* ctor_v = ci->getCalledValue();
