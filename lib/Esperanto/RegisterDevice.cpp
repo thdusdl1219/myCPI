@@ -61,7 +61,6 @@ namespace corelab {
 		return false;
 	}
 
-
 	void DeviceLinker::setFunctions(Module& M){
 		RegisterDevice = M.getOrInsertFunction("registerDevice",
 				Type::getVoidTy(M.getContext()),
@@ -74,21 +73,30 @@ namespace corelab {
 		typedef Function::iterator BB;
 		typedef BasicBlock::iterator II;
 
-		const DataLayout& dataLayout = M.getDataLayout();
+		//const DataLayout &Layout = M.getDataLayout();
+    //LLVMContext &Ctx = M.getContext();
 
-		StringRef ctorName = createConstructorName();
+    std::vector<Value*> actuals(1);
+
+    // no need to generate a name of the constructor
+		//StringRef ctorName = createConstructorName();
 		//DEBUG(errs() << "ctorName is " << ctorName.data() << "\n");
 
 		for(FF FI = M.begin(),FE = M.end();FI !=FE; ++FI){
 			Function* F = (Function*) &*FI;
 			//if (F->isDeclaration()) continue;
-
-
 			for(BB BI = F->begin(),BE = F->end();BI != BE; ++BI){
         BasicBlock* B = (BasicBlock*) &*BI;
         for(II Ii = B->begin(),IE = B->end();Ii != IE; ++Ii){
           Instruction* inst = (Instruction*)&*Ii;
+          MDNode* MD = inst->getMetadata("esperanto.constructor");
+				  if (MD == NULL) continue;
+     
+          InstInsertPt out = InstInsertPt::After(inst);
+          actuals[0] = inst;
+          out << CallInst::Create(RegisterDevice, actuals);
 
+          /*
           if(CallInst* ci = dyn_cast<CallInst>(inst)){
             Value* ctor_v = ci->getCalledValue();
             Function* ctor = ci->getCalledFunction();
@@ -134,13 +142,13 @@ namespace corelab {
               }
 
             }
-            /*else{
-              DEBUG(errs() << "call inst different name " << ctor->getName().data() <<"\n");
-            }*/
+            //else{
+            //DEBUG(errs() << "call inst different name " << ctor->getName().data() <<"\n");
+            //}
           }
           else if(InvokeInst* ii = dyn_cast<InvokeInst>(inst)){
             //InvokeInst* ci = (InvokeInst*)inst;
-            ii->dump();
+            // ii->dump();
             Function* ctor = ii->getCalledFunction();
             //if(ctor == NULL) continue;
             //if(ctor->isDeclaration()) continue;
@@ -166,15 +174,13 @@ namespace corelab {
               actuals[0] = deviceAddr;
               out << CallInst::Create(RegisterDevice,actuals,"");
             }
-            /*else{
-              DEBUG(errs() << "invoke inst different name " << ctor->getName().data() <<"\n");
-            }*/
-
-          }
+            //else{
+            //  DEBUG(errs() << "invoke inst different name " << ctor->getName().data() <<"\n");
+            //}
+          } */
         }
       }
-		}
-				
+		}	
 	}
 
 	StringRef DeviceLinker::createConstructorName(){
