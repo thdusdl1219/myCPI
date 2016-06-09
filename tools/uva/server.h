@@ -23,6 +23,7 @@ namespace corelab {
     void globalInitCompleteHandler(int*);
     void invalidHandler(int*);
     void releaseHandler(int*);
+    void syncHandler(int*);
 
 
     /* These two function do nothing. Everybody are client */

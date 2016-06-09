@@ -56,7 +56,9 @@ namespace corelab {
 		static UVAOwnership uvaown;
 		static PageSet setMEPages;
 
+    static std::vector<struct StoreLog*> *vecCriticalSectionStoreLogs;
     static std::vector<struct StoreLog*> *vecStoreLogs;
+    static int sizeCriticalSectionStoreLogs = 0;
     static int sizeStoreLogs = 0;
     static bool isInCriticalSection = false;
 
@@ -113,6 +115,7 @@ namespace corelab {
 
       /* BONGJUN : for telling "socket" to XMemoryManager */
       xmemInitialize(socket); // above from gwangmu implmentation. but I want to use
+      vecCriticalSectionStoreLogs = new vector<struct StoreLog*>;
       vecStoreLogs = new vector<struct StoreLog*>;
 			setMEPages.clear ();
 			//uvaown = _uvaown;
@@ -454,7 +457,7 @@ namespace corelab {
     /* @detail HLRC (Home-based Lazy Release Consistency): release */
     void UVAManager::releaseHandler(QSocket *socket) {
       /* At first, make store logs to be send to Home */
-      void *storeLogs = malloc(sizeStoreLogs);
+      void *storeLogs = malloc(sizeCriticalSectionStoreLogs);
 #if UINTPTR_MAX == 0xffffffff
       /* 32-bit */
       uint32_t intAddrOfStoreLogs;
@@ -471,9 +474,9 @@ namespace corelab {
 #endif
       int i = 0;
       while (current != intAddrOfStoreLogs + sizeStoreLogs) {
-        struct StoreLog* curStoreLog = (*vecStoreLogs)[i];
+        struct StoreLog* curStoreLog = (*vecCriticalSectionStoreLogs)[i];
 #ifdef DEBUG_UVA
-        LOG("[client] in while | curStoreLog (size:%d, data:%p, data:%d, addr:%p)\n", curStoreLog->size, curStoreLog->data, *((int*)curStoreLog->data), curStoreLog->addr);
+        LOG("[client] CRITICAL SECTION in while | curStoreLog (size:%d, data:%p, data:%d, addr:%p)\n", curStoreLog->size, curStoreLog->data, *((int*)curStoreLog->data), curStoreLog->addr);
 #endif        
         uint32_t intAddr;
         memcpy(reinterpret_cast<void*>(current), &curStoreLog->size, 4);
@@ -485,16 +488,16 @@ namespace corelab {
         i++;
       }
 #ifdef DEBUG_UVA
-      LOG("[client] # of vecStoreLogs %d | sizeStoreLogs %d\n", vecStoreLogs->size(), sizeStoreLogs);
+      LOG("[client] CRITICAL SECTION # of vecStoreLogs %d | sizeStoreLogs %d\n", vecCriticalSectionStoreLogs->size(), sizeCriticalSectionStoreLogs);
 #endif 
       /* Second, send them all */
       socket->pushWordF(RELEASE_REQ);
-      socket->pushWordF(sizeStoreLogs);
-      socket->pushRange(storeLogs, sizeStoreLogs);
+      socket->pushWordF(sizeCriticalSectionStoreLogs);
+      socket->pushRange(storeLogs, sizeCriticalSectionStoreLogs);
       socket->sendQue();
-      sizeStoreLogs = 0;
+      sizeCriticalSectionStoreLogs = 0;
       free(storeLogs);
-      vecStoreLogs->clear();
+      vecCriticalSectionStoreLogs->clear();
       isInCriticalSection = false;
     }
 
@@ -539,22 +542,15 @@ namespace corelab {
       LOG("[client] # of vecStoreLogs %d | sizeStoreLogs %d\n", vecStoreLogs->size(), sizeStoreLogs);
 #endif 
       /* Second, send them all */
-      socket->pushWordF(RELEASE_REQ);
+      socket->pushWordF(SYNC_REQ);
       socket->pushWordF(sizeStoreLogs);
       socket->pushRange(storeLogs, sizeStoreLogs);
       socket->sendQue();
       sizeStoreLogs = 0;
       free(storeLogs);
-      //vecStoreLogs->clear(); // XXX
+      vecStoreLogs->clear(); // XXX
 
-      // send invalidate address request.
-      socket->pushWordF(INVALID_REQ);
-      socket->sendQue();
-#ifdef DEBUG_UVA
-          LOG("[client] send invalid request (%d)\n", INVALID_REQ);
-#endif
-      
-      // recv invalidate address list.
+      /* Third, recv invalidate address list. */
       socket->receiveQue();
 #ifdef DEBUG_UVA
       LOG("[client] recv address list\n");
@@ -562,7 +558,6 @@ namespace corelab {
       int mode = socket->takeWordF();
       LOG("[client] recv mode (%d)\n", mode); 
       assert(mode == INVALID_REQ_ACK && "wrong");
-      
 
       int addressSize = socket->takeWordF();
       int addressNum = socket->takeWordF();
@@ -585,7 +580,7 @@ namespace corelab {
 
       //isInCriticalSection = true;
 #ifdef DEBUG_UVA
-          LOG("[client] acquire handler end (%d)\n", addressNum);
+      LOG("[client] sync handler end (%d)\n", addressNum);
 #endif
     }
 
@@ -860,24 +855,26 @@ namespace corelab {
 
     void UVAManager::storeHandlerForHLRC(QSocket *socket, size_t typeLen, void *data, void *addr) {
 #ifdef DEBUG_UVA
-          LOG("[client] in storeLog (isInCriticalSection %d)\n", isInCriticalSection);
+      LOG("[client] in storeLog (isInCriticalSection %d)\n", isInCriticalSection);
 #endif
-      if(isInCriticalSection) {
-        uint32_t intAddr = makeInt32Addr(addr);
-        if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
+      uint32_t intAddr = makeInt32Addr(addr);
+      if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
 #ifdef DEBUG_UVA
-        LOG("[client] in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
+      LOG("[client] in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
 #endif
 
-        void *tmpData = malloc(typeLen);
-        memcpy(tmpData, &data, typeLen);
+      void *tmpData = malloc(typeLen);
+      memcpy(tmpData, &data, typeLen);
 #ifdef DEBUG_UVA
-        LOG("[client] tmpData (data:%d)\n", *((int*)tmpData));
+      LOG("[client] tmpData (data:%d)\n", *((int*)tmpData));
 #endif
-        struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), tmpData, addr);
+      struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), tmpData, addr);
+      if(!isInCriticalSection) {
+        vecCriticalSectionStoreLogs->push_back(slog);
+        sizeCriticalSectionStoreLogs = sizeCriticalSectionStoreLogs + 8 + typeLen;
+      } else {
         vecStoreLogs->push_back(slog);
         sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
-        //isInCriticalSection = false;
       }
     }
 
@@ -888,12 +885,18 @@ namespace corelab {
       void *tmpValue = malloc(num);
       memcpy(tmpValue, &value, num);
       struct StoreLog* slog = new StoreLog (static_cast<int>(num), tmpValue, addr);
-      vecStoreLogs->push_back(slog);
-      sizeStoreLogs = sizeStoreLogs + 8 + num;
+      if(!isInCriticalSection) {
+        vecStoreLogs->push_back(slog);
+        sizeStoreLogs = sizeStoreLogs + 8 + num;
+      } else {
+        vecCriticalSectionStoreLogs->push_back(slog);
+        sizeCriticalSectionStoreLogs = sizeCriticalSectionStoreLogs + 8 + num;
+      }
       return addr;
     }
 
     void *UVAManager::memcpyHandlerForHLRC(QSocket *socket, void *dest, void *src, size_t num) {
+      // XXX: no need...
       if((long)dest > 0xffffffff || (long)src > 0xffffffff)
         return dest;
       uint32_t intDest = makeInt32Addr(dest);
@@ -936,8 +939,13 @@ namespace corelab {
         LOG("[client] HLRC Memcpy : tmpData (%d)\n", *((int*)tmpData));
 #endif
         struct StoreLog *slog = new StoreLog ( static_cast<int>(num), tmpData, dest );
-        vecStoreLogs->push_back(slog);
-        sizeStoreLogs = sizeStoreLogs + 8 + num;
+        if(!isInCriticalSection) {
+          vecCriticalSectionStoreLogs->push_back(slog);
+          sizeCriticalSectionStoreLogs = sizeStoreLogs + 8 + num;
+        } else {
+          vecStoreLogs->push_back(slog);
+          sizeStoreLogs = sizeStoreLogs + 8 + num;
+        }
       }
       return dest;
     }

@@ -148,6 +148,9 @@ namespace corelab {
           case RELEASE_REQ:
             releaseHandler(clientId);
             break;
+          case SYNC_REQ:
+            syncHandler(clientId);
+            break;
           default:
             assert(0 && "wrong request mode");
             break;
@@ -191,10 +194,8 @@ namespace corelab {
     /* @detail releaseHandler 
      *  1. take store logs (aka diff or changes) from releaser
      *  2. apply store logs into Home's corresponding pages
-     *  
      */
     void releaseHandler(int *clientId) {
-      // impl
       int sizeStoreLogs;
       void *storeLogs;
 //      socket->receiveQue(clientId);
@@ -245,6 +246,88 @@ namespace corelab {
       } // while END
       free(addr);
       free(storeLogs);
+      pthread_mutex_unlock(&acquireLock);
+    }
+
+    void syncHandler(int *clientId) {
+      pthread_mutex_lock(&acquireLock);
+      int sizeStoreLogs;
+      void *storeLogs;
+      sizeStoreLogs = socket->takeWordF(clientId);
+#ifdef DEBUG_UVA
+          LOG("[server] sizeStoreLogs : (%d)\n", sizeStoreLogs);
+#endif
+      storeLogs = malloc(sizeStoreLogs);
+#ifdef DEBUG_UVA
+          LOG("[server] StoreLogs address : (%p)\n", storeLogs);
+#endif
+      socket->takeRangeF(storeLogs, sizeStoreLogs, clientId);
+      
+#if UINTPTR_MAX == 0xffffffff
+      /* 32-bit */
+      uint32_t intAddrOfStoreLogs;
+      memcpy(&intAddrOfStoreLogs, &storeLogs, 4); 
+      uint32_t current = intAddrOfStoreLogs;
+#elif UINTPTR_MAX == 0xffffffffffffffff
+      /* 64-bit */
+      uint64_t intAddrOfStoreLogs;
+      memcpy(&intAddrOfStoreLogs, &storeLogs, 8); 
+      uint64_t current = intAddrOfStoreLogs;
+#else
+      /* hmm ... */
+      assert(0);
+#endif
+      uint32_t size;
+      void *data;
+      void **addr;
+      addr = (void **)malloc(4);
+      while (current != intAddrOfStoreLogs + sizeStoreLogs) {
+        memcpy(&size, reinterpret_cast<void*>(current), 4);
+        data = malloc(size);
+        memcpy(data, reinterpret_cast<void*>(current+4), size);
+        memset(addr, 0, 8);
+        memcpy(addr, reinterpret_cast<void*>(current+4+size), 4);
+        
+#ifdef DEBUG_UVA
+        LOG("[server] in while | curStoreLog (size:%d, addr:%p, data:%x)\n", size, *addr, *(int*)data);
+#endif        
+        memcpy(*addr, data, size);
+#ifdef DEBUG_UVA
+        hexdump("release", *addr, size);
+#endif
+        free(data);
+        current = current + 8 + size;
+      } // while END
+      free(addr);
+      free(storeLogs);
+
+      set<long> sendAddrSet;
+      // find same cliendId in accessSet in pageInfo
+      for(map<long, struct pageInfo*>::iterator it = pageMap->begin(); it != pageMap->end(); it++) {
+        set<int>* my_var = it->second->accessS;
+        if(my_var->find(*clientId) == my_var->end()) { 
+           sendAddrSet.insert(it->first);
+#ifdef DEBUG_UVA
+           LOG("[server] find clientId address  (%x)\n", (it->first * 0x1000));
+#endif
+        }
+      }
+      socket->pushWord(INVALID_REQ_ACK, clientId); 
+      socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
+      socket->pushWord(sendAddrSet.size(), clientId); // send addressNum 
+
+      // send address
+      long* addressbuf = (long *) malloc(sizeof(void*));
+      for(set<long>::iterator it = sendAddrSet.begin(); it != sendAddrSet.end(); it++) {
+        *addressbuf = *it * PAGE_SIZE;
+        socket->pushRange(addressbuf, sizeof(void*), clientId); 
+      }
+      socket->sendQue(clientId);
+      free(addressbuf);
+
+#ifdef DEBUG_UVA
+      LOG("[server] send invalid Address");
+#endif
       pthread_mutex_unlock(&acquireLock);
     }
 
