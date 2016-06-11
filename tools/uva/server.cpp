@@ -162,26 +162,31 @@ namespace corelab {
 
     void invalidHandler(int* clientId) {
       pthread_mutex_lock(&acquireLock);
-      set<long> sendAddrSet;
+      set<uint32_t> sendAddrSet;
       // find same cliendId in accessSet in pageInfo
       for(map<long, struct pageInfo*>::iterator it = pageMap->begin(); it != pageMap->end(); it++) {
         set<int>* my_var = it->second->accessS;
-        if(my_var->find(*clientId) == my_var->end()) { 
-           sendAddrSet.insert(it->first);
+        if(my_var->find(*clientId) == my_var->end()) {
+          uint32_t intAddr;
+          memcpy(&intAddr, &(it->first), 4);
+          sendAddrSet.insert(intAddr);
 #ifdef DEBUG_UVA
-           LOG("[server] find clientId address  (%x)\n", (it->first * 0x1000));
+          LOG("[server] add invalidation address (%p)(%d) for clientId (%d)\n", reinterpret_cast<void*>(it->first), intAddr, *clientId);
 #endif
         }
       }
       socket->pushWord(INVALID_REQ_ACK, clientId); 
-      socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
+      //socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
       socket->pushWord(sendAddrSet.size(), clientId); // send addressNum 
 
       // send address
-      long* addressbuf = (long *) malloc(sizeof(void*));
-      for(set<long>::iterator it = sendAddrSet.begin(); it != sendAddrSet.end(); it++) {
-        *addressbuf = *it * PAGE_SIZE;
-        socket->pushRange(addressbuf, sizeof(void*), clientId); 
+      //long* addressbuf = (long *) malloc(sizeof(void*));
+      uint32_t *addressbuf = (uint32_t*) malloc(4);
+      for(set<uint32_t>::iterator it = sendAddrSet.begin(); it != sendAddrSet.end(); it++) {
+        //*addressbuf = *it * PAGE_SIZE;
+        *addressbuf = *it;
+        //socket->pushRange(addressbuf, sizeof(void*), clientId); 
+        socket->pushRange(addressbuf, 4, clientId); 
       }
       socket->sendQue(clientId);
       free(addressbuf);
@@ -251,6 +256,9 @@ namespace corelab {
 
     void syncHandler(int *clientId) {
       pthread_mutex_lock(&acquireLock);
+#ifdef DEBUG_UVA
+      LOG("[server] syncHandler START\n");
+#endif
       int sizeStoreLogs;
       void *storeLogs;
       sizeStoreLogs = socket->takeWordF(clientId);
@@ -290,10 +298,21 @@ namespace corelab {
         
 #ifdef DEBUG_UVA
         LOG("[server] in while | curStoreLog (size:%d, addr:%p, data:%x)\n", size, *addr, *(int*)data);
-#endif        
+#endif
         memcpy(*addr, data, size);
+        //pageMap[(long)(truncToPageAddr(*addr))]->accessS->insert(*clientId);
+        struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*addr))];
+        if (pageInfo != NULL) {
+          pageInfo->accessS->clear();
+          pageInfo->accessS->insert(*clientId);
 #ifdef DEBUG_UVA
-        hexdump("release", *addr, size);
+          LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(*addr), *clientId);
+#endif
+        } else {
+          assert(0);
+        }
+#ifdef DEBUG_UVA
+        //hexdump("release", *addr, size);
 #endif
         free(data);
         current = current + 8 + size;
@@ -301,32 +320,37 @@ namespace corelab {
       free(addr);
       free(storeLogs);
 
-      set<long> sendAddrSet;
+      set<uint32_t> sendAddrSet;
       // find same cliendId in accessSet in pageInfo
       for(map<long, struct pageInfo*>::iterator it = pageMap->begin(); it != pageMap->end(); it++) {
         set<int>* my_var = it->second->accessS;
-        if(my_var->find(*clientId) == my_var->end()) { 
-           sendAddrSet.insert(it->first);
+        if(my_var->find(*clientId) == my_var->end()) {
+          uint32_t intAddr;
+          memcpy(&intAddr, &(it->first), 4);
+          sendAddrSet.insert(intAddr);
 #ifdef DEBUG_UVA
-           LOG("[server] find clientId address  (%x)\n", (it->first * 0x1000));
+          LOG("[server] add invalidation address (%p)(%d) for clientId (%d)\n", reinterpret_cast<void*>(it->first), intAddr, *clientId);
 #endif
         }
       }
-      socket->pushWord(INVALID_REQ_ACK, clientId); 
-      socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
+      //socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
+      //socket->pushWord(4, clientId); // send addressSize XXX support x64
       socket->pushWord(sendAddrSet.size(), clientId); // send addressNum 
 
       // send address
-      long* addressbuf = (long *) malloc(sizeof(void*));
-      for(set<long>::iterator it = sendAddrSet.begin(); it != sendAddrSet.end(); it++) {
-        *addressbuf = *it * PAGE_SIZE;
-        socket->pushRange(addressbuf, sizeof(void*), clientId); 
+      //long* addressbuf = (long *) malloc(sizeof(void*));
+      uint32_t *addressbuf = (uint32_t*) malloc(4);
+      for(set<uint32_t>::iterator it = sendAddrSet.begin(); it != sendAddrSet.end(); it++) {
+        //*addressbuf = *it * PAGE_SIZE;
+        *addressbuf = *it;
+        //socket->pushRange(addressbuf, sizeof(void*), clientId); 
+        socket->pushRange(addressbuf, 4, clientId); 
       }
       socket->sendQue(clientId);
       free(addressbuf);
 
 #ifdef DEBUG_UVA
-      LOG("[server] send invalid Address");
+      LOG("[server] syncHandler END\n\n");
 #endif
       pthread_mutex_unlock(&acquireLock);
     }
@@ -357,8 +381,9 @@ namespace corelab {
       // insert pageTable into pageMap
       struct pageInfo* newPageInfo = new pageInfo();
       newPageInfo->accessS->insert(-1);
-      pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
-      
+      //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
+      (*pageMap)[(long)(truncToPageAddr(allocAddr))] = newPageInfo;
+
       // memory operation end
       socket->pushWordF(HEAP_ALLOC_REQ_ACK, clientId);
       socket->pushWordF(sizeof(allocAddr), clientId);
@@ -461,7 +486,8 @@ namespace corelab {
 
       struct pageInfo* newPageInfo = new pageInfo();
       newPageInfo->accessS->insert(-1);
-      pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
+      //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
+      (*pageMap)[(long)(truncToPageAddr(requestedAddr))] = newPageInfo;
       assert(allocAddr != NULL && "mmap alloc failed in server");
 
       socket->pushWordF(MMAP_REQ_ACK, clientId); // ACK

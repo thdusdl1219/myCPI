@@ -429,12 +429,14 @@ namespace corelab {
       assert(mode == INVALID_REQ_ACK && "wrong");
       
 
-      int addressSize = socket->takeWordF();
+      //int addressSize = socket->takeWordF();
       int addressNum = socket->takeWordF();
       vector<void*> addressVector;
-      void** addressbuf = (void **) malloc(addressSize);
+      //void** addressbuf = (void **) malloc(addressSize);
+      void** addressbuf = (void **) malloc(4);
       for(int i = 0; i < addressNum; i++) {
-        socket->takeRangeF(addressbuf, addressSize);
+        //socket->takeRangeF(addressbuf, addressSize);
+        socket->takeRangeF(addressbuf, 4);
         addressVector.push_back(*addressbuf);
       }
       free(addressbuf);
@@ -555,16 +557,14 @@ namespace corelab {
 #ifdef DEBUG_UVA
       LOG("[client] recv address list\n");
 #endif
-      int mode = socket->takeWordF();
-      LOG("[client] recv mode (%d)\n", mode); 
-      assert(mode == INVALID_REQ_ACK && "wrong");
-
-      int addressSize = socket->takeWordF();
+      //int addressSize = socket->takeWordF(); // XXX: Currently, out UVA address space is 32 bits.
       int addressNum = socket->takeWordF();
       vector<void*> addressVector;
-      void** addressbuf = (void **) malloc(addressSize);
+      //void** addressbuf = (void **) malloc(addressSize);
+      void** addressbuf = (void **) malloc(4);
       for(int i = 0; i < addressNum; i++) {
-        socket->takeRangeF(addressbuf, addressSize);
+        //socket->takeRangeF(addressbuf, addressSize);
+        socket->takeRangeF(addressbuf, 4);
         addressVector.push_back(*addressbuf);
       }
       free(addressbuf);
@@ -836,7 +836,7 @@ namespace corelab {
 			//ptConstEnd = truncToPageAddr ((void *)((XmemUintPtr)end_const + XMEM_PAGE_SIZE - 1));
 
 #ifdef DEBUG_UVA
-      printf("UVAManager::setConstantRange: ptNoConst (%p~%p) \n", ptNoConstBegin, ptNoConstEnd/*, ptConstBegin, ptConstEnd*/);
+      LOG("ptNoConst (%p~%p) \n", ptNoConstBegin, ptNoConstEnd/*, ptConstBegin, ptConstEnd*/);
 #endif
 			// FIXME: To enforce the constantness of the given range,
 			// 	We should rule out pages in the range from the EXCLUSIVE set
@@ -855,7 +855,7 @@ namespace corelab {
 
     void UVAManager::storeHandlerForHLRC(QSocket *socket, size_t typeLen, void *data, void *addr) {
 #ifdef DEBUG_UVA
-      LOG("[client] in storeLog (isInCriticalSection %d)\n", isInCriticalSection);
+      LOG("[client] storeHandlerForHLRC START (isInCriticalSection %d)\n", isInCriticalSection);
 #endif
       uint32_t intAddr = makeInt32Addr(addr);
       if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
@@ -866,16 +866,19 @@ namespace corelab {
       void *tmpData = malloc(typeLen);
       memcpy(tmpData, &data, typeLen);
 #ifdef DEBUG_UVA
-      LOG("[client] tmpData (data:%d)\n", *((int*)tmpData));
+      //LOG("[client] tmpData (data:%d)\n", *((int*)tmpData));
 #endif
       struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), tmpData, addr);
       if(!isInCriticalSection) {
-        vecCriticalSectionStoreLogs->push_back(slog);
-        sizeCriticalSectionStoreLogs = sizeCriticalSectionStoreLogs + 8 + typeLen;
-      } else {
         vecStoreLogs->push_back(slog);
         sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
+      } else {
+        vecCriticalSectionStoreLogs->push_back(slog);
+        sizeCriticalSectionStoreLogs = sizeCriticalSectionStoreLogs + 8 + typeLen;
       }
+#ifdef DEBUG_UVA
+      LOG("[client] storeHandlerForHLRC END\n\n");
+#endif
     }
 
     void *UVAManager::memsetHandlerForHLRC(QSocket *socket, void *addr, int value, size_t num) {
