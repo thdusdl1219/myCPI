@@ -34,6 +34,7 @@
 #include <cstdio>
 
 //#define DEBUG_MM
+#define HLRC
 
 using namespace corelab;
 
@@ -1087,7 +1088,9 @@ static void installMemAccessHandler(Module &M,
           }
           args[0] = loadTypeSize_; 
           args[1] = addr;
+#ifndef HLRC
           CallInst::Create(Load, args, "", ld);
+#endif
         //}
       }
       // For each store instructions

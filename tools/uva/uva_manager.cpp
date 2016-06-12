@@ -900,7 +900,7 @@ namespace corelab {
 
     void *UVAManager::memcpyHandlerForHLRC(QSocket *socket, void *dest, void *src, size_t num) {
       // XXX: no need...
-      if((long)dest > 0xffffffff || (long)src > 0xffffffff)
+      if((long)dest > 0xffffffff && (long)src > 0xffffffff)
         return dest;
       uint32_t intDest = makeInt32Addr(dest);
       uint32_t intSrc = makeInt32Addr(src);
@@ -914,9 +914,9 @@ namespace corelab {
       LOG("[client] HLRC Memcpy : destination = %u(%p), src = %u(%p)\n",intDest, dest, intSrc, src);
 #endif
       if(isUVAheapAddr(intDest) || isUVAglobalAddr(intDest)) {
-        typeMemcpy = 1;
+        typeMemcpy = 1; // dest is in UVA
       } else if (isUVAheapAddr(intSrc) || isUVAglobalAddr(intSrc)) {
-        typeMemcpy = 2;
+        typeMemcpy = 2; // src is in UVA
         return dest; // CHECK
       } else {
         return dest;
@@ -942,7 +942,7 @@ namespace corelab {
         LOG("[client] HLRC Memcpy : tmpData (%d)\n", *((int*)tmpData));
 #endif
         struct StoreLog *slog = new StoreLog ( static_cast<int>(num), tmpData, dest );
-        if(!isInCriticalSection) {
+        if(isInCriticalSection) {
           vecCriticalSectionStoreLogs->push_back(slog);
           sizeCriticalSectionStoreLogs = sizeStoreLogs + 8 + num;
         } else {
