@@ -263,62 +263,63 @@ namespace corelab {
       void *storeLogs;
       sizeStoreLogs = socket->takeWordF(clientId);
 #ifdef DEBUG_UVA
-          LOG("[server] sizeStoreLogs : (%d)\n", sizeStoreLogs);
+      LOG("[server] sizeStoreLogs : (%d)\n", sizeStoreLogs);
 #endif
-      storeLogs = malloc(sizeStoreLogs);
+      if (sizeStoreLogs != 0) {
+        storeLogs = malloc(sizeStoreLogs);
 #ifdef DEBUG_UVA
-          LOG("[server] StoreLogs address : (%p)\n", storeLogs);
+        LOG("[server] StoreLogs address : (%p)\n", storeLogs);
 #endif
-      socket->takeRangeF(storeLogs, sizeStoreLogs, clientId);
-      
+        socket->takeRangeF(storeLogs, sizeStoreLogs, clientId);
 #if UINTPTR_MAX == 0xffffffff
-      /* 32-bit */
-      uint32_t intAddrOfStoreLogs;
-      memcpy(&intAddrOfStoreLogs, &storeLogs, 4); 
-      uint32_t current = intAddrOfStoreLogs;
+        /* 32-bit */
+        uint32_t intAddrOfStoreLogs;
+        memcpy(&intAddrOfStoreLogs, &storeLogs, 4); 
+        uint32_t current = intAddrOfStoreLogs;
 #elif UINTPTR_MAX == 0xffffffffffffffff
-      /* 64-bit */
-      uint64_t intAddrOfStoreLogs;
-      memcpy(&intAddrOfStoreLogs, &storeLogs, 8); 
-      uint64_t current = intAddrOfStoreLogs;
+        /* 64-bit */
+        uint64_t intAddrOfStoreLogs;
+        memcpy(&intAddrOfStoreLogs, &storeLogs, 8); 
+        uint64_t current = intAddrOfStoreLogs;
 #else
-      /* hmm ... */
-      assert(0);
+        /* hmm ... */
+        assert(0);
 #endif
-      uint32_t size;
-      void *data;
-      void **addr;
-      addr = (void **)malloc(4);
-      while (current != intAddrOfStoreLogs + sizeStoreLogs) {
-        memcpy(&size, reinterpret_cast<void*>(current), 4);
-        data = malloc(size);
-        memcpy(data, reinterpret_cast<void*>(current+4), size);
-        memset(addr, 0, 8);
-        memcpy(addr, reinterpret_cast<void*>(current+4+size), 4);
-        
+        uint32_t size;
+        void *data;
+        void **addr;
+        addr = (void **)malloc(4);
+        while (current != intAddrOfStoreLogs + sizeStoreLogs) {
+          memcpy(&size, reinterpret_cast<void*>(current), 4);
+          data = malloc(size);
+          memcpy(data, reinterpret_cast<void*>(current+4), size);
+          memset(addr, 0, 8);
+          memcpy(addr, reinterpret_cast<void*>(current+4+size), 4);
+
 #ifdef DEBUG_UVA
-        LOG("[server] in while | curStoreLog (size:%d, addr:%p, data:%x)\n", size, *addr, *(int*)data);
+          LOG("[server] in while | curStoreLog (size:%d, addr:%p, data:%x)\n", size, *addr, *(int*)data);
 #endif
-        memcpy(*addr, data, size);
-        //pageMap[(long)(truncToPageAddr(*addr))]->accessS->insert(*clientId);
-        struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*addr))];
-        if (pageInfo != NULL) {
-          pageInfo->accessS->clear();
-          pageInfo->accessS->insert(*clientId);
+          memcpy(*addr, data, size);
+          //pageMap[(long)(truncToPageAddr(*addr))]->accessS->insert(*clientId);
+          struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*addr))];
+          if (pageInfo != NULL) {
+            pageInfo->accessS->clear();
+            pageInfo->accessS->insert(*clientId);
 #ifdef DEBUG_UVA
-          LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(*addr), *clientId);
+            LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(*addr), *clientId);
 #endif
-        } else {
-          assert(0);
-        }
+          } else {
+            assert(0);
+          }
 #ifdef DEBUG_UVA
-        //hexdump("release", *addr, size);
+          //hexdump("release", *addr, size);
 #endif
-        free(data);
-        current = current + 8 + size;
-      } // while END
-      free(addr);
-      free(storeLogs);
+          free(data);
+          current = current + 8 + size;
+        } // while END
+        free(addr);
+        free(storeLogs);
+      }
 
       set<uint32_t> sendAddrSet;
       // find same cliendId in accessSet in pageInfo
@@ -571,7 +572,7 @@ namespace corelab {
       LOG("[server] get HEAP_SEGFAULT_REQ from client (%d) on (%p)\n", *clientId, fault_heap_addr);
 #endif
       socket->pushRangeF(truncToPageAddr(fault_heap_addr), 0x1000, clientId);
-      struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*fault_heap_addr))];
+      /*struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*fault_heap_addr))];
       if (pageInfo != NULL) {
         //pageInfo->accessS->clear();
         pageInfo->accessS->insert(*clientId);
@@ -580,7 +581,7 @@ namespace corelab {
 #endif
       } else {
         assert(0);
-      }
+      }*/
       socket->sendQue(clientId);
       return;
     }

@@ -546,7 +546,8 @@ namespace corelab {
       /* Second, send them all */
       socket->pushWordF(SYNC_REQ);
       socket->pushWordF(sizeStoreLogs);
-      socket->pushRange(storeLogs, sizeStoreLogs);
+      if (sizeStoreLogs != 0)
+        socket->pushRange(storeLogs, sizeStoreLogs);
       socket->sendQue();
       sizeStoreLogs = 0;
       free(storeLogs);
