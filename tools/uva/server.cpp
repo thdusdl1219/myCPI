@@ -385,12 +385,18 @@ namespace corelab {
       void *lastPageAddr_ = truncToPageAddr((void*)(current + datalen - 1));
       memcpy(&current, &current_, 4);
       memcpy(&lastPageAddr, &lastPageAddr_, 4);
+#ifdef DEBUG_UVA
+      LOG("[server] current (%p) lastPageAddr (%p)\n", reinterpret_cast<void*>(current), reinterpret_cast<void*>(lastPageAddr));
+#endif
       while(current <= lastPageAddr) {
         struct pageInfo* newPageInfo = new pageInfo();
         newPageInfo->accessS->insert(-1);
         //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
         (*pageMap)[(long)current] = newPageInfo;
-        assert(allocAddr != NULL && "mmap alloc failed in server");
+#ifdef DEBUG_UVA
+        LOG("[server] current (%p) is added into PageMap\n", reinterpret_cast<void*>(current));
+#endif
+        //assert(allocAddr != NULL && "mmap alloc failed in server");
         current += PAGE_SIZE;
       }
 
@@ -500,11 +506,17 @@ namespace corelab {
       void *lastPageAddr_ = truncToPageAddr((void*)(current + sizeOfLength - 1));
       memcpy(&current, &current_, 4);
       memcpy(&lastPageAddr, &lastPageAddr_, 4);
+#ifdef DEBUG_UVA
+      LOG("[server] current (%p) lastPageAddr (%p)\n", reinterpret_cast<void*>(current), reinterpret_cast<void*>(lastPageAddr));
+#endif
       while(current <= lastPageAddr) {
         struct pageInfo* newPageInfo = new pageInfo();
         newPageInfo->accessS->insert(-1);
         //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
         (*pageMap)[(long)current] = newPageInfo;
+#ifdef DEBUG_UVA
+        LOG("[server] current (%p) is added into PageMap\n", reinterpret_cast<void*>(current));
+#endif
         assert(allocAddr != NULL && "mmap alloc failed in server");
         current += PAGE_SIZE;
       }
