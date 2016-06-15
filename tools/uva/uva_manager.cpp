@@ -574,7 +574,7 @@ namespace corelab {
       for(vector<void*>::iterator it = addressVector.begin(); it != addressVector.end(); it++) {
         void* address = *it;
 #ifdef DEBUG_UVA
-        LOG("invalidate address : %p\n", address);
+        //LOG("invalidate address : %p\n", address);
 #endif
         mprotect(truncToPageAddr(address), PAGE_SIZE, PROT_NONE);
       }
