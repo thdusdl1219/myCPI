@@ -485,11 +485,20 @@ namespace corelab {
       LOG("[server] allocAddr : %p\n", allocAddr);
 #endif
 
-      struct pageInfo* newPageInfo = new pageInfo();
-      newPageInfo->accessS->insert(-1);
-      //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
-      (*pageMap)[(long)(truncToPageAddr(requestedAddr))] = newPageInfo;
-      assert(allocAddr != NULL && "mmap alloc failed in server");
+      uint32_t current;
+      uint32_t lastPageAddr;
+      void *current_ = truncToPageAddr(requestedAddr);
+      void *lastPageAddr_ = truncToPageAddr((void*)(current + sizeOfLength - 1));
+      memcpy(&current, &current_, 4);
+      memcpy(&lastPageAddr, &lastPageAddr_, 4);
+      while(current <= lastPageAddr) {
+        struct pageInfo* newPageInfo = new pageInfo();
+        newPageInfo->accessS->insert(-1);
+        //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
+        (*pageMap)[(long)current] = newPageInfo;
+        assert(allocAddr != NULL && "mmap alloc failed in server");
+        current += PAGE_SIZE;
+      }
 
       socket->pushWordF(MMAP_REQ_ACK, clientId); // ACK
       socket->pushWordF(0, clientId); // ACK (0: normal, -1:abnormal)
