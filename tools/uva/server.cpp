@@ -379,11 +379,20 @@ namespace corelab {
       LOG("[server] allocAddr : (%p)\n", allocAddr);
       LOG("[server] new heapTop : %p\n", HeapTop);
 #endif
-      // insert pageTable into pageMap
-      struct pageInfo* newPageInfo = new pageInfo();
-      newPageInfo->accessS->insert(-1);
-      //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
-      (*pageMap)[(long)(truncToPageAddr(allocAddr))] = newPageInfo;
+      uint32_t current;
+      uint32_t lastPageAddr;
+      void *current_ = truncToPageAddr(allocAddr);
+      void *lastPageAddr_ = truncToPageAddr((void*)(current + datalen - 1));
+      memcpy(&current, &current_, 4);
+      memcpy(&lastPageAddr, &lastPageAddr_, 4);
+      while(current <= lastPageAddr) {
+        struct pageInfo* newPageInfo = new pageInfo();
+        newPageInfo->accessS->insert(-1);
+        //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
+        (*pageMap)[(long)current] = newPageInfo;
+        assert(allocAddr != NULL && "mmap alloc failed in server");
+        current += PAGE_SIZE;
+      }
 
       // memory operation end
       socket->pushWordF(HEAP_ALLOC_REQ_ACK, clientId);
