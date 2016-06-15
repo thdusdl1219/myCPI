@@ -60,9 +60,9 @@ namespace corelab {
       char port[10];
 
 #if TEST
-      //strcpy(port, "20000");
-      fprintf(stderr, "system : Enter port to listen : ");
-      scanf("%s", port);
+      strcpy(port, "20000");
+      //fprintf(stderr, "system : Enter port to listen : ");
+      //scanf("%s", port);
 #else
       fprintf(stderr, "system : Enter port to listen : ");
       scanf("%s", port);
@@ -566,18 +566,50 @@ namespace corelab {
     }
 
     void heapSegfaultHandler(int* clientId) {
+      void **fault_heap_addr = reinterpret_cast<void**>(socket->takeWordF(clientId));
 #ifdef DEBUG_UVA
-      LOG("[server] get HEAP_SEGFALUT_REQ from client (%d)\n", *clientId);
-#endif
-      void ** fault_heap_addr = reinterpret_cast<void**>(socket->takeWordF(clientId));
-#ifdef DEBUG_UVA
-      LOG("[server] get fault_heap_addr (%p)\n", fault_heap_addr);
+      LOG("[server] get HEAP_SEGFAULT_REQ from client (%d) on (%p)\n", *clientId, fault_heap_addr);
 #endif
       socket->pushRangeF(truncToPageAddr(fault_heap_addr), 0x1000, clientId);
+      struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*fault_heap_addr))];
+      if (pageInfo != NULL) {
+        //pageInfo->accessS->clear();
+        pageInfo->accessS->insert(*clientId);
+#ifdef DEBUG_UVA
+        LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(*addr), *clientId);
+#endif
+      } else {
+        assert(0);
+      }
       socket->sendQue(clientId);
       return;
     }
     
+    void globalSegfaultHandler(int* clientId) {
+#ifdef DEBUG_UVA
+      LOG("[server] get GLOBAL_SEGFALUT_REQ from client (%d)\n", *clientId);
+#endif
+
+      void* ptNoConstBegin = reinterpret_cast<void*>(socket->takeWordF(clientId));
+      void* ptNoConstEnd = reinterpret_cast<void*>(socket->takeWordF(clientId));
+
+      uintptr_t target = (uintptr_t)(&ptNoConstBegin);
+#ifdef DEBUG_UVA
+      LOG("[server] TEST ptConstBegin (%p)\n", (void*)(*((uintptr_t *)target)));
+
+      LOG("[server] send ack (%d)\n", GLOBAL_SEGFAULT_REQ_ACK);
+#endif
+      socket->pushWordF(GLOBAL_SEGFAULT_REQ_ACK, clientId); // ACK
+      socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptNoConstBegin))),
+          (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, clientId);
+      //socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptConstBegin))), (uintptr_t)ptConstEnd - (uintptr_t)ptConstBegin, clientId);
+      socket->sendQue(clientId);
+#ifdef DEBUG_UVA
+      LOG("[server] GLOBAL_SEGFALUT_REQ process end (%d)\n", *clientId);
+#endif
+      return;
+    }
+
     void globalInitCompleteHandler(int* clientId) {
 #ifdef DEBUG_UVA
       LOG("[server] get GLOBAL_INIT_COMPLETE_SIG from client (%d)\n", *clientId);
@@ -604,32 +636,9 @@ namespace corelab {
       return;
     }
 
-    void globalSegfaultHandler(int* clientId) {
-#ifdef DEBUG_UVA
-      LOG("[server] get GLOBAL_SEGFALUT_REQ from client (%d)\n", *clientId);
-#endif
-
-      void* ptNoConstBegin = reinterpret_cast<void*>(socket->takeWordF(clientId));
-      void* ptNoConstEnd = reinterpret_cast<void*>(socket->takeWordF(clientId));
-
-      uintptr_t target = (uintptr_t)(&ptNoConstBegin);
-#ifdef DEBUG_UVA
-      LOG("[server] TEST ptConstBegin (%p)\n", (void*)(*((uintptr_t *)target)));
-
-      LOG("[server] send ack (%d)\n", GLOBAL_SEGFAULT_REQ_ACK);
-#endif
-      socket->pushWordF(GLOBAL_SEGFAULT_REQ_ACK, clientId); // ACK
-      socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptNoConstBegin))),
-          (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, clientId);
-      //socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptConstBegin))), (uintptr_t)ptConstEnd - (uintptr_t)ptConstBegin, clientId);
-      socket->sendQue(clientId);
-#ifdef DEBUG_UVA
-      LOG("[server] GLOBAL_SEGFALUT_REQ process end (%d)\n", *clientId);
-#endif
-      return;
-    }
 
 
+    // XXX XXX XXX XXX XXX 
     // XXX DEPRECATED : These two function may not be used.
     extern "C" void uva_server_load(void *addr, size_t len) {
 #ifdef DEBUG_UVA
