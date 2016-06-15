@@ -390,7 +390,7 @@ namespace corelab {
 #endif
       while(current <= lastPageAddr) {
         struct pageInfo* newPageInfo = new pageInfo();
-        newPageInfo->accessS->insert(-1);
+        newPageInfo->accessS->insert(*clientId);
         //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
         (*pageMap)[(long)current] = newPageInfo;
 #ifdef DEBUG_UVA
@@ -511,7 +511,7 @@ namespace corelab {
 #endif
       while(current <= lastPageAddr) {
         struct pageInfo* newPageInfo = new pageInfo();
-        newPageInfo->accessS->insert(-1);
+        newPageInfo->accessS->insert(*clientId);
         //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
         (*pageMap)[(long)current] = newPageInfo;
 #ifdef DEBUG_UVA
