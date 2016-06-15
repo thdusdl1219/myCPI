@@ -383,7 +383,7 @@ namespace corelab {
       uint32_t lastPageAddr;
       void *current_ = truncToPageAddr(allocAddr);
       memcpy(&current, &current_, 4);
-      void *lastPageAddr_ = truncToPageAddr((void*)(current + datalen - 1));
+      void *lastPageAddr_ = truncToPageAddr((void*)(current + lenbuf - 1));
       memcpy(&lastPageAddr, &lastPageAddr_, 4);
 #ifdef DEBUG_UVA
       LOG("[server] current (%p) lastPageAddr (%p)\n", reinterpret_cast<void*>(current), reinterpret_cast<void*>(lastPageAddr));
