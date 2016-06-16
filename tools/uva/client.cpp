@@ -197,6 +197,10 @@ namespace corelab {
 		} // segfaultHandler
 
 		static void segfaultHandlerForHLRC (int sig, siginfo_t* si, void* unused) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
 			void *fault_addr = si->si_addr;
 #ifdef DEBUG_UVA
       LOG("[client] segfaultHandler | fault_addr : %p\n", fault_addr);
@@ -269,6 +273,12 @@ namespace corelab {
         hexdump("segfault", fault_addr, 24);
 #endif
       }
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "SEGFAULT %lf %d\n", watch.diff(), 24 + ((uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin) + PAGE_SIZE);
+      fclose(fp);
+#endif
       return;
       /*
 			if (hasPage (addr)) {

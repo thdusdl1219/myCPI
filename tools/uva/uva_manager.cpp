@@ -510,6 +510,10 @@ namespace corelab {
      */
     /* @detail Sync operation (mixing acquire & release) */
     void UVAManager::syncHandler(QSocket *socket) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
       /* At first, make store logs to be send to Home */
       void *storeLogs = malloc(sizeStoreLogs);
 #if UINTPTR_MAX == 0xffffffff
@@ -583,6 +587,12 @@ namespace corelab {
       //isInCriticalSection = true;
 #ifdef DEBUG_UVA
       LOG("[client] sync handler end (%d)\n", addressNum);
+#endif
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "SYNC %lf %d\n", watch.diff(), 8 + sizeStoreLogs + 4 + (4 *addressNum));
+      fclose(fp);
 #endif
     }
 
@@ -856,11 +866,23 @@ namespace corelab {
 		}
 
     void UVAManager::storeHandlerForHLRC(QSocket *socket, size_t typeLen, void *data, void *addr) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
 #ifdef DEBUG_UVA
       LOG("[client] storeHandlerForHLRC START (isInCriticalSection %d)\n", isInCriticalSection);
 #endif
       uint32_t intAddr = makeInt32Addr(addr);
-      if(!isUVAaddr(addr)) return;
+      if(!isUVAaddr(addr)) {
+#ifdef UVA_EVAL
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "STORE %lf %d\n", watch.diff(), typeLen);
+        fclose(fp);
+#endif
+        return;
+      }
 #ifdef DEBUG_UVA
       LOG("[client] in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
 #endif
@@ -881,11 +903,29 @@ namespace corelab {
 #ifdef DEBUG_UVA
       LOG("[client] storeHandlerForHLRC END\n\n");
 #endif
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "STORE %lf\n", watch.diff());
+      fclose(fp);
+#endif
     }
 
     void *UVAManager::memsetHandlerForHLRC(QSocket *socket, void *addr, int value, size_t num) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
       uint32_t intAddr = makeInt32Addr(addr);
-      if(!isUVAaddr(addr)) return addr;
+      if(!isUVAaddr(addr)) {
+#ifdef UVA_EVAL
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "MEMSET %lf %d\n", watch.diff(), num);
+        fclose(fp);
+#endif
+        return addr;
+      }
       
       void *tmpValue = malloc(num);
       memcpy(tmpValue, &value, num);
@@ -897,6 +937,12 @@ namespace corelab {
         vecCriticalSectionStoreLogs->push_back(slog);
         sizeCriticalSectionStoreLogs = sizeCriticalSectionStoreLogs + 8 + num;
       }
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "MEMSET %lf\n", watch.diff());
+      fclose(fp);
+#endif
       return addr;
     }
 
@@ -904,6 +950,10 @@ namespace corelab {
       // XXX: no need...
       if((long)dest > 0xffffffff && (long)src > 0xffffffff)
         return dest;
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
       uint32_t intDest = makeInt32Addr(dest);
       uint32_t intSrc = makeInt32Addr(src);
       /** typeMemcpy
@@ -921,6 +971,12 @@ namespace corelab {
         typeMemcpy = 2; // src is in UVA
         //return dest; // CHECK
       } else {
+#ifdef UVA_EVAL
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "MEMCPY %lf\n", watch.diff());
+        fclose(fp);
+#endif
         return dest;
       }
 
@@ -975,6 +1031,12 @@ namespace corelab {
         hexdump("memcpy", src, 30);
 #endif
       }
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "MEMCPY %lf %d\n", watch.diff(), 16 + num);
+      fclose(fp);
+#endif
       return dest;
     }
 
