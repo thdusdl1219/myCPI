@@ -623,6 +623,25 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[server] HLRC requested memcpy num (%d)\n", num);
 #endif
+        uint32_t current;
+        uint32_t lastPageAddr;
+        void *current_ = truncToPageAddr(src);
+        memcpy(&current, &current_, 4);
+        void *lastPageAddr_ = truncToPageAddr((void*)(current + num - 1));
+        memcpy(&lastPageAddr, &lastPageAddr_, 4);
+#ifdef DEBUG_UVA
+        LOG("[server] current (%p) lastPageAddr (%p)\n", reinterpret_cast<void*>(current), reinterpret_cast<void*>(lastPageAddr));
+#endif
+        while(current <= lastPageAddr) {
+          struct pageInfo* newPageInfo = new pageInfo();
+          newPageInfo->accessS->insert(*clientId);
+          //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
+          (*pageMap)[(long)current] = newPageInfo;
+#ifdef DEBUG_UVA
+          LOG("[server] current (%p) is added into PageMap\n", reinterpret_cast<void*>(current));
+#endif
+          current += PAGE_SIZE;
+        }
         socket->pushRangeF(src, num, clientId);
         // don't need to do memcpy in server
         socket->sendQue(clientId);
