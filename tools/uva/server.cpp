@@ -633,13 +633,16 @@ namespace corelab {
         LOG("[server] current (%p) lastPageAddr (%p)\n", reinterpret_cast<void*>(current), reinterpret_cast<void*>(lastPageAddr));
 #endif
         while(current <= lastPageAddr) {
-          struct pageInfo* newPageInfo = new pageInfo();
-          newPageInfo->accessS->insert(*clientId);
+          struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(current_))];
+          if (pageInfo != NULL) {
+          pageInfo->accessS->insert(*clientId);
           //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
-          (*pageMap)[(long)current] = newPageInfo;
 #ifdef DEBUG_UVA
-          LOG("[server] current (%p) is added into PageMap\n", reinterpret_cast<void*>(current));
+          LOG("[server] client (%d) is added into (%p) in PageMap\n", *clientId, reinterpret_cast<void*>(current));
 #endif
+          } else {
+            assert(0);
+          }
           current += PAGE_SIZE;
         }
         socket->pushRangeF(src, num, clientId);
