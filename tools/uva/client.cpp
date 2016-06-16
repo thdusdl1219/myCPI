@@ -258,6 +258,12 @@ namespace corelab {
         LOG("[client] segfaultHandler (TEST print)\n");
         hexdump("segfault", fault_addr, 24);
 #endif
+#ifdef UVA_EVAL
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "SEGFAULT %lf %d\n", watch.diff(), 16 + ((uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin));
+        fclose(fp);
+#endif
       } else if ((void*)0x18000000 <= fault_addr && fault_addr < (void*)0x38000000) {
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | fault_addr is in UVA HeapAddr space %p\n",fault_addr);
@@ -275,13 +281,13 @@ namespace corelab {
         LOG("[client] segfaultHandler (TEST print)\n");
         hexdump("segfault", fault_addr, 24);
 #endif
-      }
 #ifdef UVA_EVAL
       watch.end();
       FILE *fp = fopen("uva-eval.txt", "a");
-      fprintf(fp, "SEGFAULT %lf %d\n", watch.diff(), 24 + ((uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin) + PAGE_SIZE);
+      fprintf(fp, "SEGFAULT %lf %d\n", watch.diff(), 8 + ((uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin) + PAGE_SIZE);
       fclose(fp);
 #endif
+      }
       return;
       /*
 			if (hasPage (addr)) {

@@ -878,7 +878,7 @@ namespace corelab {
 #ifdef UVA_EVAL
         watch.end();
         FILE *fp = fopen("uva-eval.txt", "a");
-        fprintf(fp, "STORE %lf %d\n", watch.diff(), typeLen);
+        fprintf(fp, "STORE %lf\n", watch.diff());
         fclose(fp);
 #endif
         return;
@@ -921,7 +921,7 @@ namespace corelab {
 #ifdef UVA_EVAL
         watch.end();
         FILE *fp = fopen("uva-eval.txt", "a");
-        fprintf(fp, "MEMSET %lf %d\n", watch.diff(), num);
+        fprintf(fp, "MEMSET %lf\n", watch.diff());
         fclose(fp);
 #endif
         return addr;
@@ -1007,6 +1007,12 @@ namespace corelab {
           vecStoreLogs->push_back(slog);
           sizeStoreLogs = sizeStoreLogs + 8 + num;
         }
+#ifdef UVA_EVAL
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "MEMCPY %lf\n", watch.diff());
+        fclose(fp);
+#endif
       } else if (typeMemcpy == 2) {
         /*  if typeMemcpy is 2, we have to load "src".  
          *  dest is out of scope in this case.
@@ -1030,13 +1036,13 @@ namespace corelab {
 #ifdef DEBUG_UVA
         hexdump("memcpy", src, 30);
 #endif
-      }
 #ifdef UVA_EVAL
-      watch.end();
-      FILE *fp = fopen("uva-eval.txt", "a");
-      fprintf(fp, "MEMCPY %lf %d\n", watch.diff(), 16 + num);
-      fclose(fp);
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "MEMCPY %lf %d\n", watch.diff(), 16 + num);
+        fclose(fp);
 #endif
+      }
       return dest;
     }
 
