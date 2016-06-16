@@ -12,6 +12,8 @@
 #include "xmem_info.h"
 #include "uva_macro.h"
 
+#include "TimeUtil.h"
+
 #include "log.h"
 #include "hexdump.h"
 
@@ -19,7 +21,8 @@
 
 #define HLRC
 
-#define DEBUG_UVA
+//#define DEBUG_UVA
+#define UVA_EVAL
 
 #define LOCALTEST 0
 #define CORELAB_SERVER_TEST 1

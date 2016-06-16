@@ -22,9 +22,8 @@
 #include "TimeUtil.h"
 //#include "hexdump.h"
 
-#define DEBUG_UVA
-#define UVA_EVAL
-
+//#define DEBUG_UVA
+//#define UVA_EVAL
 
 namespace corelab {
 	namespace XMemory {
