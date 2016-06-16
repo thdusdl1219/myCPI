@@ -50,6 +50,7 @@ using namespace std;
 namespace corelab {
 	namespace UVA {
 		static const unsigned MEMORY_TRANSFER_UNIT = 4096 * 64;
+		static const unsigned EXPLICIT_PROT_MODE = PROT_READ | PROT_WRITE;
 		static const QSocketWord MEMTRANS_CONTD = 1;
 		static const QSocketWord MEMTRANS_END = 0;
 
@@ -754,7 +755,7 @@ namespace corelab {
       StopWatch watch;
       watch.start();
 #endif
-      if((long)dest > 0xffffffff || (long)src > 0xffffffff)
+      if((long)dest > 0xffffffff && (long)src > 0xffffffff)
         return dest;
       uint32_t intDest = makeInt32Addr(dest);
       uint32_t intSrc = makeInt32Addr(src);
@@ -918,7 +919,7 @@ namespace corelab {
         typeMemcpy = 1; // dest is in UVA
       } else if (isUVAheapAddr(intSrc) || isUVAglobalAddr(intSrc)) {
         typeMemcpy = 2; // src is in UVA
-        return dest; // CHECK
+        //return dest; // CHECK
       } else {
         return dest;
       }
@@ -950,6 +951,26 @@ namespace corelab {
           vecStoreLogs->push_back(slog);
           sizeStoreLogs = sizeStoreLogs + 8 + num;
         }
+      } else if (typeMemcpy == 2) {
+        /*  if typeMemcpy is 2, we have to load "src".  
+         *  dest is out of scope in this case.
+         */
+#ifdef DEBUG_UVA
+        LOG("[client] HLRC Memcpy : typeMemcpy (2), intSrc %p(%u)\n", src, intSrc);
+#endif
+        // XXX Is it OK?
+        //mmap(src, num, EXPLICIT_PROT_MODE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, (off_t)0);  
+        socket->pushWordF(MEMCPY_REQ);
+        socket->pushWordF(2); // typeMemcpy == 2
+        socket->pushWordF(intSrc);
+        socket->pushWordF(num);
+        socket->sendQue();
+
+        socket->receiveQue();
+        socket->takeRangeF(src, num);
+#ifdef DEBUG_UVA
+        hexdump("memcpy", src, num);
+#endif
       }
       return dest;
     }

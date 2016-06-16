@@ -13,6 +13,7 @@
 #include "xmem_info.h"
 #include "uva_macro.h"
 
+#define HLRC
 #define DEBUG_UVA
 
 #define TEST 1
@@ -131,7 +132,11 @@ namespace corelab {
             memsetHandler(clientId);
             break;
           case MEMCPY_REQ:
+#ifdef HLRC
+            memcpyHandlerForHLRC(clientId);
+#else
             memcpyHandler(clientId);
+#endif
             break;
           case HEAP_SEGFAULT_REQ:
             heapSegfaultHandler(clientId);
@@ -596,22 +601,56 @@ namespace corelab {
       return;
     }
 
+    void memcpyHandlerForHLRC(int* clientId) {
+#ifdef DEBUG_UVA
+      LOG("[server] HLRC get memcpy request from client\n");
+#endif
+      int typeMemcpy = socket->takeWordF(clientId);
+      if (typeMemcpy == 1) {
+#ifdef DEBUG_UVA
+        LOG("[server] typeMemcpy 1 | dest is in UVA | SHOULD NOT BE!!!!\n");
+#endif
+        assert(0);
+      } else if (typeMemcpy == 2) {
+#ifdef DEBUG_UVA
+        LOG("[server] HLRC typeMemcpy 2 | src is in UVA, dest isn't in UVA\n");
+#endif
+        void* src = reinterpret_cast<void*>(socket->takeWordF(clientId));
+#ifdef DEBUG_UVA
+        LOG("[server] HLRC requested memcpy src addr (%p)\n", src);
+#endif
+        size_t num = socket->takeWordF(clientId);
+#ifdef DEBUG_UVA
+        LOG("[server] HLRC requested memcpy num (%d)\n", num);
+#endif
+        socket->pushRangeF(src, num, clientId);
+        // don't need to do memcpy in server
+        socket->sendQue(clientId);
+      }
+      return;
+    }
     void heapSegfaultHandler(int* clientId) {
       void **fault_heap_addr = reinterpret_cast<void**>(socket->takeWordF(clientId));
 #ifdef DEBUG_UVA
       LOG("[server] get HEAP_SEGFAULT_REQ from client (%d) on (%p)\n", *clientId, fault_heap_addr);
 #endif
       socket->pushRangeF(truncToPageAddr(fault_heap_addr), 0x1000, clientId);
-      /*struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*fault_heap_addr))];
+      
+      /* XXX: Below are for optimization ... not sure XXX */
+      void *trunc = truncToPageAddr(fault_heap_addr);
+#ifdef DEBUG_UVA
+      LOG("[server] fault page addr : %p(%lu)\n", trunc, (long)trunc);
+#endif
+      struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(fault_heap_addr))];
       if (pageInfo != NULL) {
         //pageInfo->accessS->clear();
         pageInfo->accessS->insert(*clientId);
 #ifdef DEBUG_UVA
-        LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(*addr), *clientId);
+        LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(fault_heap_addr), *clientId);
 #endif
       } else {
         assert(0);
-      }*/
+      }
       socket->sendQue(clientId);
       return;
     }
@@ -634,6 +673,20 @@ namespace corelab {
       socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptNoConstBegin))),
           (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, clientId);
       //socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptConstBegin))), (uintptr_t)ptConstEnd - (uintptr_t)ptConstBegin, clientId);
+      
+      /* XXX: Below are for optimization ... not sure XXX */
+      /* XXX: only one page? No -> should be fixed */
+      struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(ptNoConstBegin))];
+      if (pageInfo != NULL) {
+        //pageInfo->accessS->clear();
+        pageInfo->accessS->insert(*clientId);
+#ifdef DEBUG_UVA
+        LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(ptNoConstBegin), *clientId);
+#endif
+      } else {
+        assert(0);
+      }
+
       socket->sendQue(clientId);
 #ifdef DEBUG_UVA
       LOG("[server] GLOBAL_SEGFALUT_REQ process end (%d)\n", *clientId);
