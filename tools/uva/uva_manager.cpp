@@ -99,7 +99,7 @@ namespace corelab {
 
     static inline uint32_t makeInt32Addr(void *addr);
     /* not exact */
-    static inline bool isUVAaddr(uint32_t intAddr);
+    static inline bool isUVAaddr(void *addr);
     static inline bool isUVAheapAddr(uint32_t intAddr);
     static inline bool isUVAglobalAddr(uint32_t intAddr);
 		
@@ -860,7 +860,7 @@ namespace corelab {
       LOG("[client] storeHandlerForHLRC START (isInCriticalSection %d)\n", isInCriticalSection);
 #endif
       uint32_t intAddr = makeInt32Addr(addr);
-      if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return;
+      if(!isUVAaddr(addr)) return;
 #ifdef DEBUG_UVA
       LOG("[client] in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
 #endif
@@ -885,7 +885,7 @@ namespace corelab {
 
     void *UVAManager::memsetHandlerForHLRC(QSocket *socket, void *addr, int value, size_t num) {
       uint32_t intAddr = makeInt32Addr(addr);
-      if(!(isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr))) return addr;
+      if(!isUVAaddr(addr)) return addr;
       
       void *tmpValue = malloc(num);
       memcpy(tmpValue, &value, num);
@@ -915,9 +915,9 @@ namespace corelab {
 #ifdef DEBUG_UVA
       LOG("[client] HLRC Memcpy : destination = %u(%p), src = %u(%p)\n",intDest, dest, intSrc, src);
 #endif
-      if(isUVAheapAddr(intDest) || isUVAglobalAddr(intDest)) {
+      if(isUVAaddr(dest)) {
         typeMemcpy = 1; // dest is in UVA
-      } else if (isUVAheapAddr(intSrc) || isUVAglobalAddr(intSrc)) {
+      } else if (isUVAaddr(src)) {
         typeMemcpy = 2; // src is in UVA
         //return dest; // CHECK
       } else {
@@ -959,7 +959,10 @@ namespace corelab {
         LOG("[client] HLRC Memcpy : typeMemcpy (2), intSrc %p(%u)\n", src, intSrc);
 #endif
         // XXX Is it OK?
-        //mmap(src, num, EXPLICIT_PROT_MODE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, (off_t)0);  
+        if(mmap(truncToPageAddr(src), num + PAGE_SIZE - num % 4096, EXPLICIT_PROT_MODE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, (off_t)0) == MAP_FAILED){
+          perror("mmap");
+          assert(0 && "[client] mmap failed");     
+        }
         socket->pushWordF(MEMCPY_REQ);
         socket->pushWordF(2); // typeMemcpy == 2
         socket->pushWordF(intSrc);
@@ -969,7 +972,7 @@ namespace corelab {
         socket->receiveQue();
         socket->takeRangeF(src, num);
 #ifdef DEBUG_UVA
-        // hexdump("memcpy", src, num);
+        hexdump("memcpy", src, 30);
 #endif
       }
       return dest;
@@ -1010,11 +1013,11 @@ namespace corelab {
     }
 
     /* not exact */
-    static inline bool isUVAaddr(uint32_t intAddr) {
-      if (352321536 <= intAddr && intAddr < 939524096)
-        return true;
-      else
+    static inline bool isUVAaddr(void *addr) {
+      if ((long)addr > 0xffffffff)
         return false;
+      uint32_t intAddr = makeInt32Addr(addr);
+      return (isUVAheapAddr(intAddr) || isUVAglobalAddr(intAddr));
     }
 
     static inline bool isUVAheapAddr(uint32_t intAddr) {
