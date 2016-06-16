@@ -284,7 +284,7 @@ namespace corelab {
 #ifdef UVA_EVAL
       watch.end();
       FILE *fp = fopen("uva-eval.txt", "a");
-      fprintf(fp, "SEGFAULT %lf %d\n", watch.diff(), 8 + ((uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin) + PAGE_SIZE);
+      fprintf(fp, "SEGFAULT %lf %d\n", watch.diff(), 8 + PAGE_SIZE);
       fclose(fp);
 #endif
       }
