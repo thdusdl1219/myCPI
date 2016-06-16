@@ -969,7 +969,7 @@ namespace corelab {
         socket->receiveQue();
         socket->takeRangeF(src, num);
 #ifdef DEBUG_UVA
-        hexdump("memcpy", src, num);
+        // hexdump("memcpy", src, num);
 #endif
       }
       return dest;
