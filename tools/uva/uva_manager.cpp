@@ -553,30 +553,13 @@ namespace corelab {
       socket->pushWordF(sizeStoreLogs);
       if (sizeStoreLogs != 0)
         socket->pushRange(storeLogs, sizeStoreLogs);
-#ifdef UVA_EVAL
-      StopWatch watchSend;
-      watchSend.start();
-#endif
       socket->sendQue();
-#ifdef UVA_EVAL
-      watchSend.end();
-      FILE *fp = fopen("uva-eval.txt", "a");
-      fprintf(fp, "SYNC | SEND %lf\n", watchSend.diff());
-#endif
       sizeStoreLogs = 0;
       free(storeLogs);
       vecStoreLogs->clear(); // XXX
 
       /* Third, recv invalidate address list. */
-#ifdef UVA_EVAL
-      StopWatch watchRecv;
-      watchRecv.start();
-#endif
       socket->receiveQue();
-#ifdef UVA_EVAL
-      watchRecv.end();
-      fprintf(fp, "SYNC | RECV %lf\n", watchRecv.diff());
-#endif
 #ifdef DEBUG_UVA
       LOG("[client] recv address list\n");
 #endif
@@ -607,7 +590,7 @@ namespace corelab {
 #endif
 #ifdef UVA_EVAL
       watch.end();
-      //FILE *fp = fopen("uva-eval.txt", "a");
+      FILE *fp = fopen("uva-eval.txt", "a");
       fprintf(fp, "SYNC %lf %d\n", watch.diff(), 8 + sizeStoreLogs + 4 + (4 *addressNum));
       fclose(fp);
 #endif

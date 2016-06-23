@@ -15,6 +15,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <thread>
+#include <netinet/tcp.h>
 
 #include "corelab/Utilities/Debug.h"
 #include "qsocket.h"
@@ -157,10 +158,6 @@ DEBUG_STMT (fprintf (stderr, "direct_sendsize:%u\n", size));
 	}
 
 	void QSocket::receiveQue (int *clientID) {
-#ifdef UVA_EVAL_SERVER
-    StopWatch watchRecvQue;
-    watchRecvQue.start();
-#endif
     Queue* que;
 
     if(clientID) {
@@ -175,11 +172,6 @@ DEBUG_STMT (fprintf (stderr, "direct_sendsize:%u\n", size));
 //DEBUG_STMT (fprintf (stderr, "recvsize:%u\n", que->size));
 		receive (que->data, que->size, clientID);
 //DEBUG_STMT (fprintf (stderr, "data received\n"));
-#ifdef UVA_EVAL_SERVER
-    watchRecvQue.end();
-    pthread_t id = pthread_self();
-    printf("RECEIVEQUE %lf %08x\n", watchRecvQue.diff(), id);
-#endif
 	} 
 
 	// Direct receive interface
@@ -424,8 +416,9 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 		int flags;
 		flags = fcntl (id, F_GETFL, 0);
 		assert (flags >= 0 && "initialization failed: cannot get socket flags");
-		res = fcntl (id, F_SETFL, flags | O_NONBLOCK);
-		assert (res >= 0 && "initialization failed: cannot add nonblock flag to socket");
+    setsockopt (id, SOL_TCP, TCP_NODELAY, &flags, sizeof (flags));
+		//res = fcntl (id, F_SETFL, flags | O_NONBLOCK);
+		//assert (res >= 0 && "initialization failed: cannot add nonblock flag to socket");
 	}
 
 	inline void QSocket::initializeQueue (Queue& que) {
@@ -503,9 +496,9 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 //int i = 0;
 //DEBUG_STMT (fprintf (stderr, "start receiving.. (size:%u)\n", size));
 		while (size > 0) {
-			size_t recvSize = read (id, _buf, size);
+			int recvSize = (int)read (id, _buf, size);
 
-			if (recvSize != -1) {
+			if (recvSize > 0) {
 				size -= recvSize;
 				_buf += recvSize;
 			}

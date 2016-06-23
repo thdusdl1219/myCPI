@@ -98,17 +98,7 @@ namespace corelab {
 
       while(true) {
 //        pthread_mutex_lock(&mutex);
-#ifdef UVA_EVAL
-        StopWatch watchRecv;
-        watchRecv.start();
-#endif
         socket->receiveQue(clientId);
-#ifdef UVA_EVAL
-        watchRecv.end();
-        pthread_t id = pthread_self();
-        printf("RECV %lf %08x\n", watchRecv.diff(), id);
-        //fclose(fp);
-#endif
 #ifdef UVA_EVAL
         StopWatch watchHandle;
         watchHandle.start();
@@ -174,10 +164,10 @@ namespace corelab {
             break;
         }
         //pthread_mutex_unlock(&mutex); // TODO need acquire & release lock
-#ifdef UVA_EVAL
+/*#ifdef UVA_EVAL
         watchHandle.end();
         printf("HANDLE %lf mode (%d) %08x\n", watchHandle.diff(), mode, id);
-#endif
+#endif*/
       }
       return NULL;
     }
