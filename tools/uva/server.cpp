@@ -13,8 +13,10 @@
 #include "xmem_info.h"
 #include "uva_macro.h"
 
+#include "TimeUtil.h"
+#include "uva_debug_eval.h"
+
 #define HLRC
-#define DEBUG_UVA
 
 #define TEST 1
 
@@ -92,16 +94,26 @@ namespace corelab {
       }
       int *clientId = (int *)data;
       int mode;
-      int rval = 0;
-
-
-      /* for memset, memcpy */
-
-      /* // for memset, memcpy */
+      int rval = 0; // for thread_exit
 
       while(true) {
 //        pthread_mutex_lock(&mutex);
+#ifdef UVA_EVAL
+        StopWatch watchRecv;
+        watchRecv.start();
+#endif
         socket->receiveQue(clientId);
+#ifdef UVA_EVAL
+        watchRecv.end();
+        pthread_t id = pthread_self();
+        printf("RECV %lf %08x\n", watchRecv.diff(), id);
+        //fclose(fp);
+#endif
+#ifdef UVA_EVAL
+        StopWatch watchHandle;
+        watchHandle.start();
+#endif
+        
         mode = socket->takeWordF(clientId);
 #ifdef DEBUG_UVA
         LOG("[server] *** Receive message from client (id: %d, mode %d) ***\n", *clientId, mode);  
@@ -129,6 +141,7 @@ namespace corelab {
             mmapHandler(clientId);
             break;
           case MEMSET_REQ:
+            // XXX: should handle HLRC version.
             memsetHandler(clientId);
             break;
           case MEMCPY_REQ:
@@ -161,6 +174,10 @@ namespace corelab {
             break;
         }
         //pthread_mutex_unlock(&mutex); // TODO need acquire & release lock
+#ifdef UVA_EVAL
+        watchHandle.end();
+        printf("HANDLE %lf mode (%d) %08x\n", watchHandle.diff(), mode, id);
+#endif
       }
       return NULL;
     }
@@ -260,6 +277,10 @@ namespace corelab {
     }
 
     void syncHandler(int *clientId) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
       pthread_mutex_lock(&acquireLock);
 #ifdef DEBUG_UVA
       LOG("[server] syncHandler START\n");
@@ -359,6 +380,12 @@ namespace corelab {
       LOG("[server] syncHandler END\n\n");
 #endif
       pthread_mutex_unlock(&acquireLock);
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval-server.txt", "a");
+      fprintf(fp, "SYNC %lf\n", watch.diff());
+      fclose(fp);
+#endif
     }
 
     void heapAllocHandler(int* clientId) {

@@ -14,6 +14,7 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <thread>
 
 #include "corelab/Utilities/Debug.h"
 #include "qsocket.h"
@@ -22,14 +23,15 @@
 
 #include "hexdump.h" // BONGJUN
 
-//#define SERVER_SIDE_OVERHEAD_TEST
+#include "TimeUtil.h"
 //#define OVERHEAD_TEST
+#define UVA_EVAL_SERVER
 
 #ifdef OVERHEAD_TEST
 #include "overhead.h"
 #endif
 
-//#define DEBUG_UVA
+#include "uva_debug_eval.h"
 
 //using namespace std;
 
@@ -44,8 +46,8 @@ namespace corelab {
 	OVERHEAD_TEST_DECL
 	#endif
 
-#ifdef SERVER_SIDE_OVERHEAD_TEST
-    FILE *fp = NULL;
+#ifdef UVA_EVAL_SERVER
+  FILE *fp = NULL;
 #endif
 
 	QSocket::QSocket () {
@@ -59,9 +61,9 @@ namespace corelab {
 		OHDTEST_SETUP ();
 		#endif
 
-#ifdef SERVER_SIDE_OVERHEAD_TEST
-    fp = fopen("SERVER_SIDE_OVERHEAD_TEST_RESULT.txt", "w");
-#endif
+/*#ifdef UVA_EVAL_SERVER
+    fp = fopen("uva-eval-server-qsocket.txt", "w");
+#endif*/
 	}
 
 	// Send queue interface
@@ -88,6 +90,10 @@ namespace corelab {
 	}
 
 	void QSocket::sendQue (int *clientID) {
+/*#ifdef UVA_EVAL_SERVER
+    StopWatch watchSendQue;
+    watchSendQue.start();
+#endif*/
     Queue* que;
     if(clientID) {
       que = sendQues[*clientID];
@@ -97,10 +103,15 @@ namespace corelab {
     }
 
 		send (&que->size, sizeof(QSocketWord), clientID);
-DEBUG_STMT (fprintf (stderr, "sendsize:%u\n", que->size));
+//DEBUG_STMT (fprintf (stderr, "sendsize:%u\n", que->size));
 		send (que->data, que->size, clientID);
-DEBUG_STMT (fprintf (stderr, "data sended\n"));
+//DEBUG_STMT (fprintf (stderr, "data sended\n"));
 		initializeQueue (*que);
+/*#ifdef UVA_EVAL_SERVER
+      fp = fopen("uva-eval-server-qsocket.txt", "a");
+      fprintf(fp, "SENDQUE %lf\n", watchSendQue.diff());
+      fclose(fp);
+#endif*/
 	}
 	
 	// Direct send interface
@@ -146,12 +157,13 @@ DEBUG_STMT (fprintf (stderr, "direct_sendsize:%u\n", size));
 	}
 
 	void QSocket::receiveQue (int *clientID) {
+#ifdef UVA_EVAL_SERVER
+    StopWatch watchRecvQue;
+    watchRecvQue.start();
+#endif
     Queue* que;
 
     if(clientID) {
-#ifdef DEBUG_UVA
-      //printf("recvQues size : %d\n", recvQues.size());
-#endif
       que = recvQues[*clientID];
     }
     else {
@@ -160,9 +172,14 @@ DEBUG_STMT (fprintf (stderr, "direct_sendsize:%u\n", size));
     assert(que != NULL);
 		initializeQueue (*que);
 		receive (&que->size, sizeof(QSocketWord), clientID);
-DEBUG_STMT (fprintf (stderr, "recvsize:%u\n", que->size));
+//DEBUG_STMT (fprintf (stderr, "recvsize:%u\n", que->size));
 		receive (que->data, que->size, clientID);
-DEBUG_STMT (fprintf (stderr, "data received\n"));
+//DEBUG_STMT (fprintf (stderr, "data received\n"));
+#ifdef UVA_EVAL_SERVER
+    watchRecvQue.end();
+    pthread_t id = pthread_self();
+    printf("RECEIVEQUE %lf %08x\n", watchRecvQue.diff(), id);
+#endif
 	} 
 
 	// Direct receive interface
@@ -295,9 +312,9 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 		fclose (fres);
 		#endif
 
-#ifdef SERVER_SIDE_OVERHEAD_TEST_RESULT
+/*#ifdef UVA_EVAL_SERVER
     fclose(fp);
-#endif
+#endif*/
 		return true;
 	}
 
@@ -462,12 +479,6 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
     int id = idClient;
     if(clientID){
       id = *clientID;
-#ifdef SERVER_SIDE_OVERHEAD_TEST
-      fp = fopen("SERVER_SIDE_OVERHEAD_TEST_RESULT.txt", "a");
-      fprintf(fp, "SEND %lu\n", size);
-      fprintf(stderr, "SEND %lu\n", size);
-      fclose(fp);
-#endif
     }
 //int i = 0;
 //DEBUG_STMT (fprintf (stderr, "start sending.. (size:%u)\n", size));
@@ -488,12 +499,6 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
     int id = idClient;
     if(clientID){
       id = *clientID;
-#ifdef SERVER_SIDE_OVERHEAD_TEST
-      fp = fopen("SERVER_SIDE_OVERHEAD_TEST_RESULT.txt", "a");
-      fprintf(fp, "RECV %lu\n", size);
-      fprintf(stderr, "RECV %lu\n", size);
-      fclose(fp);
-#endif
     }
 //int i = 0;
 //DEBUG_STMT (fprintf (stderr, "start receiving.. (size:%u)\n", size));

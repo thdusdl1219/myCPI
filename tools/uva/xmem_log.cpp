@@ -3,7 +3,8 @@
 #include <cstdlib>
 #include <vector>
 
-//#define DEBUG_UVA
+#include "uva_debug_eval.h"
+
 using namespace std;
 
 static std::vector<XmemLog> logList;

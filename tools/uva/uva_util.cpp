@@ -16,7 +16,7 @@
 #include "uva_manager.h"
 #include "debug.h"
 
-//#define DEBUG_UVA
+#include "uva_debug_eval.h"
 
 namespace corelab {
 	namespace UVA {
@@ -29,7 +29,7 @@ DEBUG_STMT (fprintf (stderr, "UVAUtilMemcpy: copying.. (dest: %p, source: %p, si
 		extern "C"
     void UVAUtilSetConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/) {
 #ifdef DEBUG_UVA
-fprintf (stderr, "setting constant range.. NoConst (begin: %p, end %p)\n", begin_noconst, end_noconst/*, begin_const, end_const*/);
+      fprintf (stderr, "setting constant range.. NoConst (begin: %p, end %p)\n", begin_noconst, end_noconst/*, begin_const, end_const*/);
 #endif
 			UVAManager::setConstantRange (begin_noconst, end_noconst/*, begin_const, end_const*/);
 		}

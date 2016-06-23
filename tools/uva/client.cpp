@@ -17,12 +17,12 @@
 #include "log.h"
 #include "hexdump.h"
 
+#include "uva_debug_eval.h"
+
 #define GET_PAGE_ADDR(x) ((x) & 0xFFFFF000)
 
 #define HLRC
 
-//#define DEBUG_UVA
-#define UVA_EVAL
 
 #define LOCALTEST 0
 #define CORELAB_SERVER_TEST 1
@@ -249,7 +249,16 @@ namespace corelab {
         Msocket->pushWordF(intAddrEnd);
         Msocket->sendQue();
 
+/*#ifdef UVA_EVAL
+        StopWatch watchRecv;
+        watchRecv.start();
+#endif*/
         Msocket->receiveQue();
+/*#ifdef UVA_EVAL
+        watchRecv.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "SEGFAULT | RECV %lf\n", watchRecv.diff());
+#endif*/
         int ack = Msocket->takeWordF();
         assert(ack == GLOBAL_SEGFAULT_REQ_ACK && "wrong!!!");
         Msocket->takeRangeF(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin);
@@ -273,8 +282,17 @@ namespace corelab {
         Msocket->pushWordF(HEAP_SEGFAULT_REQ);
         Msocket->pushWordF(intFaultAddr);
         Msocket->sendQue();
-        
+
+/*#ifdef UVA_EVAL
+        StopWatch watchRecv;
+        watchRecv.start();
+#endif*/
         Msocket->receiveQue();
+/*#ifdef UVA_EVAL
+        watchRecv.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "SEGFAULT | RECV %lf\n", watchRecv.diff());
+#endif*/
         Msocket->takeRangeF(truncToPageAddr(fault_addr), PAGE_SIZE);
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | getting a page in heap is done\n");
@@ -282,10 +300,10 @@ namespace corelab {
         hexdump("segfault", fault_addr, 24);
 #endif
 #ifdef UVA_EVAL
-      watch.end();
-      FILE *fp = fopen("uva-eval.txt", "a");
-      fprintf(fp, "SEGFAULT %lf %d\n", watch.diff(), 8 + PAGE_SIZE);
-      fclose(fp);
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "SEGFAULT %lf %d\n", watch.diff(), 8 + PAGE_SIZE);
+        fclose(fp);
 #endif
       }
       return;
