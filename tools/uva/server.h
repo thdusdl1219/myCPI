@@ -18,11 +18,13 @@ namespace corelab {
     void mmapHandler(int*);
     void memsetHandler(int*);
     void memcpyHandler(int*);
+    void memcpyHandlerForHLRC(int*);
     void heapSegfaultHandler(int*);
     void globalSegfaultHandler(int*);
     void globalInitCompleteHandler(int*);
     void invalidHandler(int*);
     void releaseHandler(int*);
+    void syncHandler(int*);
 
 
     /* These two function do nothing. Everybody are client */

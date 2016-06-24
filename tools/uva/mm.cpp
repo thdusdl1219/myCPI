@@ -22,9 +22,7 @@
 #include "TimeUtil.h"
 //#include "hexdump.h"
 
-#define DEBUG_UVA
-#define UVA_EVAL
-
+#include "uva_debug_eval.h"
 
 namespace corelab {
 	namespace XMemory {
@@ -485,7 +483,7 @@ namespace corelab {
 #endif
         //assert(mode == 7);
         int ack = socket->takeWord();
-        assert(ack == 0);
+        //assert(ack == 0);
         //fprintf(stderr, "len : %d\n", len);
         //char buf[len];
 

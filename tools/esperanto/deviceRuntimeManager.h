@@ -67,7 +67,7 @@ private:
 	pthread_mutex_t* jobIDLock;
   pthread_mutex_t* argsListLock;
 
-  std::map<int,std::vector<struct args_info>> args_list;
+  std::map<int,std::vector<struct args_info> > args_list;
 	int sendSocket;
 	int recvSocket;
 	int jobID;

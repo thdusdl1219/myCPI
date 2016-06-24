@@ -34,6 +34,7 @@
 #include <cstdio>
 
 //#define DEBUG_MM
+#define HLRC
 
 using namespace corelab;
 
@@ -1007,13 +1008,13 @@ static void filterStackAddrAccess(Module &M) {
           vecUVAInst.push_back((Instruction*)st);
         }
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(instruction)) {
-        if(!getIsStackValue(MSI->getDest())) {
+        //if(!getIsStackValue(MSI->getDest())) {
           vecUVAInst.push_back((Instruction*)MSI);
-        }
+        //}
       } else if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(instruction)) {
-        if(!getIsStackValue(MCI->getDest())) {
+        //if(!getIsStackValue(MCI->getDest())) {
           vecUVAInst.push_back((Instruction*)MCI);
-        }
+        //}
       }
     } 
   }
@@ -1087,7 +1088,9 @@ static void installMemAccessHandler(Module &M,
           }
           args[0] = loadTypeSize_; 
           args[1] = addr;
+#ifndef HLRC
           CallInst::Create(Load, args, "", ld);
+#endif
         //}
       }
       // For each store instructions

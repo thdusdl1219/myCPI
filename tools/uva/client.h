@@ -13,5 +13,7 @@ namespace corelab {
     
     extern "C" void uva_acquire();
     extern "C" void uva_release();
+
+    extern "C" void uva_sync();
   }
 }

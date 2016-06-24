@@ -8,6 +8,7 @@
  * modified by: bongjun
  *
  * **/
+#include <cstdlib>
 
 #include "qsocket.h"
 #include "xmem_spec.h"
@@ -32,6 +33,9 @@ namespace corelab {
         data = _data;
         addr = _addr;
       }
+      ~StoreLog() {
+        free(data);
+      }
     };
 
 		namespace UVAManager {
@@ -49,6 +53,8 @@ namespace corelab {
       // synchronization for HLRC (Home-based Lazy Release Consistency)
       void acquireHandler(QSocket *socket);
       void releaseHandler(QSocket *socket);
+      
+      void syncHandler(QSocket *socket);
 
       // Memory Access handler (BONGJUN)
       void loadHandler(QSocket *socket, size_t typeLen, void *addr);

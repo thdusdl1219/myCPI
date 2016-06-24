@@ -18,6 +18,8 @@
 #include <cstdio>
 #include "pageset.h"
 
+#include "uva_debug_eval.h"
+
 #define BITVEC_SIZE 32  	/* XXX MUST BE CONSISTENT TO BITVEC TYPE XXX */
 #define BITVEC_BITS 5			/* XXX MUST BE CONSISTENT TO BITVEC TYPE XXX */
 #define BITVEC_MASK 0x1F 	/* XXX MUST BE CONSISTENT TO BITVEC TYPE XXX */
@@ -27,7 +29,6 @@
 
 #define PAGESET_END 0
 
-//#define DEBUG_UVA
 
 namespace corelab {
 	namespace UVA {

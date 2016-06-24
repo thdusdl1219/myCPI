@@ -274,6 +274,7 @@ namespace corelab {
 
 		Constant *cnstOffSetCRange = M.getOrInsertFunction ("UVAUtilSetConstantRange",
 				tyVoid, tyInt8Pt, tyInt8Pt/*, tyInt8Pt, tyInt8Pt*/, NULL);
+    Constant *uvaSync = M.getOrInsertFunction ("uva_sync", tyVoid, NULL);
     Constant *cnstSendInitCompleteSignal = M.getOrInsertFunction ("sendInitCompleteSignal", tyVoid, NULL);
 
 		vector<Value *> vecSetCRangeArgs;
@@ -321,9 +322,11 @@ namespace corelab {
         }
         if (isExistEarlierCallInst) {
           out << CallInst::Create(fnDeclCRange, actuals, "");
+          out2 << CallInst::Create (uvaSync, actuals, "");
           out2 << CallInst::Create(cnstSendInitCompleteSignal, actuals, "");
         } else {
           BasicBlock *bbOfCtor = &(ctor->front());
+          CallInst *CI2 = CallInst::Create (uvaSync, actuals, "", bbOfCtor->getFirstNonPHI());
           CallInst *CI = CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
           CallInst::Create(cnstSendInitCompleteSignal, actuals, "", CI);
         }

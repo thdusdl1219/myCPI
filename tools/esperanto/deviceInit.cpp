@@ -535,8 +535,13 @@ void* listenerFunction(void* arg){
       //sourceJobID = temp[0];
 			payloadSize = temp[1];
 			char* buffer = (char*)malloc(payloadSize);
+<<<<<<< HEAD
 			//DataQElem* elem = new DataQElem();
 			write(recvSocket,&ack,1);
+=======
+			DataQElem* elem = new DataQElem();
+			//write(recvSocket,&ack,1);
+>>>>>>> 3026d038f4dcd4914f24a4c111fd36d09decb1ac
 			if(type == 'F' || type == 'A'){
 				recvComplete(recvSocket,buffer,payloadSize);
 				int FID = *(int*)buffer;
@@ -706,7 +711,7 @@ void* sendQHandlerFunction(void* arg){
 				
 				//LOG("function %d is called\n",sendElem->getFunctionID());
 				sendComplete(sendSocket,header,9);
-				read(sendSocket,&ack,1);
+				//read(sendSocket,&ack,1);
 				//LOG("DEBUG :: send Arg size is %d\n",sendElem->getArgsSize());
 				if(sendElem->getArgsSize() >0)
 					payloadSize = sendComplete(sendSocket,payload,(argSize));
@@ -737,7 +742,7 @@ void* sendQHandlerFunction(void* arg){
           memcpy(payload,(char*)sendElem->getRetVal(),sendElem->getRetSize());
           //sprintf(payload,"%s",(char*)sendElem->getRetVal());
           sendComplete(sendSocket,header,9);
-          read(sendSocket,&ack,1);
+          //read(sendSocket,&ack,1);
           if(sendElem->getRetSize() >0)
             sendComplete(sendSocket,payload,sendElem->getRetSize());
 #ifdef DEBUG_ESP
@@ -759,7 +764,7 @@ void* sendQHandlerFunction(void* arg){
           payload = (char*)malloc(retSize);
           memcpy(payload,(char*)sendElem->getRetVal(),retSize);
           sendComplete(sendSocket,header,9);
-          read(sendSocket,&ack,1);
+          //read(sendSocket,&ack,1);
           //LOG("register device : %lu, %d\n",sendElem->getRetVal(),sendElem->getRetVal()+4);
           sendComplete(sendSocket,payload,retSize);
           //LOG("-------------------------------------------------------------------------------------\n");
@@ -910,9 +915,9 @@ void deviceInit(ApiCallback fcn, int id){
 
 	if(updateMyFIDTable(filename)){
 		//LOG("updateMyFIDTable\n");
-	dqm = new DataQManager();
-	char* dummy = (char*)malloc(10000);
 	drm = new DeviceRuntimeManager();  
+	dqm = new DataQManager();
+	// char* dummy = (char*)malloc(10000);
 	dqm->initQ();
 		//pthread_create(&handlerThread, NULL, &eventHandler, NULL);
 		//pthread_create(&sendQHandlerThread,NULL,
