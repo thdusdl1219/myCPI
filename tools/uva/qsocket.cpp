@@ -490,8 +490,14 @@ DEBUG_STMT (fprintf (stderr, "direct_recvsize:%u\n", size));
 	inline void QSocket::receive (void *buf, size_t size, int *clientID)	{
 		char *_buf = (char *)buf;
     int id = idClient;
+    int flags;
     if(clientID){
       id = *clientID;
+    }
+    if (size > 4096) {
+      setsockopt (id, SOL_TCP, ~TCP_NODELAY, &flags, sizeof (flags));
+    } else {
+      setsockopt (id, SOL_TCP, TCP_NODELAY, &flags, sizeof (flags));
     }
 //int i = 0;
 //DEBUG_STMT (fprintf (stderr, "start receiving.. (size:%u)\n", size));
