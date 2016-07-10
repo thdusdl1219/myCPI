@@ -535,13 +535,8 @@ void* listenerFunction(void* arg){
       //sourceJobID = temp[0];
 			payloadSize = temp[1];
 			char* buffer = (char*)malloc(payloadSize);
-<<<<<<< HEAD
-			//DataQElem* elem = new DataQElem();
-			write(recvSocket,&ack,1);
-=======
 			DataQElem* elem = new DataQElem();
 			//write(recvSocket,&ack,1);
->>>>>>> 3026d038f4dcd4914f24a4c111fd36d09decb1ac
 			if(type == 'F' || type == 'A'){
 				recvComplete(recvSocket,buffer,payloadSize);
 				int FID = *(int*)buffer;

@@ -26,6 +26,7 @@ namespace corelab {
 			Constant* ProduceFunctionArgument;
 			Constant* ConsumeReturn;
       Constant* PushArgument;
+      Constant* UvaSync; // BONG
 			void getClassPointer(Module& M);
 			void setFunctions(Module& M);
 			void substituteRemoteCall(Module& M);

@@ -105,6 +105,13 @@ void RemoteCall::setFunctions(Module &M) {
 			Type::getInt8PtrTy(Context),
 			Type::getInt32Ty(Context),
 			(Type*)0);
+
+  // void uva_sync();
+  UvaSync = M.getOrInsertFunction(
+      "uva_sync",
+      Type::getVoidTy(Context),
+      (Type*)0);
+
 	return;
 }
 
@@ -167,6 +174,10 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 				if(calledFunctionId < 0) continue;
 									//DEBUG(errs() << "called function's id is not 0"<< "\n");
 					
+        // BONG BEGIN: all function body has to include uva_sync call on both entry and exit.
+
+        // BONG END: //
+
 				//printf("function id : %d ==> %s\n",calledFunctionId,calledFunction->getName().data());
 				//printf("function & deviceID = %s / %d\n",calledFunction->getName().data(),deviceID);
 				StringRef devName = StringRef(deviceName);
@@ -195,6 +206,13 @@ void RemoteCall::substituteRemoteCall(Module& M) {
           createProduceAsyncFArgs(calledFunction, targetInstruction, targetInstruction);        
         }
         else{
+          // BONG BEGIN: uva_sync have to be called before and after remote call 
+          std::vector<Value*> actuals(0);
+          InstInsertPt out = InstInsertPt::Before(targetInstruction);
+          out << CallInst::Create(UvaSync, actuals, "");
+          out = InstInsertPt::After(targetInstruction);
+          out << CallInst::Create(UvaSync, actuals, "");
+          // BONG END: //
           Instruction* jobId = createJobId(calledFunction, targetInstruction);
           createProduceFArgs(calledFunction, targetInstruction, (Value*)jobId, targetInstruction);
           createConsumeReturn(calledFunction, (Value*)jobId, targetInstruction);
