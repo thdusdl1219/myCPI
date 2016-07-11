@@ -105,9 +105,9 @@ namespace corelab {
             out = InstInsertPt::After(inst);
 
           out << CallInst::Create(RegisterDevice, actuals);
-          actuals.resize(0);
-          out << CallInst::Create(UvaSync, actuals);
-          actuals.resize(1);
+          //actuals.resize(0);
+          //out << CallInst::Create(UvaSync, actuals);
+          //actuals.resize(1);
           
           /*
           if(CallInst* ci = dyn_cast<CallInst>(inst)){

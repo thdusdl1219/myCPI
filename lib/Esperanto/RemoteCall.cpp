@@ -283,17 +283,17 @@ void RemoteCall::substituteRemoteCall(Module& M) {
   findGV(M, vecGvars);
   InstInsertPt out;
   std::vector<Value*> actuals(0);
-  /*for (GlobalVariable *gv : vecGvars) {
-    if (Value V = dyn_cast<Value*>(gv)) {
-      for(auto U : V.users()){  // U is of type User*
-        if (auto I = dyn_cast<Instruction>(U)){
+  for (GlobalVariable *gv : vecGvars) {
+    for(auto U : gv->users()){  // U is of type User*
+      if (Instruction *I = dyn_cast<Instruction>(U)){
+        if(StoreInst *SI = dyn_cast<StoreInst>(I)) {
           // an instruction uses V
-          //out = InstInsertPt::Before(I);
-          //out << CallInst::Create(UvaSync, actuals, "global.use");
+          out = InstInsertPt::After(I);
+          out << CallInst::Create(UvaSync, actuals, "");
         }
       }
     }
-  }*/
+  }
   // BONG
 }
 
