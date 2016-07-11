@@ -446,7 +446,7 @@ void registerDevice(void* addr){
   memcpy(header+1,&sourceJobID,4);
   memcpy(header+5,&size,4);
   sendComplete(sendSocket,header,9);
-  read(sendSocket,&ack,1);
+  // read(sendSocket,&ack,1);
   sendComplete(sendSocket,info,size);
   
   printf("end of register device\n");
