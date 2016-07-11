@@ -41,6 +41,9 @@ using namespace std;
 char RemoteCall::ID = 0;
 static RegisterPass<RemoteCall> X("remote-call-test", "substitute remote call instructions.", false, false);
 
+static bool hasFunction (Constant* cnst);
+static void findGV(Module &M, vector<GlobalVariable*> &vecGvars);
+
 void RemoteCall::getAnalysisUsage(AnalysisUsage &AU) const {
 	//AU.addRequired< LoadNamer >();
 	//AU.addRequired< EsperantoNamer >();
@@ -173,29 +176,78 @@ void RemoteCall::substituteRemoteCall(Module& M) {
 				int calledFunctionId = esp.functionTable.getFunctionID(calledFunction);
 				if(calledFunctionId < 0) continue;
 									//DEBUG(errs() << "called function's id is not 0"<< "\n");
-					
-        // BONG BEGIN: all function body has to include uva_sync call on both entry and exit.
+				
+        /*  
+        // BONG BONG BONG BONG BONG 
+        // BEGIN: all function body has to include uva_sync call on both entry and exit(s).
+        // entry
+        std::vector<Value*> actuals(0);
+        BasicBlock &entry = calledFunction->getEntryBlock();
+        Instruction *nonphi = entry.getFirstNonPHI();
+        InstInsertPt out = InstInsertPt::Before(nonphi);
+        out << CallInst::Create(UvaSync, actuals, ""); 
+  
+        // exit: function may have mutiple exit blocks...
+        // Loop over all of the blocks in a function, tracking all of the blocks that
+        // return.
+        BasicBlock *ReturnBlock;
+        BasicBlock *UnreachableBlock;
+        std::vector<BasicBlock*> ReturningBlocks;
+        std::vector<BasicBlock*> UnreachableBlocks;
+        for (BasicBlock &I : *calledFunction)
+          if (isa<ReturnInst>(I.getTerminator()))
+            ReturningBlocks.push_back(&I);
+          else if (isa<UnreachableInst>(I.getTerminator()))
+            UnreachableBlocks.push_back(&I);
 
-        // BONG END: //
+        // Then unreachable blocks. XXX: Check
+        if (UnreachableBlocks.empty()) {
+          UnreachableBlock = nullptr;
+        } else if (UnreachableBlocks.size() == 1) {
+          UnreachableBlock = UnreachableBlocks.front();
+        } else {
+          UnreachableBlock = BasicBlock::Create(calledFunction->getContext(), 
+              "UnifiedUnreachableBlock", calledFunction);
+          new UnreachableInst(calledFunction->getContext(), UnreachableBlock);
 
-				//printf("function id : %d ==> %s\n",calledFunctionId,calledFunction->getName().data());
-				//printf("function & deviceID = %s / %d\n",calledFunction->getName().data(),deviceID);
-				StringRef devName = StringRef(deviceName);
-				if(esp.DITable.getDeviceID(devName) == deviceID){
+          for (std::vector<BasicBlock*>::iterator I = UnreachableBlocks.begin(),
+              E = UnreachableBlocks.end(); I != E; ++I) {
+            BasicBlock *BB = *I;
+            BB->getInstList().pop_back();  // Remove the unreachable inst.
+            BranchInst::Create(UnreachableBlock, BB);
+          }
+        }
+
+        // Now handle return blocks.
+        if (ReturningBlocks.empty()) {
+          ReturnBlock = nullptr;
+        } else {
+          for (BasicBlock *BB : ReturningBlocks) {
+            ReturnBlock = BB;
+            out = InstInsertPt::Before(ReturnBlock->getTerminator());
+            out << CallInst::Create(UvaSync, actuals, "");
+          }
+        }
+        // BONG BONG BONG BONG BONG END: //
+*/
+        //printf("function id : %d ==> %s\n",calledFunctionId,calledFunction->getName().data());
+        //printf("function & deviceID = %s / %d\n",calledFunction->getName().data(),deviceID);
+        StringRef devName = StringRef(deviceName);
+        if(esp.DITable.getDeviceID(devName) == deviceID){
           DEBUG(errs() << "This function " << calledFunction->getName().data() << " is localFunction : " <<  calledFunctionId<<"\n");
-					//printf("This function is in device %d\n",deviceID);	
-					localFunctionTable[calledFunction] = true;	
-					continue;
-				}
-				else if(esp.MDTable.getDeviceName(StringRef("region"),StringRef(calledFunction->getName().drop_front())).size() != 0){
-					//printf("inside elseif\n");
-					if(deviceID != esp.DITable.getDeviceID(DeviceName)){
-						//printf("OMG :: it is not my local region\n");
-						eraseList.push_back(ci);
-						continue;
-					}
-				}
-				localFunctionTable[calledFunction] = false;	
+          //printf("This function is in device %d\n",deviceID);	
+          localFunctionTable[calledFunction] = true;	
+          continue;
+        }
+        else if(esp.MDTable.getDeviceName(StringRef("region"),StringRef(calledFunction->getName().drop_front())).size() != 0){
+          //printf("inside elseif\n");
+          if(deviceID != esp.DITable.getDeviceID(DeviceName)){
+            //printf("OMG :: it is not my local region\n");
+            eraseList.push_back(ci);
+            continue;
+          }
+        }
+        localFunctionTable[calledFunction] = false;	
 
         bool isAsync = false;
         for(auto async_ci : im.async_fcn_list){
@@ -225,6 +277,24 @@ void RemoteCall::substituteRemoteCall(Module& M) {
   for(auto &i : eraseList) {
     i->eraseFromParent();
   }
+
+  // BONG
+  std::vector<GlobalVariable*> vecGvars;
+  findGV(M, vecGvars);
+  InstInsertPt out;
+  std::vector<Value*> actuals(0);
+  /*for (GlobalVariable *gv : vecGvars) {
+    if (Value V = dyn_cast<Value*>(gv)) {
+      for(auto U : V.users()){  // U is of type User*
+        if (auto I = dyn_cast<Instruction>(U)){
+          // an instruction uses V
+          //out = InstInsertPt::Before(I);
+          //out << CallInst::Create(UvaSync, actuals, "global.use");
+        }
+      }
+    }
+  }*/
+  // BONG
 }
 
 void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instruction *insertBefore) {
@@ -649,9 +719,52 @@ void RemoteCall::generateFunctionTableProfile(){
 }
 
 
+static bool hasFunction (Constant* cnst) {
+		if (dyn_cast<Function> (cnst)) 	return true;
+
+		for (User::op_iterator iop = cnst->op_begin ();
+				 iop != cnst->op_end (); ++iop) {
+			Constant *cnstOper = dyn_cast<Constant> (iop->get ());
+			
+			if (hasFunction (cnstOper))		return true;
+		}
+
+		return false;
+	}
+
+static void findGV(Module &M, vector<GlobalVariable*> &vecGvars) {
+  for (Module::global_iterator igvar = M.global_begin ();
+      igvar != M.global_end (); ++igvar) {
+    GlobalVariable *gvar = &*igvar;
+
+    // FIXME assume external, if it doesn't have an initializer.
+    if ((!gvar->hasExternalLinkage () || gvar->hasInitializer ()) &&
+        (gvar->getName().str().length () < 5 ||
+         gvar->getName().str().substr (0, 5) != string ("llvm."))) {
+      if (!gvar->isConstant ()) {
+        //vecGvars.insert (gvar);
+        vecGvars.push_back(gvar);
+      } else {
+        // WORKAROUND: If the global initializer takes functions,
+        // it breaks the rule where function pointers of the server
+        // must have a function's address of the client, ending
+        // up with a devestating result.
+
+        // It would be more ideal to fix the function translator pass,
+        // but now, we just add a small workaround code here,
+        // so that the initializer can be effectivly overlapped 
+        // to the client's one at runtime.
+        if (hasFunction (gvar->getInitializer ())) {
+          gvar->setConstant (false);
+          vecGvars.push_back(gvar);
+        }	
+      }
+    }
+  }
+}
 
 /*
-void RemoteCall::substituteRemoteCall(Module& M) {
+   void RemoteCall::substituteRemoteCall(Module& M) {
 	LoadNamer& loadNamer = getAnalysis< LoadNamer >();
 	
 	typedef Module::iterator FF;

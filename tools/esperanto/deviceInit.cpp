@@ -24,6 +24,7 @@
 
 using namespace std;
 
+extern "C" void uva_sync();
 // variables for thread pool
 /*struct schedule_info{
   int working_num;
@@ -551,6 +552,7 @@ void* listenerFunction(void* arg){
          // localJobID = drm->getJobID();
         //else
         //  localJobID = -2;
+        uva_sync();
 #ifdef DEBUG_ESP
 				LOG("-------------------------------------------------------------------------------------\n");
 				LOG("Recv function call (DEVICE) -> localJobID = %d, sourceJobID = %d, functionID = %d\n",localJobID, sourceJobID, FID);
@@ -740,6 +742,7 @@ void* sendQHandlerFunction(void* arg){
           //read(sendSocket,&ack,1);
           if(sendElem->getRetSize() >0)
             sendComplete(sendSocket,payload,sendElem->getRetSize());
+          uva_sync();
 #ifdef DEBUG_ESP
           LOG("-------------------------------------------------------------------------------------\n");
           LOG("Send return value (DEVICE) -> localJobID = %d, sourceJobID = %d\n", localJobID, sourceJobID);

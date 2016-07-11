@@ -26,7 +26,8 @@ namespace corelab
 			
 		private:
 			//Function* registerDevice(Instruction* inst);
-			Constant* RegisterDevice;
+			Constant *RegisterDevice;
+      Constant *UvaSync;
 
 	};
 }
