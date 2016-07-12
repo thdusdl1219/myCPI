@@ -12,6 +12,7 @@ LEVEL=..
 DIRS=esperanto\
 		 dataQ\
      networkUtils\
-     uva
+     uva\
+		 comm
 
 include $(LEVEL)/Makefile.common
