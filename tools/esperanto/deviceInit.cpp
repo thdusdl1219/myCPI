@@ -342,7 +342,7 @@ void produceReturn(int jobID, void* buf, int size){
       //memcpy(payload,(char*)buf,size);
       //sprintf(payload,"%s",(char*)sendElem->getRetVal());
       sendComplete(sendSocket,header,9);
-      read(sendSocket,&ack,1);
+      // read(sendSocket,&ack,1);
       if(size >0)
         sendComplete(sendSocket,(char*)ret,size);
 #ifdef DEBUG_ESP
@@ -406,7 +406,7 @@ void produceFunctionArgs(int jobID, int rc_id){
       memcpy(payload,&functionID,4);
     }
     sendComplete(sendSocket,header,9);
-    read(sendSocket,&ack,1);
+    // read(sendSocket,&ack,1);
     if(size >0)
       payloadSize = sendComplete(sendSocket,payload,(size));
     else
@@ -533,7 +533,7 @@ void* listenerFunction(void* arg){
       
       type = header[0];
       int* temp = (int*)(header+1);
-      //sourceJobID = temp[0];
+      sourceJobID = temp[0];
 			payloadSize = temp[1];
 			char* buffer = (char*)malloc(payloadSize);
 			DataQElem* elem = new DataQElem();
@@ -547,11 +547,11 @@ void* listenerFunction(void* arg){
 				else 
 					args = NULL;
 				
-				int localJobID = -2;
-        //if(type != 'A')
-         // localJobID = drm->getJobID();
-        //else
-        //  localJobID = -2;
+				int localJobID; // = -2;
+        if(type != 'A')
+          localJobID = drm->getJobID();
+        else
+          localJobID = -2;
         uva_sync();
 #ifdef DEBUG_ESP
 				LOG("-------------------------------------------------------------------------------------\n");
@@ -571,6 +571,7 @@ void* listenerFunction(void* arg){
 				localQHandling = true;
 				pthread_mutex_unlock(&localQHandleLock);*/
 
+				drm->insertJobIDMapping(localJobID,sourceJobID);
 
         //int functionID = localElem->getFunctionID();
         //int jobID = localElem->getJobID();
@@ -640,14 +641,14 @@ void* listenerFunction(void* arg){
 }
 
 /* sendQHandlerFunction: send returnValue & remote functioncall to gateway*/
-
+/*
 void* sendQHandlerFunction(void* arg){
 	//LOG("DEBUG :: sendQHandler Function in device is started\n");
-		/*pthread_mutex_lock(&settingLock);
-		sendQsetting = true;
-		LOG("sendQ setting is complete\n");
-		pthread_mutex_unlock(&settingLock);
-		*/
+		//pthread_mutex_lock(&settingLock);
+		//sendQsetting = true;
+		//LOG("sendQ setting is complete\n");
+		//pthread_mutex_unlock(&settingLock);
+	
 	pthread_barrier_wait(&barrier);
 	int sendSocket = drm->getSendSocket();
 	//LOG("DEBUG :: get send socket\n");
@@ -665,7 +666,6 @@ void* sendQHandlerFunction(void* arg){
 
 		pthread_mutex_unlock(&sendQHandleLock);
 		if(sendQSize>0){
-			//LOG("send Q is handling\n");
 			//pthread_mutex_lock(&sendQLock);
 			DataQElem* sendElem = dqm->getSendQElement();
 		//	pthread_mutex_unlock(&sendQLock);
@@ -776,7 +776,7 @@ void* sendQHandlerFunction(void* arg){
 		}
 	}
 	return NULL;
-}
+}*/
 
 /* localQHandlerFunction */
 
