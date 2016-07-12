@@ -66,6 +66,10 @@ namespace corelab {
 				Type::getVoidTy(M.getContext()),
 				Type::getInt8PtrTy(M.getContext()),
 				(Type*)0);
+
+    UvaSync = M.getOrInsertFunction("uva_sync",
+        Type::getVoidTy(M.getContext()),
+        (Type*)0);
 	}
 
 	void DeviceLinker::insertRegisterDevice(Module& M){
@@ -101,6 +105,9 @@ namespace corelab {
             out = InstInsertPt::After(inst);
 
           out << CallInst::Create(RegisterDevice, actuals);
+          //actuals.resize(0);
+          //out << CallInst::Create(UvaSync, actuals);
+          //actuals.resize(1);
           
           /*
           if(CallInst* ci = dyn_cast<CallInst>(inst)){
