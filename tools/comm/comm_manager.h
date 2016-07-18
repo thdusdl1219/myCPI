@@ -32,6 +32,7 @@ namespace corelab {
   typedef struct Job {
     TAG tag;
     void* data;
+    uint32_t size;
   }Job;
 
   class CommManager {

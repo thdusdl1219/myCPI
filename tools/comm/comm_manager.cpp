@@ -60,6 +60,7 @@ namespace corelab {
           Job* newJob = new Job();
           newJob->tag = (TAG)recvHeader[1];
           newJob->data = (char*)malloc(recvHeader[0]);
+          newJob->size = recvHeader[0];
           memcpy(newJob->data,recvData,recvHeader[0]);
           commManager->insertJob(newJob);
                     //(*(*callbackList)[recvHeader[1]])((void*)recvData);
@@ -76,7 +77,7 @@ namespace corelab {
       int jobNum = commManager->getJobQueSize();
       if(jobNum > 0){
         Job* job = commManager->getJob();
-        (*(*callbackList)[job->tag])(job->data);
+        (*(*callbackList)[job->tag])(job->data,job->size);
       }
     }
   }
@@ -237,6 +238,8 @@ namespace corelab {
 
   void CommManager::sendQue(TAG tag, int* cid){
 
+    uint32_t header[2];
+
     if(cid == NULL)
       return;
 
@@ -247,6 +250,9 @@ namespace corelab {
 
     if(tag != 0){
       Queue* targetQue = (*(sendQues[*cid]))[tag];
+
+      header[0] = targetQue->size;
+      header[1] = tag;
       int sock = socketMap[*cid];
       writeComplete(sock,targetQue->data,targetQue->size);
 
@@ -255,7 +261,6 @@ namespace corelab {
     }
     else{
       std::map<TAG,Queue*>* queList = sendQues[*cid];
-      uint32_t header[2];
       
       for(std::map<TAG,Queue*>::iterator it = queList->begin(); it!= queList->end(); ++it){
         Queue* targetQue = it->second;
