@@ -585,10 +585,28 @@ tryConnect(void* arg){
 }
 
 
+
+void esperanto_initializer(CommManager* comm_manager){
+
+}
+
+void uva_initializer(CommManager* comm_manager){
+
+}
+
 extern "C"
 void EspInit(ApiCallback fcn, int id){
 
+  char filename[20];
+  CommManager* comm_manager = new CommManager();
+
+  callback = fcn;
+  sprintf(filename,"functionTable-%d",id);
   
+  if(updateMyFIDTable(filename)){
+    esperanto_initializer(comm_manager);
+    uva_initializer(comm_manager);
+  }
 
   /*callback = fcn;
   char filename[20];
@@ -613,6 +631,10 @@ void EspInit(ApiCallback fcn, int id){
   pthread_barrier_destroy(&barrier);*/
 }
 
+extern "C"
+void main_fini(){
+  while(1);
+}
 
 
 /* updateFunctionTable: update function table with received FIDs */

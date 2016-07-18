@@ -8,6 +8,7 @@
 #include "../networkUtils/tcpComm.h"
 #include "dataQ/dataQManager.h"
 #include "deviceRuntimeManager.h"
+#include "comm/comm_manager.h"
 
 
 // Declaration for function pointer
@@ -42,6 +43,9 @@ void debugAddress(void*);
 
 extern "C"
 void EspInit (ApiCallback, int);
+
+void esperanto_initializer(CommManager*);
+void uva_initializer(CommManager*);
 
 #endif
 

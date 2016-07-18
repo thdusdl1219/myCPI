@@ -47,19 +47,6 @@ namespace corelab {
     Instruction* targetInst = targetFcn->front().getFirstNonPHI();
     
     std::vector<Value*> actuals(2);
-    // actuals.resize(2);
-
-    //	char filename[50];
-    //std::string className = remoteCall.deviceName;
-    //DeviceMapEntry* dme = new DeviceMapEntry();
-    //dme->setName(className.c_str());
-    //int val = (en.deviceMap.getEntry(dme))->id;
-    // sprintf(filename,"functionTable-%s",remoteCall.deviceName.c_str());
-
-    /*StringRef s(filename);
-      Constant *valueStr = ConstantDataArray::getString(Context, s);
-      GlobalVariable *GV = new GlobalVariable(M, valueStr->getType(), true, GlobalValue::PrivateLinkage, valueStr);
-      */
     actuals[0] = execFunction;
     Value* devID = ConstantInt::get(Type::getInt32Ty(Context), espInit.DITable.getDeviceID(remoteCall.deviceName),1);
     actuals[1] = devID;
@@ -107,6 +94,7 @@ namespace corelab {
         Type::getInt32Ty(Context),
         (Type*) 0);
 
+    
     /**** Set "Init" Function ****/
     std::vector<Type*> args;
     args.push_back(IntegerType::get(Context, 32));
@@ -122,7 +110,7 @@ namespace corelab {
     FunctionType *initFunc = FunctionType::get(Type::getVoidTy(Context),formals,false);
 
     string functionName; // char functionName[50];
-		functionName = "deviceInit";
+		functionName = "EspInit";
 
     Init = (Function*) M.getOrInsertFunction(functionName, initFunc);
   }
