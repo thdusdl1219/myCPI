@@ -173,8 +173,7 @@ namespace corelab {
 
     MainFini = (Function*) M.getOrInsertFunction(
         "main_fini",
-        Type::getVoidTy(Context),
-        Type::getVoidTy(Context),
+        Type::getVoidTy(M.getContext()),
         (Type*) 0);
 
     // For Automatic While(1);
@@ -194,7 +193,7 @@ namespace corelab {
 		    CallInst::Create(constructor, actuals, "", entry); 
 
           actuals.resize(0);
-          CallInst::Create(MainFini,actuals,"",firstNonPHI);
+          CallInst::Create(MainFini,actuals,"",entry);
 
 		    BranchInst::Create(finalBasicBlock,entry);
         IntegerType* int32Ty = IntegerType::get(M.getContext(),32);
@@ -221,7 +220,7 @@ namespace corelab {
         CallInst::Create(constructor, actuals, "", entry); 
 
         actuals.resize(0);
-        CallInst::Create(MainFini,actuals,"",firstNonPHI);
+        CallInst::Create(MainFini,actuals,"",entry);
 
         BranchInst::Create(finalBasicBlock, entry);
         IntegerType* int32Ty = IntegerType::get(M.getContext(),32);
