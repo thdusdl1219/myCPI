@@ -5,6 +5,7 @@
 #include <csignal>
 #include <stdint.h>
 
+#include "../comm/comm_manager.h"
 #include "client.h"
 #include "qsocket.h"
 #include "mm.h" // FIXME
@@ -27,7 +28,10 @@
 #define LOCALTEST 0
 #define CORELAB_SERVER_TEST 1
 
-#define FORKTEST 0
+extern "C" void __decl_const_global_range__();
+extern "C" void __fixed_global_initializer__();
+extern "C" void uva_sync();
+extern "C" void sendInitCompleteSignal();
 
 namespace corelab {
   namespace UVA {
@@ -63,28 +67,6 @@ namespace corelab {
       printf("[CLIENT] ip (%s), port (%s)\n", ip, port);
 #endif
 
-#if FORKTEST
-      pid_t pid;
-      pid = fork();
-      if (pid == -1)
-        assert(0 && "fork failed");
-      else if (pid == 0) {
-        printf("[CLIENT] child\n");
-        Msocket = new QSocket();
-        Msocket->connect(ip, port);
-  
-        //XMemory::XMemoryManager::initialize(Msocket);
-        UVAManager::initialize (Msocket);
-      } else {
-        printf("[CLIENT] parent\n");
-        Msocket = new QSocket();
-        Msocket->connect(ip, port);
-      
-        //XMemory::XMemoryManager::initialize(Msocket);
-        UVAManager::initialize (Msocket);
-
-      }
-#else
       Msocket = new QSocket();
       Msocket->connect(ip, port);
 
@@ -101,7 +83,9 @@ namespace corelab {
 #endif
 			int hr = sigaction (SIGSEGV, &segvAction, NULL);
 			assert (hr != -1);
-#endif
+
+      /* For declaration Constant Gloabal Variables Range */
+      __decl_const_global_range__();
 
       /* For synchronized clients start */
       if(!isGVInitializer) {
@@ -115,6 +99,10 @@ namespace corelab {
         } else {
           assert(false && "[CLIENT] server doesn't allow me start.\n");
         }
+      } else { /* GV Initializer */
+        __fixed_global_initializer__();
+        uva_sync();
+        sendInitCompleteSignal();
       }
     }
     extern "C" void UVAClientFinalize() {

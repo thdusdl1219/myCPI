@@ -188,9 +188,6 @@ namespace corelab {
              gvar->getName().str().substr (0, 5) != string ("llvm."))) {
           if (!gvar->isConstant ()) {
             vecGvars.push_back (gvar);
-#ifdef DEBUG_FIXGLB
-            printf("$$$$$$$$$$$$$$$$$$ %s\n", gvar->getName().data());
-#endif
             fprintf(fp, "%s\n", gvar->getName().data());
 #ifdef DEBUG_FIXGLB
             printf("FIXGLB: runOnModule: no const (has init func): %s\n", gvar->getName().data());
@@ -208,9 +205,6 @@ namespace corelab {
             if (hasFunction (gvar->getInitializer ())) {
               gvar->setConstant (false);
               vecGvars.push_back (gvar);
-#ifdef DEBUG_FIXGLB
-            printf("$$$$$$$$$$$$$$$$$$ %s\n", gvar->getName().data());
-#endif
               fprintf(fp, "%s\n", gvar->getName().data());
 #ifdef DEBUG_FIXGLB
               printf("FIXGLB: runOnModule: const (has init func): %s\n", gvar->getName().data());
@@ -260,7 +254,7 @@ namespace corelab {
 		/* Set constant range */
 		FunctionType *tyFnVoidVoid = FunctionType::get (
 				Type::getVoidTy (pM->getContext ()), false);
-		Function *fnDeclCRange = Function::Create (tyFnVoidVoid, GlobalValue::InternalLinkage, 
+		Function *fnDeclCRange = Function::Create (tyFnVoidVoid, GlobalValue::ExternalLinkage, 
 				"__decl_const_global_range__", pM);
 		BasicBlock *blkDeclCRange = BasicBlock::Create (pM->getContext (), "initzer", fnDeclCRange);
 		/*Function *fnSendInitCompleteSignal = Function::Create (tyFnVoidVoid, GlobalValue::InternalLinkage, 
@@ -274,8 +268,8 @@ namespace corelab {
 
 		Constant *cnstOffSetCRange = M.getOrInsertFunction ("UVAUtilSetConstantRange",
 				tyVoid, tyInt8Pt, tyInt8Pt/*, tyInt8Pt, tyInt8Pt*/, NULL);
-    Constant *uvaSync = M.getOrInsertFunction ("uva_sync", tyVoid, NULL);
-    Constant *cnstSendInitCompleteSignal = M.getOrInsertFunction ("sendInitCompleteSignal", tyVoid, NULL);
+    //Constant *uvaSync = M.getOrInsertFunction ("uva_sync", tyVoid, NULL);
+    //Constant *cnstSendInitCompleteSignal = M.getOrInsertFunction ("sendInitCompleteSignal", tyVoid, NULL);
 
 		vector<Value *> vecSetCRangeArgs;
 		vecSetCRangeArgs.push_back (ConstantExpr::getCast (Instruction::IntToPtr,
@@ -290,7 +284,7 @@ namespace corelab {
 
 		ReturnInst::Create (M.getContext (), blkDeclCRange);
 
-    if (this->isFixGlbDuty) {
+    /*if (this->isFixGlbDuty) {
       //callBeforeMain (fnDeclCRange, 0);
 
       Function *ctor = M.getFunction("__constructor__"); 
@@ -321,14 +315,14 @@ namespace corelab {
           }
         }
         if (isExistEarlierCallInst) {
-          out << CallInst::Create(fnDeclCRange, actuals, "");
-          out2 << CallInst::Create (uvaSync, actuals, "");
-          out2 << CallInst::Create(cnstSendInitCompleteSignal, actuals, "");
+          //out << CallInst::Create(fnDeclCRange, actuals, "");
+          //out2 << CallInst::Create (uvaSync, actuals, "");
+          //out2 << CallInst::Create(cnstSendInitCompleteSignal, actuals, "");
         } else {
-          BasicBlock *bbOfCtor = &(ctor->front());
-          CallInst *CI2 = CallInst::Create (uvaSync, actuals, "", bbOfCtor->getFirstNonPHI());
-          CallInst *CI = CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
-          CallInst::Create(cnstSendInitCompleteSignal, actuals, "", CI);
+          //BasicBlock *bbOfCtor = &(ctor->front());
+          //CallInst *CI2 = CallInst::Create (uvaSync, actuals, "", bbOfCtor->getFirstNonPHI());
+          //CallInst *CI = CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
+          //CallInst::Create(cnstSendInitCompleteSignal, actuals, "", CI);
         }
       }
     } else { // client who have no duty to initalize fixed global variables. But have to call fnDeclCRange.
@@ -352,14 +346,14 @@ namespace corelab {
           }
         }
         if (isExistEarlierCallInst) {
-          out << CallInst::Create(fnDeclCRange, actuals, "");
+          //out << CallInst::Create(fnDeclCRange, actuals, "");
         } else {
-          BasicBlock *bbOfCtor = &(ctor->front());
-          CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
+          //BasicBlock *bbOfCtor = &(ctor->front());
+          //CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
         }
         
       }
-    }
+    }*/
 
 		/* Finalize */
 		list<GlobalVariable *> lstDispGvars;

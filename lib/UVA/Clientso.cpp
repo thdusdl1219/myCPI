@@ -117,21 +117,21 @@ void UVAClient::modifyIniFini(Module &M) {
   
   FunctionType *voidFcnVoidType = FunctionType::get(Type::getVoidTy(Context), formals, false); 
 
-  Function *ctor = M.getFunction("__constructor__");
+  //Function *ctor = M.getFunction("__constructor__");
   Function *dtor = M.getFunction("__destructor__");
-  assert(ctor != NULL && "wrong");
+  //assert(ctor != NULL && "wrong");
   //assert(dtor != NULL && "wrong");
-  BasicBlock *bbOfCtor = &(ctor->front());
+  //BasicBlock *bbOfCtor = &(ctor->front());
   BasicBlock *bbOfDtor = &(dtor->front());
 
-  Instruction *targetCallInst;
+  /*Instruction *targetCallInst;
   InstInsertPt out;
   bool isExistEariler = false;
   for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
     if(isa<CallInst>(&*I)) {
       CallInst *tarFun = dyn_cast<CallInst>(&*I);
       Function *callee = tarFun->getCalledFunction();
-      if(callee->getName() == "deviceInit") {
+      if(callee->getName() == "EspInit") {
         targetCallInst = &*I;
         out = InstInsertPt::After(targetCallInst);
         isExistEariler = true;
@@ -159,7 +159,7 @@ void UVAClient::modifyIniFini(Module &M) {
   } else {
     CallInst::Create(UVAClientInit, vecArgs, "", bbOfCtor->getFirstNonPHI());
   }
-
+*/
   if (bbOfDtor->getFirstNonPHI() != NULL) {
     CallInst::Create(UVAClientFinal, actuals, "", bbOfDtor->getFirstNonPHI());
   } else {
