@@ -89,32 +89,33 @@ namespace corelab {
 
 	}
 
-	StringRef MainCreator::getRealNameofFunction(StringRef original){
+	std::string MainCreator::getRealNameofFunction(StringRef original){
 		std::string fName = original.data();
 		int size=  original.size();
 		char nameSize[3];
 		sprintf(nameSize,"%d",size);
 		std::string nameLength = std::string(nameSize);
-		std::string pre = "_Z" + nameLength;
-		std::string finalName = pre + fName;
-		return StringRef(finalName);
+		std::string pre = "_Z";
+		std::string finalName = pre + std::to_string(size) + fName;
+		return finalName;
 		
 	}
 
-  Function* MainCreator::getSimilarFunction(Module& M, StringRef name){
-    typedef Module::iterator FF;
+	Function* MainCreator::getSimilarFunction(Module& M, std::string name){
+		typedef Module::iterator FF;
 
 		for(FF FI = M.begin(),FE = M.end();FI !=FE; ++FI){
 			Function* F = (Function*) &*FI;
 			if(F->isDeclaration()) continue;
 			DEBUG(errs() << "function name is " << F->getName().data() << "\n");
-			if((F->getName().startswith_lower(name))){
+			//if((F->getName().startswith_lower(name))){
+			if(F->getName().str().find(name) != std::string::npos) {
 				DEBUG(errs() << "linkage type number is " << F->getLinkage() << "\n");
 				return F;
 			}
 		}
-    return NULL;
-  }
+		return NULL;
+	}
 
   void MainCreator::removeOtherCtorDtor(Module& M){
      
@@ -123,13 +124,13 @@ namespace corelab {
     for(int i=0;i<devdecls.size();i++){
       struct MetadataInfo* mi = devdecls[i];
       if(strcmp(DeviceName.data(),mi->arg1->data()) == 0) continue;
-      StringRef constructorName = getRealNameofFunction(*(mi->arg2));
+      std::string constructorName = getRealNameofFunction(*(mi->arg2));
       Function* ctor = getSimilarFunction(M, constructorName);
       
       DEBUG(errs() << "remove " << ctor->getName().data() << "\n");
       //ctor->eraseFromParent();
 
-      StringRef destructorName = getRealNameofFunction(*(mi->arg3));
+      std::string destructorName = getRealNameofFunction(*(mi->arg3));
       Function* dtor = getSimilarFunction(M, destructorName);
       DEBUG(errs() << "remove " << dtor->getName().data() << "\n");
       //dtor->eraseFromParent();
@@ -150,7 +151,8 @@ namespace corelab {
     DEBUG(errs() << "devicename is " << DeviceName.data() << "\n");
     DEBUG(errs() << "origin constructor name is " << constructorName.data() << "\n");
     DEBUG(errs() << "constructor name is " << getRealNameofFunction(constructorName) << "\n");
-    StringRef realname_constructor = getRealNameofFunction(constructorName); 
+    //StringRef realname_constructor(getRealNameofFunction(constructorName)); 
+    std::string realname_constructor = getRealNameofFunction(constructorName); 
     constructor = getSimilarFunction(M, realname_constructor);
     if(constructor == NULL)
       DEBUG(errs() << "get similar function error\n");
@@ -159,7 +161,7 @@ namespace corelab {
     //set destructor
     StringRef destructorName = espInit.MDTable.getDestructorName(DeviceName);
     DEBUG(errs() << "destructor name is " << getRealNameofFunction(destructorName) << "\n");
-    StringRef realname_destructor = getRealNameofFunction(destructorName); 
+    std::string realname_destructor = getRealNameofFunction(destructorName); 
     destructor = getSimilarFunction(M, realname_destructor);
     if(destructor == NULL)
       DEBUG(errs() << "get similar function error\n");

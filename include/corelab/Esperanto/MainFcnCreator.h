@@ -17,8 +17,8 @@ namespace corelab
 			void setFunctions(Module& M);
 			void setIniFini(Module& M);
 			Function* getMainFcn(Module& M);
-			StringRef getRealNameofFunction(StringRef fName);
-      Function* getSimilarFunction(Module& M,StringRef name);
+			std::string getRealNameofFunction(StringRef fName);
+      Function* getSimilarFunction(Module& M, std::string name);
       void removeOtherCtorDtor(Module& M);
 			
 			const char *getPassName() const { return "MainCreator"; }
