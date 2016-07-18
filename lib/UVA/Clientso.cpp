@@ -14,6 +14,7 @@
 #include <vector>
 
 #define GLOBAL_DEBUG
+//#define UVA_ONLY
 
 using namespace corelab;
 
@@ -26,10 +27,12 @@ void UVAClient::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
 
+#ifdef UVA_ONLY
 // command line argument
 static cl::opt<string> GVInitializer("gv_initializer", 
     cl::desc("Specify Global variable initializer (1: gv_initializer, 0: not)"), 
       cl::value_desc("global initializer in charge"));
+#endif
 
 bool UVAClient::runOnModule(Module& M) {
   setFunctions(M);
@@ -42,11 +45,13 @@ bool UVAClient::runOnModule(Module& M) {
   //hoist->distinguishGlobalVariables();
 
   if(M.getFunction("__constructor__") != NULL){
-    printf("ctor exists\n");
+    //printf("ctor exists\n");
     modifyIniFini(M);
   } else {
-    printf("ctor don't exists\n");
+    //printf("ctor don't exists\n");
+#ifdef UVA_ONLY
     setIniFini(M);
+#endif
   }
   return true;
 
@@ -67,7 +72,7 @@ void UVAClient::setFunctions(Module& M) {
       (Type*)0);
   
 }
-
+#ifdef UVA_ONLY
 /* XXX: this is for UVA-only module XXX*/
 void UVAClient::setIniFini(Module& M) {
   LLVMContext &Context = M.getContext();
@@ -108,6 +113,7 @@ void UVAClient::setIniFini(Module& M) {
 	callAfterMain(finiForDtr);
 
 }
+#endif
 
 /* XXX: this is for UVA in Esperanto XXX */
 void UVAClient::modifyIniFini(Module &M) {
