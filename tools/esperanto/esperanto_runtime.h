@@ -43,7 +43,7 @@ extern "C"
 void debugAddress(void*);
 
 extern "C"
-void EspInit (ApiCallback, int);
+void EspInit (ApiCallback, int, int);
 
 void esperanto_initializer(CommManager*);
 void uva_initializer(CommManager*);

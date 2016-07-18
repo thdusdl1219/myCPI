@@ -618,21 +618,13 @@ void remotecall_callback(void* data, uint32_t size){
   //FIXME : please change mutex lock to spin lock (for speed up)
 
   callback(functionID,localJobID);
-/*
-  int callbackArgs[2];
-  callbackArgs[0] = FID;
-  callbackArgs[1] = localJobID;
-  pthread_create(&callbackHandler[callbackIter%8],NULL,&callbackWrapper,(void*)callbackArgs);
-  callbackIter++;
-  watch.end();
-  if(callbackIter == 100){
-    printf("reg.dat is modified\n");
-    FILE* fp = fopen("reg.dat","w");
-    fprintf(fp,"%f / %d\n",((float)callbackIter)/watch.diff(),callbackIter);
-    fclose(fp);
-  }*/
+
+  //FIXME : please change callback call to call using thread pool
 }
 
+void async_remotecall_callback(void* data, uint32_t size){
+
+}
 
 void esperanto_initializer(CommManager* comm_manager){
   TAG tag;
@@ -647,7 +639,7 @@ void uva_initializer(CommManager* comm_manager){
 }
 
 extern "C"
-void EspInit(ApiCallback fcn, int id){
+void EspInit(ApiCallback fcn, int id, int isGvarInitializer){
 
   char filename[20];
   CommManager* comm_manager = new CommManager();
