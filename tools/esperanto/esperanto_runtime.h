@@ -10,6 +10,7 @@
 #include "deviceRuntimeManager.h"
 #include "comm/comm_manager.h"
 
+namespace corelab{
 
 // Declaration for function pointer
 typedef void (*ApiCallback) (int, int);
@@ -47,5 +48,6 @@ void EspInit (ApiCallback, int);
 void esperanto_initializer(CommManager*);
 void uva_initializer(CommManager*);
 
+};
 #endif
 

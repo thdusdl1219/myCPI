@@ -11,6 +11,8 @@
 #include "TimeUtil.h"
 #include "log.h"
 
+namespace corelab{
+
 #define READ_TIMEOUT 5
 #define NUM_DEVICE 2
 
@@ -22,6 +24,7 @@
 //#define DEBUG_ESP
 
 using namespace std;
+
 
 extern "C" void uva_sync();
 
@@ -688,3 +691,4 @@ sendMyFID(int sock_d){
   write(sock_d, message, size);
   return;
 }
+};
