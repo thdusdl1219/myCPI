@@ -44,7 +44,7 @@ namespace corelab {
 		static inline void* truncToPageAddr (void *addr) {
 			return (void *)((XmemUintPtr)addr & XMEM_PAGE_MASK);
 		}
-    extern "C" void UVAClientInitialize(uint32_t isGVInitializer) {
+    extern "C" void UVAClientInitialize(CommManager *comm, uint32_t isGVInitializer) {
       // FIXME: for sync
       sleep(5);
       char ip[20];

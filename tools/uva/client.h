@@ -1,6 +1,6 @@
 namespace corelab {
   namespace UVA {
-    extern "C" void UVAClientInitialize(uint32_t isGVInitializer);
+    extern "C" void UVAClientInitialize(CommManager *comm, uint32_t isGVInitializer);
     extern "C" void UVAClientFinalize();
 
     extern "C" void UVAClientLoadInstr(void *addr);
