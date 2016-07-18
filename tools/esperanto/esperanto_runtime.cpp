@@ -590,7 +590,8 @@ tryConnect(void* arg){
 
 
 void esperanto_initializer(CommManager* comm_manager){
-
+  
+  // Set callback functions for esperanto device runtime
 }
 
 void uva_initializer(CommManager* comm_manager){

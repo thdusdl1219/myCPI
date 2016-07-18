@@ -308,7 +308,7 @@ namespace corelab {
     que.head = que.data;
   }
 
-  void CommManager::setCallback(TAG tag, void callback(void*)){
+  void CommManager::setCallback(TAG tag, void callback(void*, uint32_t)){
     pthread_mutex_lock(&callbackLock);
     callbackList->insert(std::pair<TAG, CallbackType>(tag, (CallbackType)callback));
     pthread_mutex_unlock(&callbackLock);

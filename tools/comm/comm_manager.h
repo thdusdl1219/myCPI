@@ -27,7 +27,7 @@
 namespace corelab {
 	typedef uint32_t QWord;
   typedef uint32_t TAG; 
-  typedef void (*CallbackType)(void*);
+  typedef void (*CallbackType)(void*, uint32_t);
 
   typedef struct Job {
     TAG tag;
@@ -46,7 +46,7 @@ namespace corelab {
     void setNewConnectionCallback(void callback(void*));
     //template<typename TFunction, typename... TArgs>
       //void setCallback(TAG tag, int cid, TFunction&& a_func, TArgs&&... a_args); // set callback
-    void setCallback(TAG tag, void callback(void*)); // set callback
+    void setCallback(TAG tag, void callback(void*,uint32_t)); // set callback
     CallbackType getCallback(TAG tag);
 
 
