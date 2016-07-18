@@ -101,7 +101,7 @@ namespace corelab {
 
     int idHost = socket (PF_INET, SOCK_STREAM, 0);
     if (idHost < 0) {
-      perror ("socket");
+      //perror ("socket");
       return -1;
     }
 
@@ -112,12 +112,12 @@ namespace corelab {
 
 		int res = 0;
 		if (bind (idHost, (sockaddr *)&eptHost, sizeof (eptHost)) == -1) {
-			perror ("bind");
+			//perror ("bind");
 			return false;
 		}
 
 		if (listen (idHost, 5) == -1) {
-			perror ("listen");
+			//perror ("listen");
 			return false;
 		}
 
@@ -131,7 +131,7 @@ namespace corelab {
       *clientID = accept (idHost, (sockaddr *)&eptClient, &sizeEptClient);
 
       if (*clientID == -1) {
-        perror ("accept");
+        //perror ("accept");
         return false;
       }
       inet_ntop (AF_INET, &eptClient.sin_addr, strClientIP, 20);
@@ -162,7 +162,7 @@ namespace corelab {
     int* idClient = (int*)malloc(sizeof(int));
 		*idClient = socket (PF_INET, SOCK_STREAM, 0);
 		if (idClient < 0) {
-			perror ("socket");
+			//perror ("socket");
 			return -1;
 		}
 
@@ -171,7 +171,7 @@ namespace corelab {
 		eptClient.sin_addr.s_addr = inet_addr (ip);
 		eptClient.sin_port = htons (port);
 		if (connect(*idClient, (sockaddr *)&eptClient, sizeof (eptClient)) == -1) {
-			perror ("connect");
+			//perror ("connect");
 			return false;
 		}
 
