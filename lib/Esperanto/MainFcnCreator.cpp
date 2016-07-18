@@ -147,6 +147,7 @@ namespace corelab {
     bool mainArgsExist = false;
     //set constructor
     StringRef constructorName = espInit.MDTable.getConstructorName(DeviceName);
+    CallInst* constructor_call;
 
     DEBUG(errs() << "devicename is " << DeviceName.data() << "\n");
     DEBUG(errs() << "origin constructor name is " << constructorName.data() << "\n");
@@ -168,6 +169,17 @@ namespace corelab {
 
       //M.getFunction(getRealNameofFunction(destructorName));
 
+    // For Automatic While(1);
+
+    MainFini = (Function*) M.getOrInsertFunction(
+        "main_fini",
+        Type::getVoidTy(Context),
+        Type::getVoidTy(Context),
+        (Type*) 0);
+
+    // For Automatic While(1);
+
+
     //set main function
     mainFcn = getMainFcn(M);
     if(mainFcn == NULL){
@@ -180,6 +192,9 @@ namespace corelab {
         //BasicBlock& finalBasicBlock = mainFcn->back();
         actuals.resize(0);
 		    CallInst::Create(constructor, actuals, "", entry); 
+
+          actuals.resize(0);
+          CallInst::Create(MainFini,actuals,"",firstNonPHI);
 
 		    BranchInst::Create(finalBasicBlock,entry);
         IntegerType* int32Ty = IntegerType::get(M.getContext(),32);
@@ -205,7 +220,10 @@ namespace corelab {
         actuals[1] = (Value*)&*(++ai);
         CallInst::Create(constructor, actuals, "", entry); 
 
-		    BranchInst::Create(finalBasicBlock, entry);
+        actuals.resize(0);
+        CallInst::Create(MainFini,actuals,"",firstNonPHI);
+
+        BranchInst::Create(finalBasicBlock, entry);
         IntegerType* int32Ty = IntegerType::get(M.getContext(),32);
         ConstantInt* zeroVal = ConstantInt::get(int32Ty,0,true);
         ReturnInst::Create(M.getContext(),(Value*)zeroVal,finalBasicBlock);
@@ -216,12 +234,18 @@ namespace corelab {
         BasicBlock* firstBB = (BasicBlock*)(&*mainFcn->begin());    
         Instruction* firstNonPHI = firstBB->getFirstNonPHI();
         CallInst::Create(constructor,"",firstNonPHI);
+
+        actuals.resize(0);
+        CallInst::Create(MainFini,actuals,"",firstNonPHI);
+
       }
       else{
         if(constructor->arg_empty()){
           BasicBlock* firstBB = (BasicBlock*)(&*mainFcn->begin());    
           Instruction* firstNonPHI = firstBB->getFirstNonPHI();
           CallInst::Create(constructor,"",firstNonPHI);
+          actuals.resize(0);
+          CallInst::Create(MainFini,actuals,"",firstNonPHI);
         }
         else{
           actuals.resize(2);
@@ -231,9 +255,14 @@ namespace corelab {
           BasicBlock* firstBB = (BasicBlock*)(&*mainFcn->begin());    
           Instruction* firstNonPHI = firstBB->getFirstNonPHI();
           CallInst::Create(constructor,actuals,"",firstNonPHI);
+
+          actuals.resize(0);
+          CallInst::Create(MainFini,actuals,"",firstNonPHI);
         }
       }
     }
+
+
   }
 
   Function* MainCreator::getMainFcn(Module& M){

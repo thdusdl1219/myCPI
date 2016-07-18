@@ -31,7 +31,7 @@ namespace corelab
 		private:
 			Function* constructor;
 			Function* destructor;
-      Function* mainFini;
+      Function* MainFini;
 			Function* mainFcn;
 
 	};
