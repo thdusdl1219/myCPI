@@ -147,7 +147,6 @@ namespace corelab {
     bool mainArgsExist = false;
     //set constructor
     StringRef constructorName = espInit.MDTable.getConstructorName(DeviceName);
-    CallInst* constructor_call;
 
     DEBUG(errs() << "devicename is " << DeviceName.data() << "\n");
     DEBUG(errs() << "origin constructor name is " << constructorName.data() << "\n");
