@@ -550,6 +550,14 @@ bool MemoryManagerX64::runOnFunction(Function *F, bool is32) {
 							callInst->setCalledFunction(Malloc);
 						}
           }
+          else if(callee->getName() == "_Znam"){
+						if(wasBitCasted){
+							Value *changeTo = Builder.CreateBitCast(Malloc, ty);
+							callInst->setCalledFunction(changeTo);
+						} else {
+							callInst->setCalledFunction(Malloc);
+						}
+          }
           else if(callee->getName() == "_Znwj"){
 						if(wasBitCasted){
 							Value *changeTo = Builder.CreateBitCast(New32, ty);
@@ -593,6 +601,14 @@ bool MemoryManagerX64::runOnFunction(Function *F, bool is32) {
 						}
 					}
           else if(callee->getName() == "_Znwm"){
+						if(wasBitCasted){
+							Value *changeTo = Builder.CreateBitCast(Malloc, ty);
+							callInst->setCalledFunction(changeTo);
+						} else {
+							callInst->setCalledFunction(Malloc);
+						}
+          }
+          else if(callee->getName() == "_Znam"){
 						if(wasBitCasted){
 							Value *changeTo = Builder.CreateBitCast(Malloc, ty);
 							callInst->setCalledFunction(changeTo);
@@ -881,6 +897,14 @@ bool MemoryManagerArm::runOnFunction(Function *F, bool is32) {
 							callInst->setCalledFunction(Malloc);
 						}
           }
+          else if(callee->getName() == "_Znaj"){
+						if(wasBitCasted){
+							Value *changeTo = Builder.CreateBitCast(Malloc, ty);
+							callInst->setCalledFunction(changeTo);
+						} else {
+							callInst->setCalledFunction(Malloc);
+						}
+          }
 				}
 				else if(InvokeInst *callInst = dyn_cast<InvokeInst>(instruction)){
 					if(callee->getName() == "malloc"){
@@ -924,6 +948,14 @@ bool MemoryManagerArm::runOnFunction(Function *F, bool is32) {
 						}
           }*/
           else if(callee->getName() == "_Znwj"){
+						if(wasBitCasted){
+							Value *changeTo = Builder.CreateBitCast(Malloc, ty);
+							callInst->setCalledFunction(changeTo);
+						} else {
+							callInst->setCalledFunction(Malloc);
+						}
+          }
+          else if(callee->getName() == "_Znaj"){
 						if(wasBitCasted){
 							Value *changeTo = Builder.CreateBitCast(Malloc, ty);
 							callInst->setCalledFunction(changeTo);

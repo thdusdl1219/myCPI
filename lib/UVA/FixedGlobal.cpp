@@ -296,7 +296,7 @@ namespace corelab {
       Function *ctor = M.getFunction("__constructor__"); 
       if (ctor != NULL) {
         std::vector<Value*> actuals(0);
-        Instruction *deviceInitCallInst;
+        Instruction *EspInitCallInst;
         Instruction *fnGInitzerCallInst;
         InstInsertPt out;
         InstInsertPt out2;
@@ -306,9 +306,9 @@ namespace corelab {
             isExistEarlierCallInst = true;
             CallInst *tarFun = dyn_cast<CallInst>(&*I);
             Function *callee = tarFun->getCalledFunction();
-            if(callee->getName() == "deviceInit") { // Esperanto-aware
-              deviceInitCallInst = &*I;
-              out = InstInsertPt::After(deviceInitCallInst);
+            if(callee->getName() == "EspInit") { // Esperanto-aware
+              EspInitCallInst = &*I;
+              out = InstInsertPt::After(EspInitCallInst);
             } else if(callee->getName().find("__fixed_global_initializer__") != std::string::npos) {
 #ifdef DEBUG_FIXGLB
               printf("fnGInitzer exists!\n");
@@ -335,7 +335,7 @@ namespace corelab {
       Function *ctor = M.getFunction("__constructor__");
       if (ctor != NULL) {
         std::vector<Value*> actuals(0);
-        Instruction *deviceInitCallInst;
+        Instruction *EspInitCallInst;
         //Instruction *fnGInitzerCallInst;
         InstInsertPt out;
         bool isExistEarlierCallInst;
@@ -344,9 +344,9 @@ namespace corelab {
             isExistEarlierCallInst = true;
             CallInst *tarFun = dyn_cast<CallInst>(&*I);
             Function *callee = tarFun->getCalledFunction();
-            if(callee->getName() == "deviceInit") { // Esperanto-aware
-              deviceInitCallInst = &*I;
-              out = InstInsertPt::After(deviceInitCallInst);
+            if(callee->getName() == "EspInit") { // Esperanto-aware
+              EspInitCallInst = &*I;
+              out = InstInsertPt::After(EspInitCallInst);
               break;
             }
           }

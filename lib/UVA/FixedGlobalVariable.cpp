@@ -107,7 +107,7 @@ void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
 
     Function *ctor = module->getFunction("__constructor__"); 
 
-    Instruction *deviceInitCallInst;
+    Instruction *EspInitCallInst;
     Instruction *ealierFnGInitzerCallInst;
     InstInsertPt out;
     bool isExistEarlierCallInst;
@@ -122,9 +122,9 @@ void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
 #endif
         CallInst *tarFun = dyn_cast<CallInst>(&*I);
         Function *callee = tarFun->getCalledFunction();
-        if(callee->getName() == "deviceInit") { // Esperanto-aware
-          deviceInitCallInst = &*I;
-          out = InstInsertPt::After(deviceInitCallInst);
+        if(callee->getName() == "EspInit") { // Esperanto-aware
+          EspInitCallInst = &*I;
+          out = InstInsertPt::After(EspInitCallInst);
         } else if(callee->getName().find("__fixed_global_initializer__") != std::string::npos) {
 #ifdef DEBUG_FIXGLB
           printf("Earlier fnGInitzer exists!\n");
