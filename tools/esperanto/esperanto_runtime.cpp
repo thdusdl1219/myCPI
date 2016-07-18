@@ -626,7 +626,7 @@ void async_remotecall_callback(void* data, uint32_t size){
 
 }
 
-void esperanto_initializer(CommManager* comm_manager){
+void esperanto_callback_setter(CommManager* comm_manager){
   TAG tag;
 
   tag = 1;
@@ -634,8 +634,15 @@ void esperanto_initializer(CommManager* comm_manager){
   // Set callback functions for esperanto device runtime
 }
 
-void uva_initializer(CommManager* comm_manager){
+void uva_callback_setter(CommManager* comm_manager){
+  UVACallbackSetter(comm_manager);
+}
 
+void esperanto_initializer(CommManager* comm_manager){
+}
+
+void uva_initializer(CommManager* comm_manager, int isGvarInitializer){
+  UVAClientInitializer(comm_manager, isGvarInitializer);
 }
 
 extern "C"
@@ -648,8 +655,11 @@ void EspInit(ApiCallback fcn, int id, int isGvarInitializer){
   sprintf(filename,"functionTable-%d",id);
   
   if(updateMyFIDTable(filename)){
+    esperanto_callback_setter(comm_manager);
+    uva_callback_setter(comm_manager);
+    network_initializer(comm_manager);
     esperanto_initializer(comm_manager);
-    uva_initializer(comm_manager);
+    uva_initializer(comm_manager, isGvarInitializer);
   }
 
   /*callback = fcn;
