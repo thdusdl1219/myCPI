@@ -25,6 +25,7 @@ namespace corelab {
   namespace UVA {
 
     static QSocket* socket;
+    static bool isFirstUvaSync = true;
     pthread_t openThread; 
     pthread_mutex_t acquireLock =PTHREAD_MUTEX_INITIALIZER;
 
@@ -320,7 +321,14 @@ namespace corelab {
           struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*addr))];
           if (pageInfo != NULL) {
             pageInfo->accessS->clear();
-            pageInfo->accessS->insert(*clientId);
+            /* XXX XXX XXX XXX XXX This is for preventing ... */
+            if (isFirstUvaSync) {
+              if ((void*)0x15000000 <= addr && addr < (void*)0x16000000) {
+                isFirstUvaSync = false;
+              }
+            } else {  
+              pageInfo->accessS->insert(*clientId);
+            }
 #ifdef DEBUG_UVA
             LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(*addr), *clientId);
 #endif
