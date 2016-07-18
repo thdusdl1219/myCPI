@@ -26,6 +26,8 @@ namespace corelab{
 using namespace std;
 
 
+extern "C" void UVAClientInitializer(CommManager*, int);
+extern "C" void UVACallbackSetter(CommManager*);
 extern "C" void uva_sync();
 
 // common variables
@@ -636,6 +638,10 @@ void esperanto_callback_setter(CommManager* comm_manager){
 
 void uva_callback_setter(CommManager* comm_manager){
   UVACallbackSetter(comm_manager);
+}
+
+void network_initializer(CommManager* comm_manager){
+
 }
 
 void esperanto_initializer(CommManager* comm_manager){
