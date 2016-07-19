@@ -332,6 +332,8 @@ void produceReturn(int jobID, void* buf, int size){
     //int sourceJobID = sendElem->getJobID();
     char header[9];
 
+    //FIXME : uva sync insertion for callee's produce return value
+
     if(jobID != -1){
       int sourceJobID = drm->getSourceJobID(jobID);
       header[0] = 'R';

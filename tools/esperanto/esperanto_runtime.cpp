@@ -31,53 +31,18 @@ extern "C" void UVACallbackSetter(CommManager*);
 extern "C" void uva_sync();
 
 // common variables
-int runningCallback = 0;;
-int callbackIter = 0;
-pthread_barrier_t barrier;
-pthread_barrier_t commBarrier;
-pthread_t callbackHandler[MAX_THREAD];
-pthread_t sendQHandlerThread;
-pthread_t localQHandlerThread;
 pthread_mutex_t handleArgsLock= PTHREAD_MUTEX_INITIALIZER;
-//pthread_mutex_t settingLock= PTHREAD_MUTEX_INITIALIZER;
-//pthread_mutexattr_t lockInit;
-pthread_mutex_t sendQLock= PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t localQLock= PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t sendQHandleLock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t localQHandleLock = PTHREAD_MUTEX_INITIALIZER;
 ApiCallback callback; 
 FunctionEntry ft[TABLE_SIZE];
 int numFID;
 MyFID myFID;
-bool isGateway = false;
-bool settingComplete = false;
-bool sendQsetting =false;
-bool localQsetting = false;
-bool sendQHandling = false;
-bool localQHandling = false;
-
-
-// gateway
-int settingIter = 0;
-int socketBuffer[2*NUM_DEVICE];
-//pthread_mutex_t recvQLocks[NUM_DEVICE];
-bool connectReady = false;
-int numConnect = 0;
-int connectPort = 20000;
-pthread_t listeners[2*NUM_DEVICE];
-void *connectionInit (void* arg);
 
 // device
 char deviceName[256];
 int dNameSize;
 int deviceID = -1;
-pthread_t listenThread;
-pthread_mutex_t recvQLock= PTHREAD_MUTEX_INITIALIZER;
+int connectionID = -1;
 
-// commmon functions
-void recvQHandler(int sock_d);
-void *sendQHandler (void* arg);
-void *localQHandler(void* arg);
 void updateFunctionTable (int sock_d, int size);
 bool updateMyFIDTable (const char* fname);
 void sendMyFID (int sock_d);
@@ -128,65 +93,6 @@ void hexdump(char *desc, void *addr, int len) {
   // And print the final ASCII bit.
   printf ("  %s\n", buff);
 }
-int recvComplete(int socket, char* buffer, int size){
-  int recvSize = 0;
-  int tempSize;
-  while(recvSize != size){
-    tempSize = read(socket,buffer,size);
-    if(tempSize != -1){
-      recvSize += tempSize;
-      buffer += tempSize;
-    }
-  }
-  return recvSize;
-}
-
-int sendComplete(int socket, char* buffer, int size){
-  int sendSize = 0;
-  int tempSize;
-  while(sendSize != size){
-    tempSize = write(socket,buffer,size);
-    if(tempSize != -1){
-      sendSize += tempSize;
-      buffer += tempSize;
-    }
-  }
-  return sendSize;
-}
-
-void* worker_func(void* data){
-
-  return NULL;
-}
-
-//working here
-
-
-void* callbackWrapper(void* arg){
-  //printf("callback wrapper is called\n");
-  //LOG("tid : %u / pid : %u\n",(unsigned int)pthread_self(),(unsigned int)getpid());
-
-  int* args = (int*)arg;
-  callback(args[0],args[1]);
-  //pthread_exit(NULL);
-  return NULL;
-}
-
-void initIOSocket(int sendSocket, int recvSocket){
-  char initHeader = 'I';
-  char ack;
-  int intBuffer[2];
-  write(sendSocket,&initHeader,1);
-  read(sendSocket,(char*)&deviceID,4);	
-  intBuffer[0] = deviceID;
-  intBuffer[1] = myFID.num;
-  initHeader = 'O';
-  write(recvSocket,&initHeader,1);
-  read(recvSocket,&ack,1);
-  write(recvSocket,(char*)intBuffer,8);
-  read(recvSocket,&ack,1);
-  write(recvSocket,(char*)myFID.fids,myFID.num*4);
-}
 
 int fd_set_blocking(int fd, int blocking) {
   /* Save the current flags */
@@ -234,7 +140,7 @@ extern "C"
 void pushArgument(int rc_id, void* buf, int size){
   drm->insertArgsInfo(rc_id,buf, size); 
 }
-
+/*
 extern "C" 
 void produceAsyncFunctionArgs(int functionID, int rc_id){
   int size = drm->getArgsTotalSize(rc_id); 
@@ -353,10 +259,19 @@ void produceFunctionArgs(int jobID, int rc_id){
   free(payload);
   free(buf);
 }
-
+*/
 extern "C"
 void registerDevice(void* addr){
+  
   LOG("Address of device is %p\n",addr);
+
+  TAG tag = REGISTER_DEVICE;
+  uint32_t registerID;
+  memcpy(&registerID,&addr,4);
+
+  comm_manager->pushWord(tag,registerID, &connectionID);
+  comm_manager->pushWord(tag,deviceID, &connectionID);
+/*
   uint32_t temp;
   memcpy(&temp,&addr,4);
 #ifdef DEBUG_ESP	
@@ -379,7 +294,7 @@ void registerDevice(void* addr){
   sendComplete(sendSocket,info,size);
 
   printf("end of register device\n");
-
+*/
 }
 
 extern "C"
@@ -413,183 +328,7 @@ void* consumeReturn(int jobID){
 /*                                                             */
 /* ---------------------------DEVICE-------------------------- */
 
-/* listener: listen returnValue & remote functioncall from gateway */
-
-void* listenerFunction(void* arg){
-  //LOG("DEBUG :: listen thread in device is started\n");
-  int recvSocket = drm->getRecvSocket();
-  char* header = (char*)malloc(9);
-  char type;
-  char ack = 1;
-  int sourceJobID;
-  int payloadSize;
-  int cv = 0;
-  int r = read(recvSocket,&ack,1);
-
-  int start;
-  int end;
-  float diff;
-  StopWatch watch;
-  pthread_barrier_wait(&barrier);
-  while(1){
-    if(cv == 0){
-      watch.start();
-      cv=1;
-    }
-    int readSize = read(recvSocket,header,9);
-    if(readSize == 9){
-
-      type = header[0];
-      int* temp = (int*)(header+1);
-      sourceJobID = temp[0];
-      payloadSize = temp[1];
-      char* buffer = (char*)malloc(payloadSize);
-      DataQElem* elem = new DataQElem();
-      //write(recvSocket,&ack,1);
-      if(type == 'F' || type == 'A'){
-        recvComplete(recvSocket,buffer,payloadSize);
-        int FID = *(int*)buffer;
-        void* args;
-        if(payloadSize > 4)
-          args = (void*)(buffer+4);	
-        else 
-          args = NULL;
-
-        int localJobID; // = -2;
-        if(type != 'A')
-          localJobID = drm->getJobID();
-        else
-          localJobID = -2;
-        uva_sync();
-#ifdef DEBUG_ESP
-        LOG("-------------------------------------------------------------------------------------\n");
-        LOG("Recv function call (DEVICE) -> localJobID = %d, sourceJobID = %d, functionID = %d\n",localJobID, sourceJobID, FID);
-        hexdump("Args",args,payloadSize-4);
-        LOG("-------------------------------------------------------------------------------------\n");
-#endif
-        drm->insertJobIDMapping(localJobID,sourceJobID);
-
-         pthread_mutex_lock(&handleArgsLock);
-        drm->insertArgs(localJobID, args);
-        pthread_mutex_unlock(&handleArgsLock);
-        int callbackArgs[2];
-        callbackArgs[0] = FID;
-        callbackArgs[1] = localJobID;
-        pthread_create(&callbackHandler[callbackIter%8],NULL,&callbackWrapper,(void*)callbackArgs);
-        callbackIter++;
-        watch.end();
-        if(callbackIter == 100){
-          printf("reg.dat is modified\n");
-          FILE* fp = fopen("reg.dat","w");
-          fprintf(fp,"%f / %d\n",((float)callbackIter)/watch.diff(),callbackIter);
-          fclose(fp);
-        }
-      }
-      else{
-        //LOG("return is received\n");
-        if(payloadSize !=0)
-          recvComplete(recvSocket,buffer,payloadSize);
-
-        void* retVal = (void*)malloc(payloadSize);
-        memcpy(retVal,buffer,payloadSize);
-
-#ifdef DEBUG_ESP
-        LOG("-------------------------------------------------------------------------------------\n");
-        LOG("Recv Return value (DEVICE) -> localJobID = %d\n",sourceJobID);
-        hexdump("Return",retVal,payloadSize);
-        LOG("-------------------------------------------------------------------------------------\n");
-
-        LOG("\n\nlocal Q handling is true  : %d\n\n",dqm->getLocalQSize());
-
-        LOG("-------------------------------------------------------------------------------------\n");
-        LOG("Handle return value (DEVICE) -> localJobID = %d\n", sourceJobID);
-        hexdump("Return",retVal,payloadSize);
-        LOG("-------------------------------------------------------------------------------------\n");
-#endif
-
-        drm->insertReturnValue(sourceJobID,retVal);
-        drm->deleteRunningJob(sourceJobID);
-        drm->onValueReturn(sourceJobID);
-
-
-      }
-    }
-  }
-  //LOG("DEBUG :: listen thread in device is ended\n");
-  return NULL;
-}
-
-/* localQHandlerFunction */
-
-void* localQHandlerFunction(void* arg){
-  pthread_barrier_wait(&barrier);
-  while(1){
-    usleep(1);
-    int localQSize = 0;
-    localQSize = dqm->getLocalQSize();
-    if(localQSize != 0){
-#ifdef DEBUG_ESP
-      LOG("local Q is handling\n\n");
-#endif
-    }
-
-    if(dqm->getLocalQSize()>0){
-#ifdef DEBUG_ESP
-      LOG("local Q is handling / tid : %u / pid : %u\n",(unsigned int)pthread_self(),(unsigned int)getpid());
-#endif
-      DataQElem* localElem = dqm->getLocalQElement();
-      if(localElem->getIsFunctionCall()){ // local function call
-        int functionID = localElem->getFunctionID();
-        int jobID = localElem->getJobID();
-        void* args = localElem->getArgs();
-        pthread_mutex_lock(&handleArgsLock);
-        drm->insertArgs(jobID, args);
-        pthread_mutex_unlock(&handleArgsLock);
-        int callbackArgs[2];
-        callbackArgs[0] = functionID;
-        callbackArgs[1] = jobID;
-        pthread_create(&callbackHandler[callbackIter%16],NULL,&callbackWrapper,(void*)callbackArgs);
-        pthread_join(callbackHandler[callbackIter%16],NULL);
-        callbackIter++;
-
-      }
-      else{ // return from gateway
-        int jobID = localElem->getJobID();
-#ifdef DEBUG_ESP
-        LOG("-------------------------------------------------------------------------------------\n");
-        LOG("Handle return value (DEVICE) -> localJobID = %d\n", jobID);
-        hexdump("Return",localElem->getRetVal(),localElem->getRetSize());
-        LOG("-------------------------------------------------------------------------------------\n");
-#endif
-        drm->insertReturnValue(jobID,localElem->getRetVal());
-        drm->deleteRunningJob(jobID);
-        drm->onValueReturn(jobID);
-      }
-    }
-  }
-  return NULL;	
-}	
-
-/* tryConnect: try to connect to gateway */
-
-void*
-tryConnect(void* arg){
-  TCPCommHandler tcpHandlerIn, tcpHandlerOut;
-  ConnectionInfo target = *(ConnectionInfo*)arg;
-  tcpHandlerIn.createClientSocket(target.ip, target.port);
-  tcpHandlerOut.createClientSocket(target.ip, target.port);
-
-  int sendSocket = tcpHandlerIn.getSockDesc();
-  int recvSocket = tcpHandlerOut.getSockDesc();
-  initIOSocket(sendSocket, recvSocket);
-  drm->setSockets(sendSocket, recvSocket);
-  pthread_create(&listenThread,NULL,&listenerFunction,NULL);
-  pthread_barrier_wait(&commBarrier);
-  pthread_exit(NULL);
-  return NULL;
-}
-
-void remotecall_callback(void* data, uint32_t size){
+void remotecall_callback(void* data, uint32_t size, uint32_t sourceID){
 
   if(size < 8){
 #ifdef DEBUG_ESP
@@ -605,6 +344,7 @@ void remotecall_callback(void* data, uint32_t size){
   int localJobID = drm->getJobID();
 
   uva_sync();
+
 #ifdef DEBUG_ESP
   LOG("-------------------------------------------------------------------------------------\n");
   LOG("Recv function call (DEVICE) -> localJobID = %d, sourceJobID = %d, functionID = %d\n",localJobID, sourceJobID, functionID);
@@ -624,15 +364,75 @@ void remotecall_callback(void* data, uint32_t size){
   //FIXME : please change callback call to call using thread pool
 }
 
-void async_remotecall_callback(void* data, uint32_t size){
+void async_remotecall_callback(void* data, uint32_t size, uint32_t sourceID){
 
+  if(size < 8){
+#ifdef DEBUG_ESP
+    LOG("DEBUG::Async Remotecall needs least 8 bytes argument\n");
+#endif
+    assert(0);
+  }
+
+  char* data_ = (char*)data;
+
+  int sourceJobID = *(int*)data_;
+  int functionID = *(int*)(data_+4);
+  int localJobID = -2;
+
+  uva_sync();
+
+#ifdef DEBUG_ESP
+  LOG("-------------------------------------------------------------------------------------\n");
+  LOG("Recv function call (DEVICE) -> localJobID = %d, sourceJobID = %d, functionID = %d\n",localJobID, sourceJobID, functionID);
+  hexdump("Args",data_,size);
+  LOG("-------------------------------------------------------------------------------------\n");
+#endif
+
+  drm->insertJobIDMapping(localJobID,sourceJobID);
+
+  pthread_mutex_lock(&handleArgsLock);
+  drm->insertArgs(localJobID, (data_+8));
+  pthread_mutex_unlock(&handleArgsLock);
+
+  callback(functionID,localJobID);
+}
+
+void return_value_callback(void* data, uint32_t size, uint32_t sourceID){
+
+  if(size < 4){
+#ifdef DEBUG_ESP
+    LOG("DEBUG::ReturnValue needs least 4 bytes argument\n");
+#endif
+    assert(0);
+  }
+
+  char* data_ = (char*)data;
+
+  int localJobID  = *(int*)data_;
+
+#ifdef DEBUG_ESP
+  LOG("-------------------------------------------------------------------------------------\n");
+  LOG("Recv Return value (DEVICE) -> localJobID = %d\n",localJobID);
+  hexdump("Return",data_,size);
+  LOG("-------------------------------------------------------------------------------------\n");
+#endif
+
+  drm->insertReturnValue(localJobID,(data_+4));
+  drm->deleteRunningJob(localJobID);
+  drm->onValueReturn(localJobID);
 }
 
 void esperanto_callback_setter(CommManager* comm_manager){
   TAG tag;
 
-  tag = 1;
+  tag = REMOTE_CALL;
   comm_manager->setCallback(tag,remotecall_callback);
+  
+  tag = ASYNC_REMOTE_CALL;
+  comm_manager->setCallback(tag,async_remotecall_callback);
+
+  tag = RETURN_VALUE;
+  comm_manager->setCallback(tag,return_value_callback);
   // Set callback functions for esperanto device runtime
 }
 
@@ -655,7 +455,7 @@ extern "C"
 void EspInit(ApiCallback fcn, int id, int isGvarInitializer){
 
   char filename[20];
-  CommManager* comm_manager = new CommManager();
+  comm_manager = new CommManager();
 
   callback = fcn;
   sprintf(filename,"functionTable-%d",id);
@@ -667,28 +467,6 @@ void EspInit(ApiCallback fcn, int id, int isGvarInitializer){
     esperanto_initializer(comm_manager);
     uva_initializer(comm_manager, isGvarInitializer);
   }
-
-  /*callback = fcn;
-  char filename[20];
-  sprintf(filename,"functionTable-%d",(int)id);
-  pthread_barrier_init(&barrier,NULL,2);
-  pthread_barrier_init(&commBarrier,NULL,4);
-  pthread_t broadcastThread, connectThread;
-  ConnectionInfo* server = (ConnectionInfo*)malloc(sizeof(ConnectionInfo));
-  FILE* server_desc = fopen("server_desc","r");
-  fscanf(server_desc,"%s %d",server->ip,&(server->port));
-  fclose(server_desc);
-  server->port += 1000;
-
-
-  if(updateMyFIDTable(filename)){
-    drm = new DeviceRuntimeManager();  
-    dqm = new DataQManager();
-    dqm->initQ();
-    pthread_create(&connectThread, NULL, &tryConnect, (void*)server);
-  }
-  pthread_barrier_wait(&barrier);
-  pthread_barrier_destroy(&barrier);*/
 }
 
 extern "C"

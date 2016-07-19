@@ -27,12 +27,13 @@
 namespace corelab {
 	typedef uint32_t QWord;
   typedef uint32_t TAG; 
-  typedef void (*CallbackType)(void*, uint32_t);
+  typedef void (*CallbackType)(void*, uint32_t, uint32_t);
 
   typedef struct Job {
     TAG tag;
     void* data;
     uint32_t size;
+    uint32_t sourceID;
   }Job;
 
   class CommManager {
@@ -47,7 +48,8 @@ namespace corelab {
     void setNewConnectionCallback(void callback(void*));
     //template<typename TFunction, typename... TArgs>
       //void setCallback(TAG tag, int cid, TFunction&& a_func, TArgs&&... a_args); // set callback
-    void setCallback(TAG tag, void callback(void*,uint32_t)); // set callback
+    void setCallback(TAG tag, void callback(void*,uint32_t,uint32_t)); // set callback
+    void setLocalID(uint32_t id);
     CallbackType getCallback(TAG tag);
 
 
@@ -75,11 +77,17 @@ namespace corelab {
 
     Job* getJob();
     void insertJob(Job* job);
+    void insertDataToRecvQue(void* data, uint32_t size, uint32_t cid);
     int getJobQueSize();
 
-  private:
+    pthread_mutex_t callbackLock;
+    pthread_spinlock_t jobQueLock;
+    pthread_spinlock_t recvFlagLock;
+    pthread_t handlingThread;
+    pthread_t receivingThread;
 
-    
+
+    private:
 
     struct Queue {
       // Data field
@@ -91,21 +99,20 @@ namespace corelab {
       int *ID;
     };
 
+    uint32_t localID;
+    uint32_t clntID;
+
     void (*connectionCallback)(void*);
 
     std::queue<Job*> jobQue;
 
     std::map<int, std::map<TAG,Queue*>* > sendQues; // client_id : send_queue
-    std::map<int, std::map<TAG,Queue*>* > recvQues; // client_id : recv_queue
+    std::map<int, Queue*> recvQues; // client_id : recv_queue
 
     std::map<int,int> socketMap; // client_id : socket_desc
+    std::map<int,bool> recvFlags;
 
     std::map<TAG,CallbackType>* callbackList; // callback function list with TAG (key) 
-
-    pthread_mutex_t callbackLock;
-    pthread_spinlock_t jobQueLock;
-    pthread_t handlingThread;
-    pthread_t receivingThread;
 
     void initializeSocketOpt(int* clientID);
     void initializeQueue(Queue& que);

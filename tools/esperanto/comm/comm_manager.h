@@ -27,11 +27,13 @@
 namespace corelab {
 	typedef uint32_t QWord;
   typedef uint32_t TAG; 
-  typedef void (*CallbackType)(void*, uint32_t);
+  typedef void (*CallbackType)(void*, uint32_t, uint32_t);
 
   typedef struct Job {
     TAG tag;
     void* data;
+    uint32_t size;
+    uint32_t sourceID;
   }Job;
 
   class CommManager {
@@ -46,7 +48,7 @@ namespace corelab {
     void setNewConnectionCallback(void callback(void*));
     //template<typename TFunction, typename... TArgs>
       //void setCallback(TAG tag, int cid, TFunction&& a_func, TArgs&&... a_args); // set callback
-    void setCallback(TAG tag, void callback(void*,uint32_t)); // set callback
+    void setCallback(TAG tag, void callback(void*,uint32_t,uint32_t)); // set callback
     CallbackType getCallback(TAG tag);
 
 
@@ -78,8 +80,6 @@ namespace corelab {
 
   private:
 
-    
-
     struct Queue {
       // Data field
       QWord size;
@@ -95,7 +95,7 @@ namespace corelab {
     std::queue<Job*> jobQue;
 
     std::map<int, std::map<TAG,Queue*>* > sendQues; // client_id : send_queue
-    std::map<int, std::map<TAG,Queue*>* > recvQues; // client_id : recv_queue
+    std::map<int, Queue*> recvQues; // client_id : recv_queue
 
     std::map<int,int> socketMap; // client_id : socket_desc
 

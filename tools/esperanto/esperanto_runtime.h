@@ -15,8 +15,17 @@ namespace corelab{
 // Declaration for function pointer
 typedef void (*ApiCallback) (int, int);
 
+enum{
+  REMOTE_CALL = 1,
+  ASYNC_REMOTE_CALL = 2,
+  RETURN_VALUE = 3,
+  REGISTER_DEVICE = 4,
+  BLOCKING = 1000
+};
+
 DeviceRuntimeManager* drm;// = new DeviceRuntimeManager();
 DataQManager* dqm;
+CommManager* comm_manager;
 
 struct RemoteCallHeader {
   char type;

@@ -45,7 +45,7 @@ namespace corelab {
     CommManager* commManager = (CommManager*)cm;
     int sock;
     int recvSize = 0;
-    uint32_t recvHeader[2];
+    uint32_t recvHeader[3];
     char recvData[Q_MAX];
 
     while(1){
@@ -54,7 +54,7 @@ namespace corelab {
 
       for(size_t i = 0; i < size; i++){
         sock = commManager->getSocketByIndex((uint32_t)i);
-        recvSize = read(sock,recvHeader,8);
+        recvSize = read(sock,recvHeader,12);
         if(recvSize  == 8){
           readComplete(sock,recvData,recvHeader[0]);
           Job* newJob = new Job();
@@ -62,6 +62,7 @@ namespace corelab {
           newJob->data = (char*)malloc(recvHeader[0]);
           newJob->size = recvHeader[0];
           memcpy(newJob->data,recvData,recvHeader[0]);
+          newJob->sourceID = recvHeader[2];
           commManager->insertJob(newJob);
                     //(*(*callbackList)[recvHeader[1]])((void*)recvData);
         }
@@ -77,16 +78,22 @@ namespace corelab {
       int jobNum = commManager->getJobQueSize();
       if(jobNum > 0){
         Job* job = commManager->getJob();
-        (*(*callbackList)[job->tag])(job->data,job->size);
+        if(job->tag == 1000){ // blocking tag
+          commManager->insertDataToRecvQue(job->data,job->size,job->sourceID);         
+        }
+        else
+          (*(*callbackList)[job->tag])(job->data,job->size,job->sourceID);
       }
     }
   }
 
 
-  
+   
 
   CommManager::CommManager(){
     callbackList = new std::map<TAG, CallbackType>();
+    localID = -1;
+    clntID = 1;
   }
 
   void CommManager::start(){
@@ -140,19 +147,25 @@ namespace corelab {
       initializeSocketOpt (clientID);
 
       std::map<TAG,Queue*>* sques = new std::map<TAG,Queue*>();
-      std::map<TAG,Queue*>* rques = new std::map<TAG,Queue*>();
+      Queue* rque = (Queue*)malloc(sizeof(Queue));
       assert(sques != NULL);
-      assert(rques != NULL);
-      //initializeQueue(*sque);
-      //initializeQueue(*rque);
+      assert(rque != NULL);
+      initializeQueue(*rque);
 
-      sendQues.insert(std::pair<int, std::map<TAG,Queue*>*>(*clientID, sques));
-      recvQues.insert(std::pair<int, std::map<TAG,Queue*>*>(*clientID, rques)); 
+
+      uint32_t initial_data[2];
+      initial_data[0] = localID;
+      initial_data[1] = clntID;
+      writeComplete(*clientID,(char*)initial_data,8);
+
+
+      sendQues.insert(std::pair<int, std::map<TAG,Queue*>*>(clntID, sques));
+      recvQues.insert(std::pair<int, Queue*>(clntID, rque)); 
+      clntID++;
 
       if(num>0)
         num--;
     }  
-
 		return 0;
   }
 
@@ -177,8 +190,24 @@ namespace corelab {
 		}
 
 		initializeSocketOpt (idClient);
-		
-		return *idClient;
+
+    uint32_t initial_data[2];
+    readComplete(*idClient,(char*)initial_data,8);
+
+    socketMap[initial_data[0]] = *idClient;
+    localID = initial_data[1];
+
+
+    std::map<TAG,Queue*>* sques = new std::map<TAG,Queue*>();
+    Queue* rque = (Queue*)malloc(sizeof(Queue));
+    assert(sques != NULL);
+    assert(rque != NULL);
+    initializeQueue(*rque);
+
+    sendQues.insert(std::pair<int, std::map<TAG,Queue*>*>(initial_data[0], sques));
+    recvQues.insert(std::pair<int, Queue*>(initial_data[0], rque)); 
+
+    return initial_data[0];
   }
 
   void CommManager::closeConnection(int* cid){
@@ -187,6 +216,10 @@ namespace corelab {
 
   void CommManager::setNewConnectionCallback(void callback(void*)){
     connectionCallback = callback;
+  }
+
+  void CommManager::setLocalID(uint32_t id){
+    localID = id;
   }
 
   bool CommManager::pushWord(TAG tag, QWord word, int* cid){
@@ -238,7 +271,7 @@ namespace corelab {
 
   void CommManager::sendQue(TAG tag, int* cid){
 
-    uint32_t header[2];
+    uint32_t header[3];
 
     if(cid == NULL)
       return;
@@ -253,9 +286,12 @@ namespace corelab {
 
       header[0] = targetQue->size;
       header[1] = tag;
+      header[2] = localID;
       int sock = socketMap[*cid];
+      writeComplete(sock,(char*)header,12);
       writeComplete(sock,targetQue->data,targetQue->size);
-
+      
+      memset(&header,0,12);
       initializeQueue(*targetQue);
 
     }
@@ -266,13 +302,66 @@ namespace corelab {
         Queue* targetQue = it->second;
         header[0] = targetQue->size;
         header[1] = it->first;
-        writeComplete(sock,(char*)&header,8);
+        header[2] = localID;
+        writeComplete(sock,(char*)&header,12);
         writeComplete(sock,targetQue->data,header[0]);
-        memset(&header,0,8);
+        memset(&header,0,12);
         initializeQueue(*targetQue);
       }
     }
 
+  }
+
+  QWord CommManager::takeWord(int* cid){
+    Queue* targetQue = NULL;
+
+    assert((cid != NULL) && "cannot take word from queue whose cid is NULL");
+
+    targetQue = recvQues[*cid];
+
+    assert((targetQue != NULL) && "cannot take word from NULL queue");
+    
+    QWord word;
+    word = *(QWord*)(targetQue->head);
+    
+    targetQue->head += 4;
+    targetQue->size -= 4;
+    
+    if(targetQue->size == 0)
+      initializeQueue(*targetQue);
+
+    return word;
+  }
+
+  bool CommManager::takeRange(void* buf, size_t size, int* cid){
+    Queue* targetQue = NULL;
+
+    assert((cid != NULL) && "cannot range word from queue whose cid is NULL");
+
+    targetQue = recvQues[*cid];
+
+    assert((targetQue != NULL) && "cannot range word from NULL queue");
+
+    memcpy(buf,targetQue->head,size);
+
+    targetQue->head += size;
+    targetQue->size -= size;
+
+    if(targetQue->size == 0)
+      initializeQueue(*targetQue);
+
+    return true;
+  }
+
+  void CommManager::receiveQue(int* cid){
+    while(1){
+      pthread_spin_lock(&recvFlagLock);
+      if(recvFlags[*cid] == true){
+        pthread_spin_unlock(&recvFlagLock);
+        break;
+      }
+      pthread_spin_unlock(&recvFlagLock);
+    }
   }
 
   //void CommManager::sendWord(QWord word, int* cid){
@@ -313,7 +402,7 @@ namespace corelab {
     que.head = que.data;
   }
 
-  void CommManager::setCallback(TAG tag, void callback(void*, uint32_t)){
+  void CommManager::setCallback(TAG tag, void callback(void*, uint32_t, uint32_t)){
     pthread_mutex_lock(&callbackLock);
     callbackList->insert(std::pair<TAG, CallbackType>(tag, (CallbackType)callback));
     pthread_mutex_unlock(&callbackLock);
@@ -345,6 +434,16 @@ namespace corelab {
     pthread_spin_lock(&jobQueLock);
     jobQue.push(newJob);
     pthread_spin_unlock(&jobQueLock);
+  }
+
+  void CommManager::insertDataToRecvQue(void* data, uint32_t size, uint32_t cid){
+    pthread_spin_lock(&recvFlagLock);
+    Queue* targetQue = recvQues[cid];
+    targetQue->size = size;
+    targetQue->head = targetQue->data;
+    memcpy(targetQue->data,data,size);
+    pthread_spin_unlock(&recvFlagLock);
+
   }
 
   Job* CommManager::getJob(){
