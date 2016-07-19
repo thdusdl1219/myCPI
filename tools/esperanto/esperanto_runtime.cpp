@@ -26,7 +26,7 @@ namespace corelab{
 using namespace std;
 
 
-extern "C" void UVAClientInitializer(CommManager*, int);
+extern "C" void UVAClientInitializer(CommManager*, int, uint32_t);
 extern "C" void UVACallbackSetter(CommManager*);
 extern "C" void uva_sync();
 
@@ -140,7 +140,7 @@ extern "C"
 void pushArgument(int rc_id, void* buf, int size){
   drm->insertArgsInfo(rc_id,buf, size); 
 }
-/*
+
 extern "C" 
 void produceAsyncFunctionArgs(int functionID, int rc_id){
   int size = drm->getArgsTotalSize(rc_id); 
@@ -181,7 +181,7 @@ void produceAsyncFunctionArgs(int functionID, int rc_id){
   free(payload);
   free(buf);
 }
-
+/*
 extern "C"
 void produceReturn(int jobID, void* buf, int size){
   if(jobID == -2)
@@ -441,14 +441,14 @@ void uva_callback_setter(CommManager* comm_manager){
 }
 
 void network_initializer(CommManager* comm_manager){
-
+  
 }
 
 void esperanto_initializer(CommManager* comm_manager){
 }
 
-void uva_initializer(CommManager* comm_manager, int isGvarInitializer){
-  UVAClientInitializer(comm_manager, isGvarInitializer);
+void uva_initializer(CommManager* comm_manager, int isGvarInitializer, uint32_t homeID){
+  UVAClientInitializer(comm_manager, isGvarInitializer, homeID);
 }
 
 extern "C"
