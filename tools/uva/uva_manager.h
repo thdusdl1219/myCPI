@@ -10,6 +10,7 @@
  * **/
 #include <cstdlib>
 
+#include "../comm/comm_manager.h"
 #include "qsocket.h"
 #include "xmem_spec.h"
 

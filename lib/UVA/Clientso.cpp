@@ -61,13 +61,13 @@ void UVAClient::setFunctions(Module& M) {
   LLVMContext &Context = M.getContext();
  
   UVAClientInit = M.getOrInsertFunction(
-      "UVAClientInitialize",
+      "UVAClientInitializer",
       Type::getVoidTy(Context),
       Type::getInt32Ty(Context),
       (Type*)0);
 
   UVAClientFinal = M.getOrInsertFunction(
-      "UVAClientFinalize",
+      "UVAClientFinalizer",
       Type::getVoidTy(Context),
       (Type*)0);
   
