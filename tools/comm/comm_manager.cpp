@@ -222,6 +222,10 @@ namespace corelab {
     localID = id;
   }
 
+  uint32_t CommManager::getLocalID(){
+    return localID;
+  }
+
   bool CommManager::pushWord(TAG tag, QWord word, int* cid){
     Queue* targetQue;
     if(tag == 0){
@@ -278,7 +282,7 @@ namespace corelab {
 
     int sock = socketMap[*cid];
 
-    if(sendQues[*cid]->find(tag) == sendQues[*cid]->end())
+    if((sendQues[*cid]->find(tag) == sendQues[*cid]->end()) && (tag != 0))
       return; // error : There is no queue for cid & tag
 
     if(tag != 0){
@@ -318,7 +322,6 @@ namespace corelab {
     assert((cid != NULL) && "cannot take word from queue whose cid is NULL");
 
     targetQue = recvQues[*cid];
-
     assert((targetQue != NULL) && "cannot take word from NULL queue");
     
     QWord word;
@@ -339,7 +342,6 @@ namespace corelab {
     assert((cid != NULL) && "cannot range word from queue whose cid is NULL");
 
     targetQue = recvQues[*cid];
-
     assert((targetQue != NULL) && "cannot range word from NULL queue");
 
     memcpy(buf,targetQue->head,size);

@@ -50,6 +50,7 @@ namespace corelab {
       //void setCallback(TAG tag, int cid, TFunction&& a_func, TArgs&&... a_args); // set callback
     void setCallback(TAG tag, void callback(void*,uint32_t,uint32_t)); // set callback
     void setLocalID(uint32_t id);
+    uint32_t getLocalID();
     CallbackType getCallback(TAG tag);
 
 

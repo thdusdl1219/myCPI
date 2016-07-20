@@ -145,62 +145,37 @@ extern "C"
 void produceAsyncFunctionArgs(int functionID, int rc_id){
   int size = drm->getArgsTotalSize(rc_id); 
   void* buf = drm->getArgsOfRC(rc_id);
-  int sendSocket = drm->getSendSocket();
-  char header[9];
-  char* payload;
-  int payloadSize = 0;
   int jobID = -2;
-  char ack = 1;
-  size += 4;
-  memcpy(header+1,&jobID,4);
-  memcpy(header+5,&size,4);
-  header[0] = 'A';
-  payload = (char*)malloc(size);
-  if(size>0){
-    memcpy(payload,&functionID,4);
-    memcpy(payload+4,buf,size-4);
-#ifdef DEBUG_ESP	
-    hexdump("args",buf,size-4);
-#endif
-  }
-  else{
-    memcpy(payload,&functionID,4);
-  }
-  sendComplete(sendSocket,header,9);
-  read(sendSocket,&ack,1);
-  if(size >0)
-    payloadSize = sendComplete(sendSocket,payload,(size));
-  else
-    payloadSize = sendComplete(sendSocket,payload,4);
+
+  TAG tag = ASYNC_REMOTE_CALL;
+  comm_manager->pushRange(tag, (void*)&jobID, 4, &connectionID);
+  comm_manager->pushWord(tag, (uint32_t)functionID, &connectionID);
+  comm_manager->pushRange(tag, buf, size, &connectionID);
+  comm_manager->sendQue(tag, &connectionID);
+
 #ifdef DEBUG_ESP
   LOG("-------------------------------------------------------------------------------------\n");
   LOG("Send async function call (DEVICE) -> sourceJobID = %d, functionID = %d\n", jobID, functionID);
-  hexdump("Args",buf,size-4);
+  hexdump("Args",buf,size);
   LOG("-------------------------------------------------------------------------------------\n");
 #endif
-  free(payload);
+
   free(buf);
 }
-/*
+
 extern "C"
 void produceReturn(int jobID, void* buf, int size){
   if(jobID == -2)
     return;
-  //DataQElem* elem = new DataQElem();
-  void* ret = (void*)malloc(size);
-  memcpy(ret,buf,size);
-  char ack =1;
-  int sendSocket = drm->getSendSocket();
-  char header[9];
 
   if(jobID != -1){
     int sourceJobID = drm->getSourceJobID(jobID);
-    header[0] = 'R';
-    memcpy(header+1,&sourceJobID,4);
-    memcpy(header+5,&size,4);
-    sendComplete(sendSocket,header,9);
-    if(size >0)
-      sendComplete(sendSocket,(char*)ret,size);
+    TAG tag = RETURN_VALUE;
+
+    comm_manager->pushWord(tag, (uint32_t)jobID, &connectionID);
+    comm_manager->pushRange(tag, buf, size, &connectionID);
+    comm_manager->sendQue(tag, &connectionID);
+    
 #ifdef DEBUG_ESP
     LOG("-------------------------------------------------------------------------------------\n");
     LOG("Send return value (DEVICE) -> localJobID = %d, sourceJobID = %d\n", jobID, sourceJobID);
@@ -211,90 +186,50 @@ void produceReturn(int jobID, void* buf, int size){
     drm->deleteJobIDMapping(jobID);
   } // send return value 
 
-  free(ret);
-
 }
 
 extern "C"
 void produceFunctionArgs(int jobID, int rc_id){
+
   int size = drm->getArgsTotalSize(rc_id); 
   void* buf = drm->getArgsOfRC(rc_id);
-  int sendSocket = drm->getSendSocket();
-  char ack = 1;
-#ifdef DEBUG_ESP	
-  hexdump("produced args",buf,size);
-#endif
-
-  char header[9];
-  char* payload;
-  int payloadSize = 0;
-  drm->insertConsumeWait(jobID);
-  size += 4;
-  memcpy(header+1,&jobID,4);
-  memcpy(header+5,&size,4);
-  header[0] = 'F';
-  payload = (char*)malloc(size);
   int functionID = drm->getRunningJobFID(jobID);
-  if(size>0){
-    memcpy(payload,&functionID,4);
-    memcpy(payload+4,buf,size-4);
-#ifdef DEBUG_ESP	
-    hexdump("args",buf,size-4);
-#endif
-  }
-  else{
-    memcpy(payload,&functionID,4);
-  }
-  sendComplete(sendSocket,header,9);
-  if(size >0)
-    payloadSize = sendComplete(sendSocket,payload,(size));
-  else
-    payloadSize = sendComplete(sendSocket,payload,4);
+
+  drm->insertConsumeWait(jobID);
+
+  TAG tag = REMOTE_CALL;
+  comm_manager->pushRange(tag, (void*)&jobID, 4, &connectionID);
+  comm_manager->pushWord(tag, (uint32_t)functionID, &connectionID);
+  comm_manager->pushRange(tag, buf, size, &connectionID);
+  comm_manager->sendQue(tag, &connectionID);
+
 #ifdef DEBUG_ESP
   LOG("-------------------------------------------------------------------------------------\n");
-  LOG("Send function call (DEVICE) -> sourceJobID = %d, functionID = %d\n", jobID, functionID);
-  hexdump("Args",buf,size-4);
+  LOG("Send remote function call (DEVICE) -> sourceJobID = %d, functionID = %d\n", jobID, functionID);
+  hexdump("Args",buf,size);
   LOG("-------------------------------------------------------------------------------------\n");
 #endif
-  free(payload);
+
   free(buf);
 }
-*/
+
 extern "C"
 void registerDevice(void* addr){
   
   LOG("Address of device is %p\n",addr);
 
-  TAG tag = REGISTER_DEVICE;
   uint32_t registerID;
   memcpy(&registerID,&addr,4);
 
+  TAG tag = REGISTER_DEVICE;
   comm_manager->pushWord(tag,registerID, &connectionID);
-  comm_manager->pushWord(tag,deviceID, &connectionID);
-/*
-  uint32_t temp;
-  memcpy(&temp,&addr,4);
-#ifdef DEBUG_ESP	
-  hexdump("register",&addr,sizeof(addr));
+  comm_manager->sendQue(tag, &connectionID);
+#ifdef DEBUG_ESP
+    LOG("-------------------------------------------------------------------------------------\n");
+    hexdump("RegisterDevice",&registerID,4);
+    LOG("-------------------------------------------------------------------------------------\n");
 #endif
-  char* info = (char*)malloc(8);
-  //sprintf(info,"%zu%d",temp,deviceID);
-  memcpy(info,&temp,4);
-  memcpy(info+4,&deviceID,4);
-  hexdump("register",(void*)info,8);
-  int sendSocket = drm->getSendSocket();
-  char header[9];
-  int sourceJobID = -1;
-  char ack;
-  int size = 8;
-  header[0] = 'D';
-  memcpy(header+1,&sourceJobID,4);
-  memcpy(header+5,&size,4);
-  sendComplete(sendSocket,header,9);
-  sendComplete(sendSocket,info,size);
 
-  printf("end of register device\n");
-*/
 }
 
 extern "C"
@@ -465,7 +400,7 @@ void EspInit(ApiCallback fcn, int id, int isGvarInitializer){
     uva_callback_setter(comm_manager);
     network_initializer(comm_manager);
     esperanto_initializer(comm_manager);
-    uva_initializer(comm_manager, isGvarInitializer);
+    uva_initializer(comm_manager, isGvarInitializer, connectionID);
   }
 }
 

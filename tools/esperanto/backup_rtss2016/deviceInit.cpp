@@ -258,18 +258,6 @@ void produceAsyncFunctionArgs(int functionID, int rc_id){
   int size = drm->getArgsTotalSize(rc_id); 
   void* buf = drm->getArgsOfRC(rc_id);
 	int sendSocket = drm->getSendSocket();
-  //hexdump("async args",buf,size);
-  /*DataQElem* elem = new DataQElem();
-  elem->setIsFunctionCall(true);
-  elem->setArgs(buf,size);
-  elem->setFunctionID(functionID);
-  elem->setJobID(-2);
-  elem->setRetVal(NULL,0);
-  dqm->insertElementToSendQ(elem);
-  pthread_mutex_lock(&sendQHandleLock);
-  sendQHandling = true;
-  pthread_mutex_unlock(&sendQHandleLock);
-  */
   char header[9];
   char* payload;
   int payloadSize = 0;
