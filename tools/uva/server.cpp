@@ -17,6 +17,7 @@
 #include "uva_debug_eval.h"
 
 #define HLRC
+//#define DEBUG_UVA
 
 #define TEST 1
 
@@ -282,11 +283,21 @@ namespace corelab {
 #ifdef DEBUG_UVA
       LOG("[server] sizeStoreLogs : (%d)\n", sizeStoreLogs);
 #endif
+      set<uint32_t> sendAddrSet;
+      // find same cliendId in accessSet in pageInfo
+      for(map<long, struct pageInfo*>::iterator it = pageMap->begin(); it != pageMap->end(); it++) {
+        set<int>* my_var = it->second->accessS;
+        if(my_var->find(*clientId) == my_var->end()) {
+          uint32_t intAddr;
+          memcpy(&intAddr, &(it->first), 4);
+          sendAddrSet.insert(intAddr);
+#ifdef DEBUG_UVA
+          LOG("[server] add invalidation address (%p)(%d) for clientId (%d)\n", reinterpret_cast<void*>(it->first), intAddr, *clientId);
+#endif
+        }
+      }
       if (sizeStoreLogs != 0) {
         storeLogs = malloc(sizeStoreLogs);
-#ifdef DEBUG_UVA
-        LOG("[server] StoreLogs address : (%p)\n", storeLogs);
-#endif
         socket->takeRangeF(storeLogs, sizeStoreLogs, clientId);
 #if UINTPTR_MAX == 0xffffffff
         /* 32-bit */
@@ -321,14 +332,7 @@ namespace corelab {
           struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*addr))];
           if (pageInfo != NULL) {
             pageInfo->accessS->clear();
-            /* XXX XXX XXX XXX XXX This is for preventing ... */
-            if (isFirstUvaSync) {
-              if ((void*)0x15000000 <= addr && addr < (void*)0x16000000) {
-                isFirstUvaSync = false;
-              }
-            } else {  
-              pageInfo->accessS->insert(*clientId);
-            }
+            pageInfo->accessS->insert(*clientId);
 #ifdef DEBUG_UVA
             LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(*addr), *clientId);
 #endif
@@ -345,19 +349,6 @@ namespace corelab {
         free(storeLogs);
       }
 
-      set<uint32_t> sendAddrSet;
-      // find same cliendId in accessSet in pageInfo
-      for(map<long, struct pageInfo*>::iterator it = pageMap->begin(); it != pageMap->end(); it++) {
-        set<int>* my_var = it->second->accessS;
-        if(my_var->find(*clientId) == my_var->end()) {
-          uint32_t intAddr;
-          memcpy(&intAddr, &(it->first), 4);
-          sendAddrSet.insert(intAddr);
-#ifdef DEBUG_UVA
-          LOG("[server] add invalidation address (%p)(%d) for clientId (%d)\n", reinterpret_cast<void*>(it->first), intAddr, *clientId);
-#endif
-        }
-      }
       //socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
       //socket->pushWord(4, clientId); // send addressSize XXX support x64
       socket->pushWord(sendAddrSet.size(), clientId); // send addressNum 
