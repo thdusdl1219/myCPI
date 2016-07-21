@@ -21,7 +21,6 @@ namespace corelab {
     void heapAllocHandler(void*, uint32_t, uint32_t);
     void loadHandler(void*, uint32_t, uint32_t);
     void storeHandler(void*, uint32_t, uint32_t);
-    void storeHandlerForHLRC(void*, uint32_t, uint32_t);
     void mmapHandler(void*, uint32_t, uint32_t);
     void memsetHandler(void*, uint32_t, uint32_t);
     void memcpyHandler(void*, uint32_t, uint32_t);

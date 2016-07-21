@@ -43,8 +43,8 @@ namespace corelab {
       comm->setCallback(tag, loadHandler);
       tag = STORE_HANDLER;
       comm->setCallback(tag, storeHandler);
-      tag = STORE_HLRC_HANDLER;
-      comm->setCallback(tag, storeHandlerForHLRC); // XXX
+      //tag = STORE_HLRC_HANDLER;
+      //comm->setCallback(tag, storeHandlerForHLRC); // XXX
       tag = SYNC_HANDLER;
       comm->setCallback(tag, syncHandler);
       tag = MMAP_HANDLER;
