@@ -10,7 +10,8 @@
  * **/
 #include <cstdlib>
 
-#include "../comm/comm_manager.h"
+#include "../esperanto/comm/comm_manager.h"
+#include "uva_comm_enum.h"
 #include "qsocket.h"
 #include "xmem_spec.h"
 
@@ -40,7 +41,7 @@ namespace corelab {
     };
 
 		namespace UVAManager {
-			void initialize (QSocket *socket);
+			void initialize (CommManager *comm, int *destid);
 
 			// UVA Management
 			void synchIn (QSocket *socket);
@@ -55,19 +56,19 @@ namespace corelab {
       void acquireHandler(QSocket *socket);
       void releaseHandler(QSocket *socket);
       
-      void syncHandler(QSocket *socket);
+      void syncHandler(CommManager *comm, int *destid);
 
       // Memory Access handler (BONGJUN)
-      void loadHandler(QSocket *socket, size_t typeLen, void *addr);
-      void storeHandler(QSocket *socket, size_t typeLen, void *data, void *addr);
+      void loadHandler(CommManager *comm, int *destid, size_t typeLen, void *addr);
+      void storeHandler(CommManager *comm, int *destid, size_t typeLen, void *data, void *addr);
     
-      void *memsetHandler(QSocket *socket, void *addr, int value, size_t num);
-      void *memcpyHandler(QSocket *socket, void *dest, void *src, size_t num);
+      void *memsetHandler(CommManager *comm, int *destid, void *addr, int value, size_t num);
+      void *memcpyHandler(CommManager *comm, int *destid, void *dest, void *src, size_t num);
      
       // Memory Access handler for HLRC 
-      void storeHandlerForHLRC(QSocket *socket, size_t typeLen, void *data, void *addr);
-      void *memsetHandlerForHLRC(QSocket *socket, void *addr, int value, size_t num);
-      void *memcpyHandlerForHLRC(QSocket *socket, void *dest, void *src, size_t num);
+      void storeHandlerForHLRC(size_t typeLen, void *data, void *addr);
+      void *memsetHandlerForHLRC(void *addr, int value, size_t num);
+      void *memcpyHandlerForHLRC(CommManager *comm, int *destid, void *dest, void *src, size_t num);
 
       // Get/Set/Test interfaces
 			void setConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/);

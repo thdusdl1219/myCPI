@@ -5,10 +5,10 @@
 #include <csignal>
 #include <stdint.h>
 
-#include "../comm/comm_manager.h"
+#include "../esperanto/comm/comm_manager.h"
 #include "client.h"
 #include "qsocket.h"
-#include "mm.h" // FIXME
+#include "mm.h" // FIXME I don't wanna access directly to mm module (better: through xmem)
 #include "uva_manager.h"
 #include "xmem_info.h"
 #include "uva_macro.h"
@@ -17,6 +17,8 @@
 
 #include "log.h"
 #include "hexdump.h"
+
+#include "uva_comm_enum.h"
 
 #include "uva_debug_eval.h"
 
@@ -35,7 +37,9 @@ extern "C" void sendInitCompleteSignal();
 
 namespace corelab {
   namespace UVA {
-    static QSocket *Msocket;
+    //static QSocket *Msocket;
+    static CommManager *comm;
+    static int *destid = NULL;
 
 		struct sigaction segvAction;
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused);
@@ -46,11 +50,17 @@ namespace corelab {
 		}
 
     extern "C" void UVACallbackSetter(CommManager *comm) { 
+      // XXX Currently, no need callback in client.
     }
 
-    extern "C" void UVAClientInitializer(CommManager *comm, uint32_t isGVInitializer) {
+    extern "C" void UVAClientInitializer(CommManager *comm_, uint32_t isGVInitializer, int *destid_) {
+
       // FIXME: for sync
       sleep(5);
+
+      comm = comm_;
+      destid = destid_;
+/*
       char ip[20];
       char port[10];
 
@@ -71,11 +81,13 @@ namespace corelab {
       printf("[CLIENT] ip (%s), port (%s)\n", ip, port);
 #endif
 
-      Msocket = new QSocket();
-      Msocket->connect(ip, port);
+      //Msocket = new QSocket();
+      //Msocket->connect(ip, port);
 
       //XMemory::XMemoryManager::initialize(Msocket);
-      UVAManager::initialize (Msocket);
+      //UVAManager::initialize (Msocket);
+*/
+      UVAManager::initialize (comm, destid);
 
       // segfault handler
 			segvAction.sa_flags = SA_SIGINFO | SA_NODEFER;
@@ -93,8 +105,10 @@ namespace corelab {
 
       /* For synchronized clients start */
       if(!isGVInitializer) {
-        Msocket->receiveQue();
-        int mayIstart = Msocket->takeWordF();
+        //Msocket->receiveQue();
+        comm->receiveQue(destid);
+        //int mayIstart = Msocket->takeWordF();
+        uint32_t mayIstart = comm->takeWord(destid);
         if (mayIstart == 1) {
 #ifdef DEBUG_UVA
           printf("[CLIENT] I got start permission !!\n");
@@ -118,7 +132,7 @@ namespace corelab {
       UVAManager::getFixedGlobalAddrRange(&ptNoConstBegin, &ptNoConstEnd/*, &ptConstBegin, &ptConstEnd*/);
       xmemDumpRange(ptNoConstBegin, 32);
       //xmemDumpRange(ptConstBegin, 32);
-      Msocket->disconnect();
+      //Msocket->disconnect();
     }
 		/*** Internals ***/
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused) {
@@ -154,7 +168,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | fault_addr is in FixedGlobalAddr space %p\n",ptNoConstBegin);
 #endif
-        Msocket->pushWordF(GLOBAL_SEGFAULT_REQ); // send GLOBAL_SEGFAULT_REQ
+        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, GLOBAL_SEGFAULT_REQ, destid); // send GLOBAL_SEGFAULT_REQ
         //uint32_t intAddrBegin = reinterpret_cast<uint32_t>(ptNoConstBegin);
         //uint32_t intAddrEnd = reinterpret_cast<uint32_t>(ptNoConstEnd);
         uint32_t intAddrBegin;
@@ -163,14 +177,14 @@ namespace corelab {
         memcpy(&intAddrBegin, &ptNoConstBegin, 4);
         memcpy(&intAddrEnd, &ptNoConstEnd, 4);
         
-        Msocket->pushWordF(intAddrBegin);
-        Msocket->pushWordF(intAddrEnd);
-        Msocket->sendQue();
+        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, intAddrBegin, destid);
+        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, intAddrEnd, destid);
+        comm->sendQue(GLOBAL_SEGFAULT_HANDLER, destid);
 
-        Msocket->receiveQue();
-        int ack = Msocket->takeWordF();
+        comm->receiveQue(destid);
+        uint32_t ack = comm->takeWord(destid);
         assert(ack == GLOBAL_SEGFAULT_REQ_ACK && "wrong!!!");
-        Msocket->takeRangeF(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin);
+        comm->takeRange(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, destid);
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | get global variables done\n");
         LOG("[client] segfaultHandler (TEST print)\n");
@@ -228,7 +242,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | fault_addr is in FixedGlobalAddr space %p\n",ptNoConstBegin);
 #endif
-        Msocket->pushWordF(GLOBAL_SEGFAULT_REQ); // send GLOBAL_SEGFAULT_REQ
+        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, GLOBAL_SEGFAULT_REQ, destid); // send GLOBAL_SEGFAULT_REQ
         //uint32_t intAddrBegin = reinterpret_cast<uint32_t>(ptNoConstBegin);
         //uint32_t intAddrEnd = reinterpret_cast<uint32_t>(ptNoConstEnd);
         uint32_t intAddrBegin;
@@ -237,23 +251,23 @@ namespace corelab {
         memcpy(&intAddrBegin, &ptNoConstBegin, 4);
         memcpy(&intAddrEnd, &ptNoConstEnd, 4);
         
-        Msocket->pushWordF(intAddrBegin);
-        Msocket->pushWordF(intAddrEnd);
-        Msocket->sendQue();
+        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, intAddrBegin, destid);
+        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, intAddrEnd, destid);
+        comm->sendQue(GLOBAL_SEGFAULT_HANDLER, destid);
 
 /*#ifdef UVA_EVAL
         StopWatch watchRecv;
         watchRecv.start();
 #endif*/
-        Msocket->receiveQue();
+        comm->receiveQue(destid);
 /*#ifdef UVA_EVAL
         watchRecv.end();
         FILE *fp = fopen("uva-eval.txt", "a");
         fprintf(fp, "SEGFAULT | RECV %lf\n", watchRecv.diff());
 #endif*/
-        int ack = Msocket->takeWordF();
+        uint32_t ack = comm->takeWord(destid);
         assert(ack == GLOBAL_SEGFAULT_REQ_ACK && "wrong!!!");
-        Msocket->takeRangeF(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin);
+        comm->takeRange(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, destid);
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | get global variables done\n");
         LOG("[client] segfaultHandler (TEST print)\n");
@@ -271,21 +285,21 @@ namespace corelab {
 #endif
         uint32_t intFaultAddr;
         memcpy(&intFaultAddr, &fault_addr, 4);
-        Msocket->pushWordF(HEAP_SEGFAULT_REQ);
-        Msocket->pushWordF(intFaultAddr);
-        Msocket->sendQue();
+        comm->pushWord(HEAP_SEGFAULT_HANDLER, HEAP_SEGFAULT_REQ, destid);
+        comm->pushWord(HEAP_SEGFAULT_HANDLER, intFaultAddr, destid);
+        comm->sendQue(HEAP_SEGFAULT_HANDLER, destid);
 
 /*#ifdef UVA_EVAL
         StopWatch watchRecv;
         watchRecv.start();
 #endif*/
-        Msocket->receiveQue();
+        comm->receiveQue(destid);
 /*#ifdef UVA_EVAL
         watchRecv.end();
         FILE *fp = fopen("uva-eval.txt", "a");
         fprintf(fp, "SEGFAULT | RECV %lf\n", watchRecv.diff());
 #endif*/
-        Msocket->takeRangeF(truncToPageAddr(fault_addr), PAGE_SIZE);
+        comm->takeRange(truncToPageAddr(fault_addr), PAGE_SIZE, destid);
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | getting a page in heap is done\n");
         LOG("[client] segfaultHandler (TEST print)\n");
@@ -313,60 +327,65 @@ namespace corelab {
 		} // segfaultHandler
     extern "C" void uva_load(size_t len, void *addr) {
 #ifndef HLRC
-      UVAManager::loadHandler(Msocket, len, addr);
+      UVAManager::loadHandler(comm, destid, len, addr);
 #endif
       return;
     }
 
     extern "C" void uva_store(size_t len, void *data, void *addr) {
 #ifdef HLRC
-      UVAManager::storeHandlerForHLRC(Msocket, len, data, addr);
+      UVAManager::storeHandlerForHLRC(len, data, addr);
 #else
-      UVAManager::storeHandler(Msocket, len, data, addr);
+      UVAManager::storeHandler(comm, destid, len, data, addr);
 #endif
       return;
     }
 
     extern "C" void *uva_memset(void *addr, int value, size_t num) {
 #ifdef HLRC
-      return UVAManager::memsetHandlerForHLRC(Msocket, addr, value, num);
+      return UVAManager::memsetHandlerForHLRC(addr, value, num);
 #else
-      return UVAManager::memsetHandler(Msocket, addr, value, num);
+      return UVAManager::memsetHandler(comm, destid, addr, value, num);
 #endif
     }
 
     extern "C" void *uva_memcpy(void *dest, void *src, size_t num) {
 #ifdef HLRC
-      return UVAManager::memcpyHandlerForHLRC(Msocket, dest, src, num);
+      return UVAManager::memcpyHandlerForHLRC(comm, destid, dest, src, num);
 #else
-      return UVAManager::memcpyHandler(Msocket, dest, src, num);
+      return UVAManager::memcpyHandler(comm, destid, dest, src, num);
 #endif
     }
     
     extern "C" void uva_acquire() {
 #ifdef HLRC
-      UVAManager::acquireHandler(Msocket);
+      //UVAManager::acquireHandler(Msocket);
 #endif
     }
     
     extern "C" void uva_release() {
 #ifdef HLRC
-      UVAManager::releaseHandler(Msocket);
+      //UVAManager::releaseHandler(Msocket);
 #endif
     }
     
     extern "C" void uva_sync() {
 #ifdef HLRC
-      UVAManager::syncHandler(Msocket);
+      UVAManager::syncHandler(comm, destid);
 #endif
     }
     
     extern "C" void sendInitCompleteSignal() {
-      Msocket->pushWordF(GLOBAL_INIT_COMPLETE_SIG); // Init complete signal
-      Msocket->sendQue();
+      //Msocket->pushWordF(GLOBAL_INIT_COMPLETE_SIG); // Init complete signal
+      //Msocket->sendQue();
 
-      Msocket->receiveQue();
-      int ack = Msocket->takeWordF(); 
+      //Msocket->receiveQue();
+      //int ack = Msocket->takeWordF(); 
+      comm->pushWord(GLOBAL_INIT_COMPLETE_HANDLER, GLOBAL_INIT_COMPLETE_SIG, destid); // Init complete signal
+      comm->sendQue(GLOBAL_INIT_COMPLETE_HANDLER, destid);
+
+      comm->receiveQue(destid);
+      uint32_t ack = comm->takeWord(destid); 
       assert(ack == GLOBAL_INIT_COMPLETE_SIG_ACK && "Server says \"Hey, I didn't get global initialization complete signal correctly. \"");
       return;
     }
