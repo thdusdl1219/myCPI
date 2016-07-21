@@ -393,15 +393,24 @@ void EspInit(ApiCallback fcn, int id, int isGvarInitializer){
 
   char filename[20];
   comm_manager = new CommManager();
+  LOG("DEBUG :: EspInit start\n");
 
   callback = fcn;
   sprintf(filename,"functionTable-%d",id);
 
   esperanto_callback_setter(comm_manager);
+
+  LOG("DEBUG :: EspInit start\n");
   uva_callback_setter(comm_manager);
+
+  LOG("DEBUG :: EspInit start\n");
   network_initializer(comm_manager);
+  LOG("DEBUG :: EspInit start\n");
   esperanto_initializer(comm_manager);
+  LOG("DEBUG :: EspInit start\n");
   uva_initializer(comm_manager, isGvarInitializer, connectionID);
+
+  LOG("DEBUG :: EspInit start\n");
 }
 
 extern "C"

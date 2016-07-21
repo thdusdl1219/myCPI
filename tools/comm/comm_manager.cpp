@@ -55,7 +55,8 @@ namespace corelab {
       for(size_t i = 0; i < size; i++){
         sock = commManager->getSocketByIndex((uint32_t)i);
         recvSize = read(sock,recvHeader,12);
-        if(recvSize  == 8){
+        if(recvSize  == 12){
+          LOG("CommManager get job from client\n");
           readComplete(sock,recvData,recvHeader[0]);
           Job* newJob = new Job();
           newJob->tag = (TAG)recvHeader[1];
@@ -105,6 +106,7 @@ namespace corelab {
 
   int CommManager::open(int port, int num){
 
+    LOG("DEBUG :: comm_manager open\n");
     struct sockaddr_in eptHost;
 
     int idHost = socket (PF_INET, SOCK_STREAM, 0);
@@ -170,7 +172,8 @@ namespace corelab {
   }
 
   int CommManager::tryConnect(const char* ip, int port){
-  
+    
+    LOG("DEBUG :: tryConnect\n");
 		struct sockaddr_in eptClient;
 
     int* idClient = (int*)malloc(sizeof(int));
@@ -235,17 +238,22 @@ namespace corelab {
     
     if(sendQues[destID]->find(tag) == sendQues[destID]->end()){
       Queue* newQue = (Queue*)malloc(sizeof(Queue));
+      initializeQueue(*newQue);
       sendQues[destID]->insert(std::pair<TAG,Queue*>(tag,newQue));
       targetQue = newQue;
     }
     else
       targetQue = (*(sendQues[destID]))[tag];
       
+    LOG("before check sendques\n");
     if((targetQue->size) > 262140)
       return false;
     *((QWord*)(targetQue->head)) = word;
+    LOG("before check sendques\n");
     targetQue->head += 4;
+    LOG("before check sendques\n");
     targetQue->size += 4;
+    LOG("before check sendques\n");
     return true;
   }
 

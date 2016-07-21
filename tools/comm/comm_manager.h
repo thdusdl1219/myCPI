@@ -22,6 +22,8 @@
 #include <string.h>
 #include <queue>
 
+#include "log.h"
+
 #define Q_MAX 262144 // max queue elements (256kB)
 
 namespace corelab {
