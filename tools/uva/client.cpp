@@ -5,7 +5,7 @@
 #include <csignal>
 #include <stdint.h>
 
-#include "../esperanto/comm/comm_manager.h"
+#include "../comm/comm_manager.h"
 #include "client.h"
 #include "qsocket.h"
 #include "mm.h" // FIXME I don't wanna access directly to mm module (better: through xmem)

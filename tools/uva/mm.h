@@ -16,7 +16,7 @@
 
 #include <inttypes.h>
 #include <sys/mman.h>
-#include "../esperanto/comm/comm_manager.h"
+#include "../comm/comm_manager.h"
 #include "uva_comm_enum.h"
 #include "memspec.h"
 #include "qsocket.h"

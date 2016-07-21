@@ -2,6 +2,7 @@
 #define __SERVER_H__
 
 #include "qsocket.h"
+#include "../comm/comm_manager.h"
 #include <map>
 #include <set>
 

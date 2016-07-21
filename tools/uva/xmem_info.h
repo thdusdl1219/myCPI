@@ -12,7 +12,7 @@
 
 #include <stddef.h>
 #include <inttypes.h>
-#include "../esperanto/comm/comm_manager.h"
+#include "../comm/comm_manager.h"
 #include "xmem_spec.h"
 #include "qsocket.h" // BONGJUN
 

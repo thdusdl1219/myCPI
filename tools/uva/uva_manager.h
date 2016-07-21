@@ -10,7 +10,7 @@
  * **/
 #include <cstdlib>
 
-#include "../esperanto/comm/comm_manager.h"
+#include "../comm/comm_manager.h"
 #include "uva_comm_enum.h"
 #include "qsocket.h"
 #include "xmem_spec.h"
