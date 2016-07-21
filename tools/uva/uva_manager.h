@@ -41,7 +41,7 @@ namespace corelab {
     };
 
 		namespace UVAManager {
-			void initialize (CommManager *comm, int *destid);
+			void initialize (CommManager *comm, uint32_t destid);
 
 			// UVA Management
 			void synchIn (QSocket *socket);
@@ -56,19 +56,19 @@ namespace corelab {
       void acquireHandler(QSocket *socket);
       void releaseHandler(QSocket *socket);
       
-      void syncHandler(CommManager *comm, int *destid);
+      void syncHandler(CommManager *comm, uint32_t destid);
 
       // Memory Access handler (BONGJUN)
-      void loadHandler(CommManager *comm, int *destid, size_t typeLen, void *addr);
-      void storeHandler(CommManager *comm, int *destid, size_t typeLen, void *data, void *addr);
+      void loadHandler(CommManager *comm, uint32_t destid, size_t typeLen, void *addr);
+      void storeHandler(CommManager *comm, uint32_t destid, size_t typeLen, void *data, void *addr);
     
-      void *memsetHandler(CommManager *comm, int *destid, void *addr, int value, size_t num);
-      void *memcpyHandler(CommManager *comm, int *destid, void *dest, void *src, size_t num);
+      void *memsetHandler(CommManager *comm, uint32_t destid, void *addr, int value, size_t num);
+      void *memcpyHandler(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num);
      
       // Memory Access handler for HLRC 
       void storeHandlerForHLRC(size_t typeLen, void *data, void *addr);
       void *memsetHandlerForHLRC(void *addr, int value, size_t num);
-      void *memcpyHandlerForHLRC(CommManager *comm, int *destid, void *dest, void *src, size_t num);
+      void *memcpyHandlerForHLRC(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num);
 
       // Get/Set/Test interfaces
 			void setConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/);

@@ -108,7 +108,7 @@ namespace corelab {
     /*** Interfaces ***/
 		//void UVAManager::initialize (UVAOwnership _uvaown) {
 		//void UVAManager::initialize (QSocket *socket) {
-		void UVAManager::initialize (CommManager *comm, int *destid) {
+		void UVAManager::initialize (CommManager *comm, uint32_t destid) {
 			// XMemoryManager must not have an initializer,
 			// since we don't want to care about the order of 
 			// multiple initializers.
@@ -258,7 +258,7 @@ namespace corelab {
      * 2. release -> acquire in sync? 
      */
     /* @detail Sync operation (mixing acquire & release) */
-    void UVAManager::syncHandler(CommManager *comm, int *destid) {
+    void UVAManager::syncHandler(CommManager *comm, uint32_t destid) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
@@ -302,7 +302,7 @@ namespace corelab {
       comm->pushWord(SYNC_HANDLER, sizeStoreLogs, destid);
       if (sizeStoreLogs != 0)
         comm->pushRange(SYNC_HANDLER, storeLogs, sizeStoreLogs, destid);
-      comm->sendQue(SYNC_HANDLER);
+      comm->sendQue(SYNC_HANDLER, destid);
       sizeStoreLogs = 0;
       free(storeLogs);
       vecStoreLogs->clear(); // XXX
@@ -346,7 +346,7 @@ namespace corelab {
     }
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
-    void UVAManager::loadHandler(CommManager *comm, int *destid, size_t typeLen, void *addr) {
+    void UVAManager::loadHandler(CommManager *comm, uint32_t destid, size_t typeLen, void *addr) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
@@ -401,7 +401,7 @@ namespace corelab {
 #endif
     }
 
-    void UVAManager::storeHandler(CommManager *comm, int *destid, size_t typeLen, void *data, void *addr) {
+    void UVAManager::storeHandler(CommManager *comm, uint32_t destid, size_t typeLen, void *data, void *addr) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
@@ -460,7 +460,7 @@ namespace corelab {
 #endif
     }
 
-    void *UVAManager::memsetHandler(CommManager *comm, int *destid, void *addr, int value, size_t num) {
+    void *UVAManager::memsetHandler(CommManager *comm, uint32_t destid, void *addr, int value, size_t num) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
@@ -508,7 +508,7 @@ namespace corelab {
       return addr;
     }
 
-    void *UVAManager::memcpyHandler(CommManager *comm, int *destid, void *dest, void *src, size_t num) {
+    void *UVAManager::memcpyHandler(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
@@ -695,7 +695,7 @@ namespace corelab {
       return addr;
     }
 
-    void *UVAManager::memcpyHandlerForHLRC(CommManager *comm, int *destid, void *dest, void *src, size_t num) {
+    void *UVAManager::memcpyHandlerForHLRC(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num) {
       // XXX: no need...
       if((long)dest > 0xffffffff && (long)src > 0xffffffff)
         return dest;

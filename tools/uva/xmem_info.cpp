@@ -6,7 +6,7 @@ using namespace corelab::XMemory;
 
 /* Initializer BONGJUN */
 //extern "C" void xmemInitialize(QSocket *socket) {
-extern "C" void xmemInitialize(CommManager *comm, int *destid) {
+extern "C" void xmemInitialize(CommManager *comm, uint32_t destid) {
   XMemoryManager::initialize(comm, destid);
 }
 

@@ -39,7 +39,7 @@ namespace corelab {
   namespace UVA {
     //static QSocket *Msocket;
     static CommManager *comm;
-    static int *destid = NULL;
+    static uint32_t destid;
 
 		struct sigaction segvAction;
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused);
@@ -49,11 +49,11 @@ namespace corelab {
 			return (void *)((XmemUintPtr)addr & XMEM_PAGE_MASK);
 		}
 
-    extern "C" void UVACallbackSetter(CommManager *comm) { 
+    extern "C" void UVAClientCallbackSetter(CommManager *comm) { 
       // XXX Currently, no need callback in client.
     }
 
-    extern "C" void UVAClientInitializer(CommManager *comm_, uint32_t isGVInitializer, int *destid_) {
+    extern "C" void UVAClientInitializer(CommManager *comm_, uint32_t isGVInitializer, uint32_t destid_) {
 
       // FIXME: for sync
       sleep(5);

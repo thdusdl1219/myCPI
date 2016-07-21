@@ -34,7 +34,7 @@ namespace corelab {
 			return (void *)((XmemUintPtr)addr & XMEM_PAGE_MASK);
 		}
 
-    extern "C" void uva_callback_setter(CommManager *comm) {
+    extern "C" void UVAServerCallbackSetter(CommManager *comm) {
       TAG tag;
 
       tag = MALLOC_HANDLER;
@@ -64,7 +64,7 @@ namespace corelab {
 
     }
 
-    extern "C" void UVAServerInitialize(CommManager *comm_) {
+    extern "C" void UVAServerInitializer(CommManager *comm_) {
 #ifdef DEBUG_UVA
       LOG("UVA manager(server) : initialize\n");
 #endif
@@ -87,7 +87,7 @@ namespace corelab {
       }
     }
 */
-    extern "C" void UVAServerFinalize() {
+    extern "C" void UVAServerFinalizer() {
       //pthread_join(openThread, NULL);
       delete RuntimeClientConnTb;
       delete pageMap;
@@ -572,7 +572,7 @@ namespace corelab {
 
       // get length (how much mmap)
       //socket->takeRangeF(&lenMmap, sizeOfLength, clientId);
-      memcpy(&lenMmap, data_+8, sizeOfLength);
+      memcpy(&lenMmap, (char*)data_ + 8, sizeOfLength);
 #ifdef DEBUG_UVA
       LOG("[server] mmap length (how much mmap in byte): %d\n", lenMmap);
 #endif
@@ -614,7 +614,7 @@ namespace corelab {
 #endif
       void* requestedAddr = reinterpret_cast<void*>(*(int*)data_);
       int value = *(int*)((char*)data_ + 4);;
-      size_t num = *(size_t*)(data_+8);
+      size_t num = *(size_t*)((char*)data_ + 8);
 
 #ifdef DEBUG_UVA
       LOG("[server] memset(%p, %d, %d)\n", requestedAddr, value, num);
@@ -642,10 +642,10 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[server] requested memcpy dest addr (%p)\n", dest);
 #endif
-        size_t num = *(size_t*)(data_+8);
+        size_t num = *(size_t*)((char*)data_ + 8);
         void* valueToStore = malloc(num);
         //socket->takeRangeF(valueToStore, num, clientId);
-        memcpy(valueToStore, data_+12, num);
+        memcpy(valueToStore, (char*)data_ + 12, num);
 #ifdef DEBUG_UVA
         //hexdump("server", valueToStore, num);
         LOG("[server] memcpy(%p, , %d)\n", dest, num);
@@ -668,7 +668,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[server] requested memcpy src addr (%p)\n", src);
 #endif
-        size_t num = *(size_t*)(data_+8);
+        size_t num = *(size_t*)((char*)data_ + 8);
 #ifdef DEBUG_UVA
         LOG("[server] requested memcpy num (%d)\n", num);
 #endif
@@ -697,7 +697,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[server] HLRC requested memcpy src addr (%p)\n", src);
 #endif
-        size_t num = *(size_t*)(data_+8);
+        size_t num = *(size_t*)((char*)data_ + 8);
 #ifdef DEBUG_UVA
         LOG("[server] HLRC requested memcpy num (%d)\n", num);
 #endif
@@ -799,22 +799,22 @@ namespace corelab {
       LOG("[server] get GLOBAL_INIT_COMPLETE_SIG from client (%d)\n", srcid);
 #endif
       if (isInitEnd) {
-        assert(0, "[server] already complete ... !? what did you do ?");
+        assert(0 && "[server] already complete ... !? what did you do ?");
         return;
       }
 
       isInitEnd = true;
       for(auto &i : *RuntimeClientConnTb) {
-        if(*i != srcid) {
+        if(i != srcid) {
 #ifdef DEBUG_UVA
-          LOG("[server] send 'start permission' signal to client (%d)\n", *i);
+          LOG("[server] send 'start permission' signal to client (%d)\n", i);
 #endif
           comm->pushWord(BLOCKING, 1, i);
           comm->sendQue(BLOCKING, i);
         }
       }
       comm->pushWord(BLOCKING, GLOBAL_INIT_COMPLETE_SIG_ACK, srcid);
-      comm->sendQue(srcid);
+      comm->sendQue(BLOCKING, srcid);
 #ifdef DEBUG_UVA
       LOG("[server] globalInitCompleteHandler END\n");
 #endif

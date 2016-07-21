@@ -12,9 +12,9 @@
 using namespace std;
 namespace corelab {
   namespace UVA {
-    extern "C" void uva_callback_setter(CommManager *comm);
-    extern "C" void UVAServerInitialize(CommManager *comm_);
-    extern "C" void UVAServerFinalize();
+    extern "C" void UVAServerCallbackSetter(CommManager *comm);
+    extern "C" void UVAServerInitializer(CommManager *comm_);
+    extern "C" void UVAServerFinalizer();
     //void* ServerOpenRoutine(void*);
     //void* ClientRoutine(void*);
     void newfaceHandler(void*, uint32_t, uint32_t);

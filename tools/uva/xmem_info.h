@@ -29,7 +29,7 @@ struct XmemStateInfo {
 
 /* initializer BONGJUN */
 //extern "C" void xmemInitialize (QSocket *socket);
-extern "C" void xmemInitialize (CommManager *comm, int *destid);
+extern "C" void xmemInitialize (CommManager *comm, uint32_t destid);
 
 /* Page mapper */
 extern "C" void* xmemPagemap (void *addr, size_t size, bool isServer);

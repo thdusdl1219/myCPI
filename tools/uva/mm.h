@@ -41,7 +41,7 @@ namespace corelab {
       
 			// Initializer
 			//void initialize (QSocket* Msocket);
-			void initialize (CommManager *comm, int *destid);
+			void initialize (CommManager *comm, uint32_t destid);
 
 			// Allocator/Deallocator
 			void* pagemap (void *addr, size_t size, bool isServer);

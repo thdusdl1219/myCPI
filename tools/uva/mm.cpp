@@ -64,7 +64,7 @@ namespace corelab {
     
     // XXX For integrated comm layer
     static CommManager *comm;
-    static int *destid = NULL;
+    static uint32_t destid;
 
 		XMemoryManager::PageMappedCallBack pageMappedCallBack;
 
@@ -93,7 +93,7 @@ namespace corelab {
 
 		/*** Initializer ***/
 		//void XMemoryManager::initialize (QSocket* Msocket) {
-		void XMemoryManager::initialize (CommManager *comm_, int *destid_) {
+		void XMemoryManager::initialize (CommManager *comm_, uint32_t destid_) {
 			// XXX DEPRECATED: MUST NEED TO BE INITIALIZED FOR NETWORK XXX
       
       //socket = Msocket;
