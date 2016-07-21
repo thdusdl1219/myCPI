@@ -84,8 +84,8 @@ namespace corelab {
     int getJobQueSize();
 
     pthread_mutex_t callbackLock;
-    pthread_spinlock_t jobQueLock;
-    pthread_spinlock_t recvFlagLock;
+    pthread_mutex_t jobQueLock;
+    pthread_mutex_t recvFlagLock;
     pthread_t handlingThread;
     pthread_t receivingThread;
 

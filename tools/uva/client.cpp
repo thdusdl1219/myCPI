@@ -144,11 +144,11 @@ namespace corelab {
 #endif
       
       if (fault_addr < (void*)0x15000000) {
-        LOG_BACKTRACE(fault_addr);
+        //LOG_BACKTRACE(fault_addr);
         assert(0 && "fault_addr : under 0x15000000");
       }
       if (fault_addr > (void*)0x38000000) {
-        LOG_BACKTRACE(fault_addr);
+        //LOG_BACKTRACE(fault_addr);
         assert(0 && "fault_addr : above 0x38000000");
       }
       mmap((void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), 
@@ -218,11 +218,11 @@ namespace corelab {
 #endif
       
       if (fault_addr < (void*)0x15000000) {
-        LOG_BACKTRACE(fault_addr);
+        //LOG_BACKTRACE(fault_addr);
         assert(0 && "fault_addr : under 0x15000000");
       }
       if (fault_addr > (void*)0x38000000) {
-        LOG_BACKTRACE(fault_addr);
+        //LOG_BACKTRACE(fault_addr);
         assert(0 && "fault_addr : above 0x38000000");
       }
       mmap((void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), 

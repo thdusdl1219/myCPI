@@ -22,6 +22,8 @@
 #include <string.h>
 #include <queue>
 
+#include "log.h"
+
 #define Q_MAX 262144 // max queue elements (256kB)
 
 namespace corelab {
@@ -82,8 +84,8 @@ namespace corelab {
     int getJobQueSize();
 
     pthread_mutex_t callbackLock;
-    pthread_spinlock_t jobQueLock;
-    pthread_spinlock_t recvFlagLock;
+    pthread_mutex_t jobQueLock;
+    pthread_mutex_t recvFlagLock;
     pthread_t handlingThread;
     pthread_t receivingThread;
 
