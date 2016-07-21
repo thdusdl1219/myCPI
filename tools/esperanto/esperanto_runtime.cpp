@@ -41,11 +41,8 @@ MyFID myFID;
 char deviceName[256];
 int dNameSize;
 int deviceID = -1;
-int connectionID = -1;
+uint32_t connectionID = -1;
 
-void updateFunctionTable (int sock_d, int size);
-bool updateMyFIDTable (const char* fname);
-void sendMyFID (int sock_d);
 
 extern "C" void debugAddress(void* d){
   LOG("DEBUG :: address = %p\n",d);
@@ -148,10 +145,10 @@ void produceAsyncFunctionArgs(int functionID, int rc_id){
   int jobID = -2;
 
   TAG tag = ASYNC_REMOTE_CALL;
-  comm_manager->pushRange(tag, (void*)&jobID, 4, &connectionID);
-  comm_manager->pushWord(tag, (uint32_t)functionID, &connectionID);
-  comm_manager->pushRange(tag, buf, size, &connectionID);
-  comm_manager->sendQue(tag, &connectionID);
+  comm_manager->pushRange(tag, (void*)&jobID, 4, connectionID);
+  comm_manager->pushWord(tag, (uint32_t)functionID, connectionID);
+  comm_manager->pushRange(tag, buf, size, connectionID);
+  comm_manager->sendQue(tag, connectionID);
 
 #ifdef DEBUG_ESP
   LOG("-------------------------------------------------------------------------------------\n");
@@ -172,9 +169,9 @@ void produceReturn(int jobID, void* buf, int size){
     int sourceJobID = drm->getSourceJobID(jobID);
     TAG tag = RETURN_VALUE;
 
-    comm_manager->pushWord(tag, (uint32_t)jobID, &connectionID);
-    comm_manager->pushRange(tag, buf, size, &connectionID);
-    comm_manager->sendQue(tag, &connectionID);
+    comm_manager->pushWord(tag, (uint32_t)jobID, connectionID);
+    comm_manager->pushRange(tag, buf, size, connectionID);
+    comm_manager->sendQue(tag, connectionID);
     
 #ifdef DEBUG_ESP
     LOG("-------------------------------------------------------------------------------------\n");
@@ -198,10 +195,10 @@ void produceFunctionArgs(int jobID, int rc_id){
   drm->insertConsumeWait(jobID);
 
   TAG tag = REMOTE_CALL;
-  comm_manager->pushRange(tag, (void*)&jobID, 4, &connectionID);
-  comm_manager->pushWord(tag, (uint32_t)functionID, &connectionID);
-  comm_manager->pushRange(tag, buf, size, &connectionID);
-  comm_manager->sendQue(tag, &connectionID);
+  comm_manager->pushRange(tag, (void*)&jobID, 4, connectionID);
+  comm_manager->pushWord(tag, (uint32_t)functionID, connectionID);
+  comm_manager->pushRange(tag, buf, size, connectionID);
+  comm_manager->sendQue(tag, connectionID);
 
 #ifdef DEBUG_ESP
   LOG("-------------------------------------------------------------------------------------\n");
@@ -222,8 +219,8 @@ void registerDevice(void* addr){
   memcpy(&registerID,&addr,4);
 
   TAG tag = REGISTER_DEVICE;
-  comm_manager->pushWord(tag,registerID, &connectionID);
-  comm_manager->sendQue(tag, &connectionID);
+  comm_manager->pushWord(tag,registerID, connectionID);
+  comm_manager->sendQue(tag, connectionID);
 #ifdef DEBUG_ESP
     LOG("-------------------------------------------------------------------------------------\n");
     hexdump("RegisterDevice",&registerID,4);
@@ -376,7 +373,12 @@ void uva_callback_setter(CommManager* comm_manager){
 }
 
 void network_initializer(CommManager* comm_manager){
-  
+  FILE* server_desc = fopen("server_desc","r");
+  char serverIP[20];
+  int port;
+
+  fscanf(server_desc,"%s %d",serverIP,&port);
+  connectionID = comm_manager->tryConnect(serverIP,port);
 }
 
 void esperanto_initializer(CommManager* comm_manager){
@@ -394,14 +396,12 @@ void EspInit(ApiCallback fcn, int id, int isGvarInitializer){
 
   callback = fcn;
   sprintf(filename,"functionTable-%d",id);
-  
-  if(updateMyFIDTable(filename)){
-    esperanto_callback_setter(comm_manager);
-    uva_callback_setter(comm_manager);
-    network_initializer(comm_manager);
-    esperanto_initializer(comm_manager);
-    uva_initializer(comm_manager, isGvarInitializer, connectionID);
-  }
+
+  esperanto_callback_setter(comm_manager);
+  uva_callback_setter(comm_manager);
+  network_initializer(comm_manager);
+  esperanto_initializer(comm_manager);
+  uva_initializer(comm_manager, isGvarInitializer, connectionID);
 }
 
 extern "C"
@@ -410,55 +410,5 @@ void main_fini(){
 }
 
 
-/* updateFunctionTable: update function table with received FIDs */
-void
-updateFunctionTable(int sock_d, int size){
-  char* message = (char*) malloc(size);
-  int readacc = 0;
 
-  do {
-    readacc += read(sock_d, message+readacc, size);
-  } while (readacc < size);
-  sendChar(sock_d, 'S');
-
-  int* fids = (int*) message;
-  for(int i = 0; i < size/4 ; i++){
-    ft[numFID].fid = fids[i];
-    ft[numFID++].sock_d = sock_d;
-  }
-}
-
-/* updateMyFIDTable: open file and fill the FID array */
-// FIXME: Optimization Pass should write the number of fids on the top of the output file
-bool
-updateMyFIDTable(const char *fname){
-  FILE *fp = fopen(fname, "r");
-
-  if(fp != NULL) {
-    fscanf(fp, "%d\n", &myFID.num);
-    myFID.fids = (int*) calloc(sizeof(int), myFID.num);
-    for(int i = 0; i < myFID.num; i++)
-      fscanf(fp,"%d ", myFID.fids+i);
-    fclose(fp);  
-    return true;
-  }
-#ifdef DEBUG_ESP
-  LOG("Num : %d\n",myFID.num);
-#endif
-  //for(int i=0;i<myFID.num;i++)
-  //	LOG("functionID : %d\n",myFID.fids[i]);
-
-  return false;
-}
-
-/* sendMyFID: send its FID list through the target socket */
-void
-sendMyFID(int sock_d){
-  int size = myFID.num * 4 + 1;
-  char* message = (char*) malloc(size);
-  message[0] = 'F';
-  memcpy(message+1, myFID.fids, size-1);
-  write(sock_d, message, size);
-  return;
-}
 };

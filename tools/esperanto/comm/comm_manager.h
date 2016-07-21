@@ -49,22 +49,24 @@ namespace corelab {
     //template<typename TFunction, typename... TArgs>
       //void setCallback(TAG tag, int cid, TFunction&& a_func, TArgs&&... a_args); // set callback
     void setCallback(TAG tag, void callback(void*,uint32_t,uint32_t)); // set callback
+    void setLocalID(uint32_t id);
+    uint32_t getLocalID();
     CallbackType getCallback(TAG tag);
 
 
     // send interface using queue
-    bool pushWord(TAG tag, QWord word, int* cid = NULL);
-    bool pushRange(TAG tag, const void* data, size_t size, int* cid = NULL);
-    void sendQue(TAG tag, int *cid = NULL);
+    bool pushWord(TAG tag, QWord word, uint32_t destID);
+    bool pushRange(TAG tag, const void* data, size_t size, uint32_t destID);
+    void sendQue(TAG tag, uint32_t destID);
 
     // direct send interface
     //void sendWord(QWord word, int* cid = NULL);
     //void sendRange(const void* data, size_t size, int* cid = NULL);
 
     // receive interface using queue
-    QWord takeWord(int* cid = NULL);
-    bool takeRange(void* buf, size_t size, int* cid = NULL);
-    void receiveQue(int* cid = NULL);
+    QWord takeWord(uint32_t destID);
+    bool takeRange(void* buf, size_t size, uint32_t destID);
+    void receiveQue(uint32_t destID);
 
     // direct receive interface
     //QWord receiveWord(int cid);
@@ -76,9 +78,17 @@ namespace corelab {
 
     Job* getJob();
     void insertJob(Job* job);
+    void insertDataToRecvQue(void* data, uint32_t size, uint32_t cid);
     int getJobQueSize();
 
-  private:
+    pthread_mutex_t callbackLock;
+    pthread_spinlock_t jobQueLock;
+    pthread_spinlock_t recvFlagLock;
+    pthread_t handlingThread;
+    pthread_t receivingThread;
+
+
+    private:
 
     struct Queue {
       // Data field
@@ -90,23 +100,22 @@ namespace corelab {
       int *ID;
     };
 
+    uint32_t localID;
+    uint32_t clntID;
+
     void (*connectionCallback)(void*);
 
     std::queue<Job*> jobQue;
 
-    std::map<int, std::map<TAG,Queue*>* > sendQues; // client_id : send_queue
-    std::map<int, Queue*> recvQues; // client_id : recv_queue
+    std::map<uint32_t, std::map<TAG,Queue*>* > sendQues; // client_id : send_queue
+    std::map<uint32_t, Queue*> recvQues; // client_id : recv_queue
 
-    std::map<int,int> socketMap; // client_id : socket_desc
+    std::map<uint32_t,int> socketMap; // client_id : socket_desc
+    std::map<uint32_t,bool> recvFlags;
 
     std::map<TAG,CallbackType>* callbackList; // callback function list with TAG (key) 
 
-    pthread_mutex_t callbackLock;
-    pthread_spinlock_t jobQueLock;
-    pthread_t handlingThread;
-    pthread_t receivingThread;
-
-    void initializeSocketOpt(int* clientID);
+    void initializeSocketOpt(int clientID);
     void initializeQueue(Queue& que);
 
 

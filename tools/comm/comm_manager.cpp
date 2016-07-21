@@ -144,7 +144,7 @@ namespace corelab {
       }
       inet_ntop (AF_INET, &eptClient.sin_addr, strClientIP, 20);
 
-      initializeSocketOpt (clientID);
+      initializeSocketOpt (*clientID);
 
       std::map<TAG,Queue*>* sques = new std::map<TAG,Queue*>();
       Queue* rque = (Queue*)malloc(sizeof(Queue));
@@ -189,7 +189,7 @@ namespace corelab {
 			return false;
 		}
 
-		initializeSocketOpt (idClient);
+		initializeSocketOpt (*idClient);
 
     uint32_t initial_data[2];
     readComplete(*idClient,(char*)initial_data,8);
@@ -226,20 +226,20 @@ namespace corelab {
     return localID;
   }
 
-  bool CommManager::pushWord(TAG tag, QWord word, int* cid){
+  bool CommManager::pushWord(TAG tag, QWord word, uint32_t destID){
     Queue* targetQue;
     if(tag == 0){
       //error
       return false;
     }
     
-    if(sendQues[*cid]->find(tag) == sendQues[*cid]->end()){
+    if(sendQues[destID]->find(tag) == sendQues[destID]->end()){
       Queue* newQue = (Queue*)malloc(sizeof(Queue));
-      sendQues[*cid]->insert(std::pair<TAG,Queue*>(tag,newQue));
+      sendQues[destID]->insert(std::pair<TAG,Queue*>(tag,newQue));
       targetQue = newQue;
     }
     else
-      targetQue = (*(sendQues[*cid]))[tag];
+      targetQue = (*(sendQues[destID]))[tag];
       
     if((targetQue->size) > 262140)
       return false;
@@ -249,20 +249,20 @@ namespace corelab {
     return true;
   }
 
-  bool CommManager::pushRange(TAG tag, const void* data, size_t size, int* cid){
+  bool CommManager::pushRange(TAG tag, const void* data, size_t size, uint32_t destID){
     Queue* targetQue;
     if(tag == 0){
       //error
       return false;
     }
 
-    if(sendQues[*cid]->find(tag) == sendQues[*cid]->end()){
+    if(sendQues[destID]->find(tag) == sendQues[destID]->end()){
       Queue* newQue = (Queue*)malloc(sizeof(Queue));
-      sendQues[*cid]->insert(std::pair<TAG,Queue*>(tag,newQue));
+      sendQues[destID]->insert(std::pair<TAG,Queue*>(tag,newQue));
       targetQue = newQue;
     }
     else
-      targetQue = (*(sendQues[*cid]))[tag];
+      targetQue = (*(sendQues[destID]))[tag];
 
     QWord lastSize = targetQue->size + size;
     if(lastSize > 262144)
@@ -273,25 +273,22 @@ namespace corelab {
     return true;
   }
 
-  void CommManager::sendQue(TAG tag, int* cid){
+  void CommManager::sendQue(TAG tag, uint32_t destID){
 
     uint32_t header[3];
 
-    if(cid == NULL)
-      return;
 
-    int sock = socketMap[*cid];
+    int sock = socketMap[destID];
 
-    if((sendQues[*cid]->find(tag) == sendQues[*cid]->end()) && (tag != 0))
+    if((sendQues[destID]->find(tag) == sendQues[destID]->end()) && (tag != 0))
       return; // error : There is no queue for cid & tag
 
     if(tag != 0){
-      Queue* targetQue = (*(sendQues[*cid]))[tag];
+      Queue* targetQue = (*(sendQues[destID]))[tag];
 
       header[0] = targetQue->size;
       header[1] = tag;
       header[2] = localID;
-      int sock = socketMap[*cid];
       writeComplete(sock,(char*)header,12);
       writeComplete(sock,targetQue->data,targetQue->size);
       
@@ -300,7 +297,7 @@ namespace corelab {
 
     }
     else{
-      std::map<TAG,Queue*>* queList = sendQues[*cid];
+      std::map<TAG,Queue*>* queList = sendQues[destID];
       
       for(std::map<TAG,Queue*>::iterator it = queList->begin(); it!= queList->end(); ++it){
         Queue* targetQue = it->second;
@@ -316,12 +313,12 @@ namespace corelab {
 
   }
 
-  QWord CommManager::takeWord(int* cid){
+  QWord CommManager::takeWord(uint32_t sourceID){
     Queue* targetQue = NULL;
 
-    assert((cid != NULL) && "cannot take word from queue whose cid is NULL");
+    //assert((sourceID) && "cannot take word from queue whose cid is NULL");
 
-    targetQue = recvQues[*cid];
+    targetQue = recvQues[sourceID];
     assert((targetQue != NULL) && "cannot take word from NULL queue");
     
     QWord word;
@@ -336,12 +333,12 @@ namespace corelab {
     return word;
   }
 
-  bool CommManager::takeRange(void* buf, size_t size, int* cid){
+  bool CommManager::takeRange(void* buf, size_t size, uint32_t sourceID){
     Queue* targetQue = NULL;
 
-    assert((cid != NULL) && "cannot range word from queue whose cid is NULL");
+    //assert((cid != NULL) && "cannot range word from queue whose cid is NULL");
 
-    targetQue = recvQues[*cid];
+    targetQue = recvQues[sourceID];
     assert((targetQue != NULL) && "cannot range word from NULL queue");
 
     memcpy(buf,targetQue->head,size);
@@ -355,10 +352,10 @@ namespace corelab {
     return true;
   }
 
-  void CommManager::receiveQue(int* cid){
+  void CommManager::receiveQue(uint32_t sourceID){
     while(1){
       pthread_spin_lock(&recvFlagLock);
-      if(recvFlags[*cid] == true){
+      if(recvFlags[sourceID] == true){
         pthread_spin_unlock(&recvFlagLock);
         break;
       }
@@ -370,9 +367,8 @@ namespace corelab {
     
   //}
 
-  void CommManager::initializeSocketOpt (int *clientID) {
+  void CommManager::initializeSocketOpt (int sock) {
     int res;
-    int sock = socketMap[*clientID];
 
     assert (sock > 0 && "socket id must be assined before initializing socket");
 
@@ -420,7 +416,7 @@ namespace corelab {
 
   int CommManager::getSocketByIndex(uint32_t idx){
     uint32_t i = 0;
-    for(std::map<int,int>::iterator it = socketMap.begin(); it != socketMap.end(); ++it){
+    for(std::map<uint32_t,int>::iterator it = socketMap.begin(); it != socketMap.end(); ++it){
       if(i == idx)
         return it->second;
       i++;
