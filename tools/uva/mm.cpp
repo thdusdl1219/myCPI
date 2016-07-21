@@ -60,7 +60,11 @@ namespace corelab {
 		static uint32_t sizeHeap;
 		//static void *ptHeapTop = HEAP_START_ADDR;
 		static uint32_t freeSizeList[MAX_BIN_INDEX + 1];
-    static QSocket* socket;
+    //static QSocket* socket;
+    
+    // XXX For integrated comm layer
+    static CommManager *comm;
+    static int *destid = NULL;
 
 		XMemoryManager::PageMappedCallBack pageMappedCallBack;
 
@@ -88,11 +92,15 @@ namespace corelab {
 
 
 		/*** Initializer ***/
-		void XMemoryManager::initialize (QSocket* Msocket) {
+		//void XMemoryManager::initialize (QSocket* Msocket) {
+		void XMemoryManager::initialize (CommManager *comm_, int *destid_) {
 			// XXX DEPRECATED: MUST NEED TO BE INITIALIZED FOR NETWORK XXX
       
-      socket = Msocket;
-      assert(socket != NULL);
+      //socket = Msocket;
+      //assert(socket != NULL);
+      comm = comm_;
+      destid = destid_;
+      assert(comm != NULL);
 
 			//ptHeapTop = HEAP_START_ADDR;
 			//protAutoHeap = PROT_READ | PROT_WRITE;
@@ -423,7 +431,7 @@ namespace corelab {
 				}
 			}
 		}
-
+  
 		static inline void* allocatePage (void *addr, size_t size, unsigned protmode, bool isMmap, bool isServer) {
 
 #ifdef UVA_EVAL
@@ -438,24 +446,31 @@ namespace corelab {
       if(!isMmap && !isServer) {
 
         // [client side] just send size he want and get addr allocated
-        socket->pushWordF(0);
-        socket->pushWordF(4);
-        socket->pushWordF(size);
-        socket->sendQue();
+        //socket->pushWordF(0);
+        //socket->pushWordF(4);
+        //socket->pushWordF(size);
+        //socket->sendQue();
         
-        socket->receiveQue();
-        int mode = socket->takeWord();
+        //socket->receiveQue();
+        //int mode = socket->takeWord();
+        comm->pushWord(MALLOC_HANDLER, 0, destid);
+        comm->pushWord(MALLOC_HANDLER, 4, destid);
+        comm->pushWord(MALLOC_HANDLER, size, destid);
+        comm->sendQue(MALLOC_HANDLER, destid);
+        
+        comm->receiveQue(destid);
+        uint32_t mode = comm->takeWord(destid); // XXX here
 #ifdef DEBUG_UVA
         fprintf(stderr, "mode : %d\n", mode);
 #endif
         //assert(mode == 1);
-        int len = socket->takeWord();
+        uint32_t len = comm->takeWord(destid);
 #ifdef DEBUG_UVA
         fprintf(stderr, "len : %d\n", len);
 #endif
         char buf[len];
 
-        socket->takeRange(buf, len);
+        comm->takeRange(buf, len, destid);
         memcpy(&addr, buf, len);
 //#ifdef DEBUG_UVA
         fprintf(stderr, "[mm] client get a page with mapAddr : %p\n", addr);
@@ -468,21 +483,21 @@ namespace corelab {
 #endif
 
         // [client side] just send size and addr
-        socket->pushWordF(6); // mmap request mode
+        comm->pushWord(MALLOC_HANDLER, 6, destid); // mmap request mode
         uint32_t intAddr;
         memcpy(&intAddr, &addr, 4);
-        socket->pushWordF(intAddr);
-        socket->pushWordF(sizeof(size));
-        socket->pushRangeF(&size, sizeof(size)); // send size
-        socket->sendQue();
+        comm->pushWord(MALLOC_HANDLER, intAddr, destid);
+        comm->pushWord(MALLOC_HANDLER, sizeof(size), destid);
+        comm->pushRange(MALLOC_HANDLER, &size, sizeof(size), destid); // send size
+        comm->sendQue(MALLOC_HANDLER, destid);
         
-        socket->receiveQue();
-        int mode = socket->takeWord();
+        comm->receiveQue(destid);
+        uint32_t mode = comm->takeWord(destid);
 #ifdef DEBUG_UVA
         fprintf(stderr, "mode : %d\n", mode);
 #endif
         //assert(mode == 7);
-        int ack = socket->takeWord();
+        uint32_t ack = comm->takeWord(destid);
         //assert(ack == 0);
         //fprintf(stderr, "len : %d\n", len);
         //char buf[len];
