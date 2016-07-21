@@ -298,7 +298,7 @@ namespace corelab {
       LOG("[client] # of vecStoreLogs %d | sizeStoreLogs %d\n", vecStoreLogs->size(), sizeStoreLogs);
 #endif 
       /* Second, send them all */
-      comm->pushWord(SYNC_HANDLER, SYNC_REQ, destid);
+      //comm->pushWord(SYNC_HANDLER, SYNC_REQ, destid);
       comm->pushWord(SYNC_HANDLER, sizeStoreLogs, destid);
       if (sizeStoreLogs != 0)
         comm->pushRange(SYNC_HANDLER, storeLogs, sizeStoreLogs, destid);
@@ -363,7 +363,7 @@ namespace corelab {
           LOG("[client] Load : isFixedGlobalAddr, going to request | addr %p, typeLen %lu\n", addr, typeLen);
         }
 #endif
-        comm->pushWord(LOAD_HANDLER, LOAD_REQ, destid); // mode 2 (client -> server : load request)
+        //comm->pushWord(LOAD_HANDLER, LOAD_REQ, destid); // mode 2 (client -> server : load request)
         comm->pushWord(LOAD_HANDLER, typeLen, destid); // type length
         //LOG("[client] DEBUG : may be before segfault?\n");
         
@@ -422,7 +422,7 @@ namespace corelab {
           LOG("[client] Store : isFixedGlobalAddr, is going to request | addr %p, typeLen %lu\n", addr, typeLen);
 #endif
         }
-        comm->pushWord(STORE_HANDLER, STORE_REQ, destid);
+        //comm->pushWord(STORE_HANDLER, STORE_REQ, destid);
         comm->pushWord(STORE_HANDLER, typeLen, destid);
 
         comm->pushWord(STORE_HANDLER, intAddr, destid);
@@ -478,7 +478,7 @@ namespace corelab {
         }
 #endif
         
-        comm->pushWord(MEMSET_HANDLER, MEMSET_REQ, destid);
+        //comm->pushWord(MEMSET_HANDLER, MEMSET_REQ, destid);
         comm->pushWord(MEMSET_HANDLER, intAddr, destid);
         comm->pushWord(MEMSET_HANDLER, value, destid);
         comm->pushWord(MEMSET_HANDLER, num, destid); // XXX check
@@ -548,7 +548,7 @@ namespace corelab {
         }
 #endif
          
-        comm->pushWord(MEMCPY_HANDLER, MEMCPY_REQ, destid);
+        //comm->pushWord(MEMCPY_HANDLER, MEMCPY_REQ, destid);
         comm->pushWord(MEMCPY_HANDLER, typeMemcpy, destid);
         if (typeMemcpy == 1) {
           comm->pushWord(MEMCPY_HANDLER, intDest, destid);
@@ -774,7 +774,7 @@ namespace corelab {
           perror("mmap");
           assert(0 && "[client] mmap failed");     
         }
-        comm->pushWord(MEMCPY_HLRC_HANDLER, MEMCPY_REQ, destid);
+        //comm->pushWord(MEMCPY_HLRC_HANDLER, MEMCPY_REQ, destid);
         comm->pushWord(MEMCPY_HLRC_HANDLER, 2, destid); // typeMemcpy == 2
         comm->pushWord(MEMCPY_HLRC_HANDLER, intSrc, destid);
         comm->pushWord(MEMCPY_HLRC_HANDLER, num, destid);

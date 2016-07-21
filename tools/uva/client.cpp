@@ -170,7 +170,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | fault_addr is in FixedGlobalAddr space %p\n",ptNoConstBegin);
 #endif
-        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, GLOBAL_SEGFAULT_REQ, destid); // send GLOBAL_SEGFAULT_REQ
+        //comm->pushWord(GLOBAL_SEGFAULT_HANDLER, GLOBAL_SEGFAULT_REQ, destid); // send GLOBAL_SEGFAULT_REQ
         //uint32_t intAddrBegin = reinterpret_cast<uint32_t>(ptNoConstBegin);
         //uint32_t intAddrEnd = reinterpret_cast<uint32_t>(ptNoConstEnd);
         uint32_t intAddrBegin;
@@ -244,7 +244,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | fault_addr is in FixedGlobalAddr space %p\n",ptNoConstBegin);
 #endif
-        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, GLOBAL_SEGFAULT_REQ, destid); // send GLOBAL_SEGFAULT_REQ
+        //comm->pushWord(GLOBAL_SEGFAULT_HANDLER, GLOBAL_SEGFAULT_REQ, destid); // send GLOBAL_SEGFAULT_REQ
         //uint32_t intAddrBegin = reinterpret_cast<uint32_t>(ptNoConstBegin);
         //uint32_t intAddrEnd = reinterpret_cast<uint32_t>(ptNoConstEnd);
         uint32_t intAddrBegin;
@@ -287,7 +287,7 @@ namespace corelab {
 #endif
         uint32_t intFaultAddr;
         memcpy(&intFaultAddr, &fault_addr, 4);
-        comm->pushWord(HEAP_SEGFAULT_HANDLER, HEAP_SEGFAULT_REQ, destid);
+        //comm->pushWord(HEAP_SEGFAULT_HANDLER, HEAP_SEGFAULT_REQ, destid);
         comm->pushWord(HEAP_SEGFAULT_HANDLER, intFaultAddr, destid);
         comm->sendQue(HEAP_SEGFAULT_HANDLER, destid);
 
