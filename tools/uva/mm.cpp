@@ -483,13 +483,14 @@ namespace corelab {
 #endif
 
         // [client side] just send size and addr
-        comm->pushWord(MALLOC_HANDLER, 6, destid); // mmap request mode
+        //comm->pushWord(MALLOC_HANDLER, 6, destid); // mmap request mode
         uint32_t intAddr;
+        uint32_t size_ = (uint32_t)sizeof(size);
         memcpy(&intAddr, &addr, 4);
-        comm->pushWord(MALLOC_HANDLER, intAddr, destid);
-        comm->pushWord(MALLOC_HANDLER, sizeof(size), destid);
-        comm->pushRange(MALLOC_HANDLER, &size, sizeof(size), destid); // send size
-        comm->sendQue(MALLOC_HANDLER, destid);
+        comm->pushWord(MMAP_HANDLER, intAddr, destid);
+        comm->pushWord(MMAP_HANDLER, size_, destid);
+        comm->pushRange(MMAP_HANDLER, &size, (uint32_t)sizeof(size), destid); // send size
+        comm->sendQue(MMAP_HANDLER, destid);
         
         comm->receiveQue(destid);
         uint32_t mode = comm->takeWord(destid);

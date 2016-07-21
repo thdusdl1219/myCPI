@@ -89,6 +89,7 @@ namespace corelab {
       if(jobNum > 0){
         Job* job = commManager->getJob();
         if(job->tag == 1000){ // blocking tag
+          LOG("\nblocking message is arrived\n\n");
           commManager->insertDataToRecvQue(job->data,job->size,job->sourceID);         
         }
         else
@@ -372,9 +373,15 @@ namespace corelab {
   }
 
   void CommManager::receiveQue(uint32_t sourceID){
+    
+    pthread_mutex_lock(&recvFlagLock);
+    recvFlags[sourceID] = false;
+    pthread_mutex_unlock(&recvFlagLock);
+    LOG("RECEIVE que is set\n");
     while(1){
       pthread_mutex_lock(&recvFlagLock);
-      if(recvFlags[sourceID] == true){
+      if(recvFlags[sourceID]){
+        LOG("RECEIVE message!!!\n");
         pthread_mutex_unlock(&recvFlagLock);
         break;
       }
@@ -464,6 +471,8 @@ namespace corelab {
     targetQue->size = size;
     targetQue->head = targetQue->data;
     memcpy(targetQue->data,data,size);
+    recvFlags[cid] = true;
+    LOG("insert data to recv que\n");
     pthread_mutex_unlock(&recvFlagLock);
 
   }

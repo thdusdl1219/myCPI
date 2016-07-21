@@ -382,6 +382,7 @@ void network_initializer(CommManager* comm_manager){
 }
 
 void esperanto_initializer(CommManager* comm_manager){
+  comm_manager->start();
 }
 
 void uva_initializer(CommManager* comm_manager, int isGvarInitializer, uint32_t homeID){

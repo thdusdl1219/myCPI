@@ -474,7 +474,7 @@ namespace corelab {
         //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
         (*pageMap)[(long)current] = newPageInfo;
 #ifdef DEBUG_UVA
-        LOG("[server] current (%p) is added into PageMap\n", reinterpret_cast<void*>(current));
+        //LOG("[server] current (%p) is added into PageMap\n", reinterpret_cast<void*>(current));
 #endif
         //assert(allocAddr != NULL && "mmap alloc failed in server");
         current += PAGE_SIZE;
@@ -568,11 +568,11 @@ namespace corelab {
 #endif
 
       // get size variable's length (32 or 64 bits)
-      size_t sizeOfLength = *(size_t*)((char*)data_ + 4);
+      uint32_t sizeOfLength = *(uint32_t*)((char*)data_ + 4);
 
       // get length (how much mmap)
       //socket->takeRangeF(&lenMmap, sizeOfLength, clientId);
-      memcpy(&lenMmap, (char*)data_ + 8, sizeOfLength);
+      memcpy(&lenMmap, (char*)data_ + 8, (size_t)sizeOfLength);
 #ifdef DEBUG_UVA
       LOG("[server] mmap length (how much mmap in byte): %d\n", lenMmap);
 #endif

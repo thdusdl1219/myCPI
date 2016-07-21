@@ -1,7 +1,7 @@
 #ifndef __UVA_COMM_ENUM_H__
 #define __UVA_COMM_ENUM_H__
 enum {
-  BLOCKING = 1,
+  BLOCKING = 1000,
   NEWFACE_HANDLER = 100,
   MALLOC_HANDLER = 101,
   LOAD_HANDLER = 102,
