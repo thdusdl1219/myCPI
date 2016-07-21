@@ -37,6 +37,8 @@ namespace corelab {
     extern "C" void UVAServerCallbackSetter(CommManager *comm) {
       TAG tag;
 
+      tag = NEWFACE_HANDLER;
+      comm->setCallback(tag, newfaceHandler);
       tag = MALLOC_HANDLER;
       comm->setCallback(tag, heapAllocHandler);
       tag = LOAD_HANDLER;
@@ -124,13 +126,14 @@ namespace corelab {
         assert(0 && "[SERVER] YOU ARE NOT A NEW FACE !!\n");
       } else { 
         RuntimeClientConnTb->push_back(srcid);
-        if (isInitEnd) {
-#ifdef DEBUG_UVA
-          LOG("[SERVER] Oh.. you are late (This client comes in after glb init finished\n");
-#endif
-          comm->pushWord(BLOCKING, 1, srcid); // send permission.
-          comm->sendQue(BLOCKING, srcid);
+        while(!isInitEnd){
+          sleep(1);
         }
+#ifdef DEBUG_UVA
+        LOG("[SERVER] Oh.. you are late (This client comes in after glb init finished\n");
+#endif
+        comm->pushWord(BLOCKING, 1, srcid); // send permission.
+        comm->sendQue(BLOCKING, srcid);
       }
     }
 #if 0
@@ -481,8 +484,9 @@ namespace corelab {
       }
 
       // memory operation end
+      uint32_t sizeOfAllocAddr = (uint32_t)sizeof(allocAddr);
       comm->pushWord(BLOCKING, HEAP_ALLOC_REQ_ACK, srcid);
-      comm->pushWord(BLOCKING, sizeof(allocAddr), srcid);
+      comm->pushWord(BLOCKING, sizeOfAllocAddr, srcid);
       comm->pushRange(BLOCKING, &allocAddr, sizeof(allocAddr), srcid);
       comm->sendQue(BLOCKING, srcid);
       return;
@@ -804,6 +808,7 @@ namespace corelab {
       }
 
       isInitEnd = true;
+      RuntimeClientConnTb->push_back(srcid);
       for(auto &i : *RuntimeClientConnTb) {
         if(i != srcid) {
 #ifdef DEBUG_UVA
