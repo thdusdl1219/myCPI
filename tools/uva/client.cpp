@@ -105,6 +105,8 @@ namespace corelab {
 
       /* For synchronized clients start */
       if(!isGVInitializer) {
+        comm->pushWord(NEWFACE_HANDLER, 1, destid);
+        comm->sendQue(NEWFACE_HANDLER, destid);
         //Msocket->receiveQue();
         comm->receiveQue(destid);
         //int mayIstart = Msocket->takeWordF();
