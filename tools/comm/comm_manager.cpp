@@ -375,7 +375,7 @@ namespace corelab {
     while(1){
       pthread_mutex_lock(&recvFlagLock);
       if(recvFlags[sourceID] == true){
-        pthread_spin_unlock(&recvFlagLock);
+        pthread_mutex_unlock(&recvFlagLock);
         break;
       }
       pthread_mutex_unlock(&recvFlagLock);
