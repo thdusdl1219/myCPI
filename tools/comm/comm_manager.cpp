@@ -416,8 +416,8 @@ namespace corelab {
 
     int opt=1;
     res = setsockopt(sock, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
-    opt = 0;
-    res = setsockopt(sock, SOL_TCP, TCP_CORK, &opt, sizeof(opt));
+    //opt = 0;
+    //res = setsockopt(sock, SOL_TCP, TCP_CORK, &opt, sizeof(opt));
     assert (!res && "initialization failed: cannot set optimization flags");
   }
 
