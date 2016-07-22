@@ -122,113 +122,33 @@ namespace corelab {
 
     // XXX XXX XXX
     void newfaceHandler(void *data_, uint32_t size, uint32_t srcid) {
+#ifdef DEBUG_UVA
+      LOG("[SERVER] New Face is comming !! (srcid:%d)\n", srcid);
+#endif
       if (std::find(RuntimeClientConnTb->begin(), RuntimeClientConnTb->end(), srcid) != RuntimeClientConnTb->end()) {
         assert(0 && "[SERVER] YOU ARE NOT A NEW FACE !!\n");
       } else { 
+#ifdef DEBUG_UVA
+        LOG("[SERVER] New Face (%d) is going in RuntimeClientConnTb\n", srcid);
+#endif
         RuntimeClientConnTb->push_back(srcid);
-        while(!isInitEnd){
-          sleep(1);
-        }
+        if (isInitEnd) {
 #ifdef DEBUG_UVA
-        LOG("[SERVER] Oh.. you are late (This client comes in after glb init finished\n");
+          LOG("[SERVER] Oh.. you are late (This client comes in after glb init finished\n");
 #endif
-        comm->pushWord(BLOCKING, 1, srcid); // send permission.
-        comm->sendQue(BLOCKING, srcid);
+          comm->pushWord(BLOCKING, 1, srcid); // send permission.
+          comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+          LOG("[SERVER] newfaceHandler END (successfully sends start permission) (srcid:%d)\n", srcid);
+#endif
+        } else {
+#ifdef DEBUG_UVA
+          LOG("[SERVER] newfaceHandler END (couldn't sends start permission) (srcid:%d)\n", srcid);
+#endif
+        }
       }
     }
-#if 0
-    void* ClientRoutine(void * data) {
-#ifdef DEBUG_UVA
-      printf("[SERVER] client Routine called (%d)\n", *((int*)data));
-#endif
-      (*RuntimeClientConnTb)[(int*)data] = socket; 
-      if (isInitEnd) {
-#ifdef DEBUG_UVA
-        printf("[SERVER] Oh.. you are late (This client comes in after glb init finished\n");
-#endif
-        socket->pushWordF(1, (int*)data);
-        socket->sendQue((int*)data);
-      }
-      int *clientId = (int *)data;
-      int mode;
-      int rval = 0; // for thread_exit
 
-      while(true) {
-//        pthread_mutex_lock(&mutex);
-        socket->receiveQue(clientId);
-#ifdef UVA_EVAL
-        StopWatch watchHandle;
-        watchHandle.start();
-#endif
-        
-        mode = socket->takeWordF(clientId);
-#ifdef DEBUG_UVA
-        LOG("[server] *** Receive message from client (id: %d, mode %d) ***\n", *clientId, mode);  
-#endif
-
-        switch(mode) {
-          case THREAD_EXIT:
-            //pthread_mutex_unlock(&mutex);
-            RuntimeClientConnTb->erase(clientId);
-#ifdef DEBUG_UVA
-            LOG("[server] thread exit! now # of connected clients : (%d)\n\n", RuntimeClientConnTb->size());
-#endif
-            pthread_exit(&rval);
-            break;
-          case HEAP_ALLOC_REQ: /*** heap allocate request ***/
-            heapAllocHandler(clientId); 
-            break;
-          case LOAD_REQ: /*** load request ***/
-            loadHandler(clientId);
-            break;
-          case STORE_REQ: /*** store request ***/
-            storeHandler(clientId);
-            break;
-          case MMAP_REQ: /*** mmap request ***/
-            mmapHandler(clientId);
-            break;
-          case MEMSET_REQ:
-            // XXX: should handle HLRC version.
-            memsetHandler(clientId);
-            break;
-          case MEMCPY_REQ:
-#ifdef HLRC
-            memcpyHandlerForHLRC(clientId);
-#else
-            memcpyHandler(clientId);
-#endif
-            break;
-          case HEAP_SEGFAULT_REQ:
-            heapSegfaultHandler(clientId);
-            break;
-          case GLOBAL_SEGFAULT_REQ:
-            globalSegfaultHandler(clientId);
-            break;
-          case GLOBAL_INIT_COMPLETE_SIG:
-            globalInitCompleteHandler(clientId);
-            break;
-          case INVALID_REQ:
-            invalidHandler(clientId);
-            break;
-          case RELEASE_REQ:
-            releaseHandler(clientId);
-            break;
-          case SYNC_REQ:
-            syncHandler(clientId);
-            break;
-          default:
-            assert(0 && "wrong request mode");
-            break;
-        }
-        //pthread_mutex_unlock(&mutex); // TODO need acquire & release lock
-#ifdef UVA_EVAL
-        watchHandle.end();
-        printf("HANDLE %lf mode (%d) %08x\n", watchHandle.diff(), mode, id);
-#endif
-      }
-      return NULL;
-    }
-#endif
     void invalidHandler(void *data_, uint32_t size, uint32_t srcid) {
       //pthread_mutex_lock(&acquireLock);
       set<uint32_t> sendAddrSet;
@@ -334,7 +254,7 @@ namespace corelab {
 #endif
       //pthread_mutex_lock(&acquireLock);
 #ifdef DEBUG_UVA
-      LOG("[server] syncHandler START\n");
+      LOG("[server] syncHandler START (srcid:%d)\n", srcid);
 #endif
       int sizeStoreLogs;
       void *storeLogs;
@@ -426,7 +346,7 @@ namespace corelab {
       free(addressbuf);
 
 #ifdef DEBUG_UVA
-      LOG("[server] syncHandler END\n\n");
+      LOG("[server] syncHandler END (srcid:%d)\n\n", srcid);
 #endif
       //pthread_mutex_unlock(&acquireLock);
 #ifdef UVA_EVAL
@@ -438,6 +358,9 @@ namespace corelab {
     }
 
     void heapAllocHandler(void *data_, uint32_t size, uint32_t srcid) {
+#ifdef DEBUG_UVA
+      LOG("[SERVER] heapAllocHandler START (srcid:%d)\n", srcid);
+#endif
       int lenbuf;
       //int datalen = socket->takeWordF(clientId);
       int datalen = *(int*)data_;
@@ -485,10 +408,13 @@ namespace corelab {
 
       // memory operation end
       uint32_t sizeOfAllocAddr = (uint32_t)sizeof(allocAddr);
-      comm->pushWord(BLOCKING, HEAP_ALLOC_REQ_ACK, srcid);
+      //comm->pushWord(BLOCKING, HEAP_ALLOC_REQ_ACK, srcid);
       comm->pushWord(BLOCKING, sizeOfAllocAddr, srcid);
       comm->pushRange(BLOCKING, &allocAddr, sizeof(allocAddr), srcid);
       comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+      LOG("[SERVER] heapAllocHandler END (srcid:%d)\n", srcid);
+#endif
       return;
     }
 
@@ -562,7 +488,7 @@ namespace corelab {
     void mmapHandler(void *data_, uint32_t size, uint32_t srcid) {
       size_t lenMmap;
 #ifdef DEBUG_UVA
-      LOG("[server] get mmap request from client (%d)\n", srcid);
+      LOG("[server] mmapHandler START (srcid:%d)\n", srcid);
 #endif
 
       // get requested addr (where)
@@ -607,14 +533,17 @@ namespace corelab {
         current += PAGE_SIZE;
       }
 
-      comm->pushWord(BLOCKING, MMAP_REQ_ACK, srcid); // ACK
-      comm->pushWord(BLOCKING, 0, srcid); // ACK (0: normal, -1:abnormal)
-      comm->sendQue(BLOCKING, srcid);
+      //comm->pushWord(BLOCKING, MMAP_REQ_ACK, srcid); // ACK
+      //comm->pushWord(BLOCKING, 0, srcid); // ACK (0: normal, -1:abnormal)
+      //comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+      LOG("[server] mmapHandler END (srcid:%d)\n", srcid);
+#endif
       return;
     }
     void memsetHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] get memset request from client (%d)\n", srcid);
+      LOG("[server] memsetHandler START (srcid:%d)\n", srcid);
 #endif
       void* requestedAddr = reinterpret_cast<void*>(*(int*)data_);
       int value = *(int*)((char*)data_ + 4);;
@@ -631,11 +560,14 @@ namespace corelab {
       hexdump("memset", requestedAddr, num);
 #endif
       //xmemDumpRange(requestedAddr, num);
+#ifdef DEBUG_UVA
+      LOG("[server] memsetHandler END (srcid:%d)\n", srcid);
+#endif
       return;
     }
     void memcpyHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] get memcpy request from client (%d)\n", srcid);
+      LOG("[server] memcpyHandler START (srcid:%d)\n", srcid);
 #endif
       int typeMemcpy = *(int*)data_;
       if (typeMemcpy == 1) {
@@ -679,13 +611,16 @@ namespace corelab {
         comm->pushRange(BLOCKING, src, num, srcid);
         // don't need to do memcpy in server
         comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+      LOG("[server] memcpyHandler END (srcid:%d)\n", srcid);
+#endif
       }
       return;
     }
 
     void memcpyHandlerForHLRC(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] HLRC get memcpy request from client (%d)\n", srcid);
+      LOG("[server] HLRC-MEMCPY memcpyHandlerForHLRC START (srcid:%d)\n", srcid);
 #endif
       int typeMemcpy = *(int*)data_;
       if (typeMemcpy == 1) {
@@ -731,6 +666,9 @@ namespace corelab {
         // don't need to do memcpy in server
         comm->sendQue(BLOCKING, srcid);
       }
+#ifdef DEBUG_UVA
+      LOG("[server] HLRC-MEMCPY memcpyHandlerForHLRC END (srcid:%d)\n", srcid);
+#endif
       return;
     }
     void heapSegfaultHandler(void *data_, uint32_t size, uint32_t srcid) {
@@ -756,6 +694,9 @@ namespace corelab {
         assert(0);
       }
       comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+      LOG("[server] heapSegfaultHandler END ** client (%d)'s fault on (%p) **\n", srcid, fault_heap_addr);
+#endif
       return;
     }
     
@@ -800,7 +741,7 @@ namespace corelab {
 
     void globalInitCompleteHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] get GLOBAL_INIT_COMPLETE_SIG from client (%d)\n", srcid);
+      LOG("[server] Global Init Complete Signal is comming !! (srcid:%d)\n", srcid);
 #endif
       if (isInitEnd) {
         assert(0 && "[server] already complete ... !? what did you do ?");
@@ -821,7 +762,7 @@ namespace corelab {
       comm->pushWord(BLOCKING, GLOBAL_INIT_COMPLETE_SIG_ACK, srcid);
       comm->sendQue(BLOCKING, srcid);
 #ifdef DEBUG_UVA
-      LOG("[server] globalInitCompleteHandler END\n");
+      LOG("[server] globalInitCompleteHandler END (srcid:%d)\n", srcid);
 #endif
       return;
     }

@@ -441,9 +441,12 @@ namespace corelab {
       }
 #endif
 #ifdef DEBUG_UVA
-      fprintf(stderr, "[mm] allocatePage: addr (%p) / size (%d) / protmode (%d) / isMmap (%d) / isServer (%d)\n", addr, size, protmode, isMmap, isServer);
+      LOG("[mm] allocatePage: addr (%p) / size (%d) / protmode (%d) / isMmap (%d) / isServer (%d)\n", addr, size, protmode, isMmap, isServer);
 #endif
       if(!isMmap && !isServer) {
+#ifdef DEBUG_UVA
+        LOG("[mm] [client] malloc request!\n");
+#endif
 
         // [client side] just send size he want and get addr allocated
         //socket->pushWordF(0);
@@ -459,27 +462,25 @@ namespace corelab {
         comm->sendQue(MALLOC_HANDLER, destid);
         
         comm->receiveQue(destid);
-        uint32_t mode = comm->takeWord(destid); // XXX here
-#ifdef DEBUG_UVA
-        fprintf(stderr, "mode : %d\n", mode);
-#endif
+        //uint32_t mode = comm->takeWord(destid); // XXX here
         //assert(mode == 1);
         uint32_t len = comm->takeWord(destid);
 #ifdef DEBUG_UVA
-        fprintf(stderr, "len : %d\n", len);
+        LOG("len : %d\n", len);
 #endif
         char buf[len];
 
         comm->takeRange(buf, len, destid);
         memcpy(&addr, buf, len);
-//#ifdef DEBUG_UVA
-        fprintf(stderr, "[mm] client get a page with mapAddr : %p\n", addr);
-//#endif
+#ifdef DEBUG_UVA
+        LOG("[mm] client get a page with mapAddr : %p\n", addr);
+        LOG("[mm] malloc request (allocatePage) END (%p)\n", addr);
+#endif
 
 
       } else if (isMmap && !isServer && protmode == 3) { /* XXX: is it safe ? */
 #ifdef DEBUG_UVA
-        printf("[mm] [client] mmap allocatePage\n");
+        LOG("[mm] [client] mmap allocatePage\n");
 #endif
 
         // [client side] just send size and addr
@@ -492,13 +493,13 @@ namespace corelab {
         comm->pushRange(MMAP_HANDLER, &size, (uint32_t)sizeof(size), destid); // send size
         comm->sendQue(MMAP_HANDLER, destid);
         
-        comm->receiveQue(destid);
-        uint32_t mode = comm->takeWord(destid);
+        //comm->receiveQue(destid);
+        //uint32_t mode = comm->takeWord(destid);
 #ifdef DEBUG_UVA
-        fprintf(stderr, "mode : %d\n", mode);
+        //fprintf(stderr, "mode : %d\n", mode);
 #endif
         //assert(mode == 7);
-        uint32_t ack = comm->takeWord(destid);
+        //uint32_t ack = comm->takeWord(destid);
         //assert(ack == 0);
         //fprintf(stderr, "len : %d\n", len);
         //char buf[len];
@@ -527,6 +528,13 @@ namespace corelab {
 fprintf (stderr, "while allocating '%p'..\n", addr);
 				perror ("mmap failed");
 			}
+#ifdef DEBUG_UVA
+      if (!isMmap) {
+        LOG("[mm] malloc request (allocatePage) END (%p)\n", addr);
+      } else {
+        LOG("[mm] mmap request (allocatePage) END (%p)\n", addr);
+      }
+#endif
 #ifdef UVA_EVAL
       if(!isServer) {
         watch.end();
