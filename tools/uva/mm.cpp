@@ -453,9 +453,9 @@ namespace corelab {
         
         //socket->receiveQue();
         //int mode = socket->takeWord();
-        comm->pushWord(MALLOC_HANDLER, 0, destid);
+        //comm->pushWord(MALLOC_HANDLER, 0, destid);
         comm->pushWord(MALLOC_HANDLER, 4, destid);
-        comm->pushWord(MALLOC_HANDLER, size, destid);
+        comm->pushWord(MALLOC_HANDLER, (uint32_t)size, destid);
         comm->sendQue(MALLOC_HANDLER, destid);
         
         comm->receiveQue(destid);

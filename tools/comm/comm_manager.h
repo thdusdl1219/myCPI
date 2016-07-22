@@ -23,6 +23,7 @@
 #include <queue>
 
 #include "log.h"
+//#include "tag.h"
 
 #define Q_MAX 262144 // max queue elements (256kB)
 

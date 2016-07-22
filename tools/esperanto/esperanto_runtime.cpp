@@ -21,7 +21,7 @@ namespace corelab{
 #define MAX_THREAD 8
 
 
-//#define DEBUG_ESP
+#define DEBUG_ESP
 
 using namespace std;
 
@@ -145,7 +145,7 @@ void produceAsyncFunctionArgs(int functionID, int rc_id){
   int jobID = -2;
 
   TAG tag = ASYNC_REMOTE_CALL;
-  comm_manager->pushRange(tag, (void*)&jobID, 4, connectionID);
+  comm_manager->pushWord(tag, (uint32_t)jobID, connectionID);
   comm_manager->pushWord(tag, (uint32_t)functionID, connectionID);
   comm_manager->pushRange(tag, buf, size, connectionID);
   comm_manager->sendQue(tag, connectionID);
@@ -169,14 +169,14 @@ void produceReturn(int jobID, void* buf, int size){
     int sourceJobID = drm->getSourceJobID(jobID);
     TAG tag = RETURN_VALUE;
 
-    comm_manager->pushWord(tag, (uint32_t)jobID, connectionID);
+    comm_manager->pushWord(tag, (uint32_t)sourceJobID, connectionID);
     comm_manager->pushRange(tag, buf, size, connectionID);
     comm_manager->sendQue(tag, connectionID);
     
 #ifdef DEBUG_ESP
     LOG("-------------------------------------------------------------------------------------\n");
     LOG("Send return value (DEVICE) -> localJobID = %d, sourceJobID = %d\n", jobID, sourceJobID);
-    hexdump("Return",ret,size);
+    //hexdump("Return",ret,size);
     LOG("-------------------------------------------------------------------------------------\n");
 #endif
 
@@ -188,6 +188,7 @@ void produceReturn(int jobID, void* buf, int size){
 extern "C"
 void produceFunctionArgs(int jobID, int rc_id){
 
+  
   int size = drm->getArgsTotalSize(rc_id); 
   void* buf = drm->getArgsOfRC(rc_id);
   int functionID = drm->getRunningJobFID(jobID);
@@ -195,7 +196,7 @@ void produceFunctionArgs(int jobID, int rc_id){
   drm->insertConsumeWait(jobID);
 
   TAG tag = REMOTE_CALL;
-  comm_manager->pushRange(tag, (void*)&jobID, 4, connectionID);
+  comm_manager->pushWord(tag, (uint32_t)jobID, connectionID);
   comm_manager->pushWord(tag, (uint32_t)functionID, connectionID);
   comm_manager->pushRange(tag, buf, size, connectionID);
   comm_manager->sendQue(tag, connectionID);
@@ -262,6 +263,7 @@ void* consumeReturn(int jobID){
 
 void remotecall_callback(void* data, uint32_t size, uint32_t sourceID){
 
+  LOG("DEBUG::Remotecall handler is started\n");
   if(size < 8){
 #ifdef DEBUG_ESP
     LOG("DEBUG::Remotecall needs least 8 bytes argument\n");
@@ -275,7 +277,9 @@ void remotecall_callback(void* data, uint32_t size, uint32_t sourceID){
   int functionID = *(int*)(data_+4);
   int localJobID = drm->getJobID();
 
+    LOG("DEBUG::Before UVA sync\n");
   uva_sync();
+    LOG("DEBUG::After UVA sync\n");
 
 #ifdef DEBUG_ESP
   LOG("-------------------------------------------------------------------------------------\n");
@@ -345,7 +349,7 @@ void return_value_callback(void* data, uint32_t size, uint32_t sourceID){
 #ifdef DEBUG_ESP
   LOG("-------------------------------------------------------------------------------------\n");
   LOG("Recv Return value (DEVICE) -> localJobID = %d\n",localJobID);
-  hexdump("Return",data_,size);
+  //hexdump("Return",data_,size);
   LOG("-------------------------------------------------------------------------------------\n");
 #endif
 
@@ -394,6 +398,8 @@ void EspInit(ApiCallback fcn, int id, int isGvarInitializer){
 
   char filename[20];
   comm_manager = new CommManager();
+  drm = new DeviceRuntimeManager();
+  dqm = new DataQManager();
   LOG("DEBUG :: EspInit start\n");
 
   callback = fcn;

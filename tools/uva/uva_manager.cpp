@@ -263,6 +263,7 @@ namespace corelab {
       StopWatch watch;
       watch.start();
 #endif
+      LOG("\n\n@#!@#!#!@#!@#!@#!@#!@# destid (%d)\n", destid);
       /* At first, make store logs to be send to Home */
       void *storeLogs = malloc(sizeStoreLogs);
 #if UINTPTR_MAX == 0xffffffff

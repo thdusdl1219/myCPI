@@ -42,7 +42,7 @@ namespace corelab {
   }
 
   void* requestReceiver(void* cm){
-    LOG("request receiver is started\n");
+    //LOG("request receiver is started\n");
     CommManager* commManager = (CommManager*)cm;
     int sock;
     int recvSize = 0;
@@ -61,19 +61,25 @@ namespace corelab {
 
         }
         if(recvSize  == 12){
-          LOG("CommManager get job from client\n");
+          //LOG("CommManager get job from client\n");
           readComplete(sock,recvData,recvHeader[0]);
-          LOG("CommManager get job from client complete\n");
+          //LOG("CommManager get job from client complete\n");
           Job* newJob = new Job();
           newJob->tag = (TAG)recvHeader[1];
           newJob->data = (char*)malloc(recvHeader[0]);
           newJob->size = recvHeader[0];
           memcpy(newJob->data,recvData,recvHeader[0]);
           newJob->sourceID = recvHeader[2];
-          LOG("CommManager gives job to handler thread before\n");
-          commManager->insertJob(newJob);
+          //LOG("CommManager gives job to handler thread before\n");
+          if(newJob->tag == 1000)
+            commManager->insertDataToRecvQue(newJob->data,newJob->size,newJob->sourceID);         
+          else if(newJob->tag == 3)
+            (*(*(commManager->getCallbackList()))[newJob->tag])(newJob->data,newJob->size,newJob->sourceID);
+          else
+            commManager->insertJob(newJob);
+          
 
-          LOG("CommManager gives job to handler thread\n");
+          //LOG("CommManager gives job to handler thread\n");
                     //(*(*callbackList)[recvHeader[1]])((void*)recvData);
         }
       }  
@@ -88,12 +94,7 @@ namespace corelab {
       int jobNum = commManager->getJobQueSize();
       if(jobNum > 0){
         Job* job = commManager->getJob();
-        if(job->tag == 1000){ // blocking tag
-          LOG("\nblocking message is arrived\n\n");
-          commManager->insertDataToRecvQue(job->data,job->size,job->sourceID);         
-        }
-        else
-          (*(*callbackList)[job->tag])(job->data,job->size,job->sourceID);
+        (*(*callbackList)[job->tag])(job->data,job->size,job->sourceID);
       }
     }
   }
@@ -257,15 +258,15 @@ namespace corelab {
     else
       targetQue = (*(sendQues[destID]))[tag];
       
-    LOG("before check sendques\n");
+    //LOG("before check sendques\n");
     if((targetQue->size) > 262140)
       return false;
     *((QWord*)(targetQue->head)) = word;
-    LOG("before check sendques\n");
+    //LOG("before check sendques\n");
     targetQue->head += 4;
-    LOG("before check sendques\n");
+    //LOG("before check sendques\n");
     targetQue->size += 4;
-    LOG("before check sendques\n");
+    //LOG("before check sendques\n");
     return true;
   }
 
@@ -377,11 +378,11 @@ namespace corelab {
     pthread_mutex_lock(&recvFlagLock);
     recvFlags[sourceID] = false;
     pthread_mutex_unlock(&recvFlagLock);
-    LOG("RECEIVE que is set\n");
+    //LOG("RECEIVE que is set\n");
     while(1){
       pthread_mutex_lock(&recvFlagLock);
       if(recvFlags[sourceID]){
-        LOG("RECEIVE message!!!\n");
+        //LOG("RECEIVE message!!!\n");
         pthread_mutex_unlock(&recvFlagLock);
         break;
       }
@@ -455,14 +456,14 @@ namespace corelab {
   }
 
   void CommManager::insertJob(Job* newJob){
-    LOG("DEBUG :: comm manager : insert job\n");
+    //LOG("DEBUG :: comm manager : insert job\n");
     pthread_mutex_lock(&jobQueLock);
 
-    LOG("DEBUG :: comm manager : insert job before\n");
+    //LOG("DEBUG :: comm manager : insert job before\n");
     jobQue.push(newJob);
-    LOG("DEBUG :: comm manager : insert job after \n");
+    //LOG("DEBUG :: comm manager : insert job after \n");
     pthread_mutex_unlock(&jobQueLock);
-    LOG("DEBUG :: comm manager : insert job end \n");
+    //LOG("DEBUG :: comm manager : insert job end \n");
   }
 
   void CommManager::insertDataToRecvQue(void* data, uint32_t size, uint32_t cid){
@@ -472,7 +473,7 @@ namespace corelab {
     targetQue->head = targetQue->data;
     memcpy(targetQue->data,data,size);
     recvFlags[cid] = true;
-    LOG("insert data to recv que\n");
+    //LOG("insert data to recv que\n");
     pthread_mutex_unlock(&recvFlagLock);
 
   }
@@ -490,8 +491,6 @@ namespace corelab {
     int jobNum;
     pthread_mutex_lock(&jobQueLock);
     jobNum = (int)jobQue.size();
-    if(jobNum > 0)
-      LOG("DEBUG :: job num is larger than 0\n");
     pthread_mutex_unlock(&jobQueLock);
     return jobNum;
   }
