@@ -53,8 +53,8 @@ namespace corelab {
 			void resolveModified (void *addr);
 
       // synchronization for HLRC (Home-based Lazy Release Consistency)
-      void acquireHandler(QSocket *socket);
-      void releaseHandler(QSocket *socket);
+      void acquireHandler(CommManager *comm, uint32_t destid);
+      void releaseHandler(CommManager *comm, uint32_t destid);
       
       void syncHandler(CommManager *comm, uint32_t destid);
 

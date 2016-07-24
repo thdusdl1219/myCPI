@@ -28,7 +28,7 @@ namespace corelab {
     void heapSegfaultHandler(void*, uint32_t, uint32_t);
     void globalSegfaultHandler(void*, uint32_t, uint32_t);
     void globalInitCompleteHandler(void*, uint32_t, uint32_t);
-    void invalidHandler(void*, uint32_t, uint32_t);
+    void acquireHandler(void*, uint32_t, uint32_t);
     void releaseHandler(void*, uint32_t, uint32_t);
     void syncHandler(void*, uint32_t, uint32_t);
 

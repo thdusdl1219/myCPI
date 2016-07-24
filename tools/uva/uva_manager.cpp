@@ -159,34 +159,30 @@ namespace corelab {
 		}
 
     /* @detail HLRC (Home-based Lazy Release Consistency): acquire */
-    void UVAManager::acquireHandler(QSocket *socket) {
+    void UVAManager::acquireHandler(CommManager *comm, uint32_t destid) {
 
       // send invalidate address request.
      
-      socket->pushWordF(INVALID_REQ);
-      socket->sendQue();
+      comm->pushWord(ACQUIRE_HANDLER, ACQUIRE_REQ, destid);
+      comm->sendQue(ACQUIRE_HANDLER, destid);
 #ifdef DEBUG_UVA
-          LOG("[client] send invalid request (%d)\n", INVALID_REQ);
+          LOG("[client] send invalid request\n");
 #endif
       
       // recv invalidate address list.
-      socket->receiveQue();
+      comm->receiveQue(destid);
 #ifdef DEBUG_UVA
       LOG("[client] recv address list\n");
 #endif
-      int mode = socket->takeWordF();
-      LOG("[client] recv mode (%d)\n", mode); 
-      assert(mode == INVALID_REQ_ACK && "wrong");
-      
 
       //int addressSize = socket->takeWordF();
-      int addressNum = socket->takeWordF();
+      uint32_t addressNum = comm->takeWord(destid);
       vector<void*> addressVector;
       //void** addressbuf = (void **) malloc(addressSize);
       void** addressbuf = (void **) malloc(4);
       for(int i = 0; i < addressNum; i++) {
         //socket->takeRangeF(addressbuf, addressSize);
-        socket->takeRangeF(addressbuf, 4);
+        comm->takeRange(addressbuf, 4, destid);
         addressVector.push_back(*addressbuf);
       }
       free(addressbuf);
@@ -202,12 +198,12 @@ namespace corelab {
 
       isInCriticalSection = true;
 #ifdef DEBUG_UVA
-          LOG("[client] acquire handler end (%d)\n", addressNum);
+      LOG("[client] acquire handler end (%d)\n", addressNum);
 #endif
     }
 
     /* @detail HLRC (Home-based Lazy Release Consistency): release */
-    void UVAManager::releaseHandler(QSocket *socket) {
+    void UVAManager::releaseHandler(CommManager *comm, uint32_t destid) {
       /* At first, make store logs to be send to Home */
       void *storeLogs = malloc(sizeCriticalSectionStoreLogs);
 #if UINTPTR_MAX == 0xffffffff
@@ -243,10 +239,10 @@ namespace corelab {
       LOG("[client] CRITICAL SECTION # of vecStoreLogs %d | sizeStoreLogs %d\n", vecCriticalSectionStoreLogs->size(), sizeCriticalSectionStoreLogs);
 #endif 
       /* Second, send them all */
-      socket->pushWordF(RELEASE_REQ);
-      socket->pushWordF(sizeCriticalSectionStoreLogs);
-      socket->pushRange(storeLogs, sizeCriticalSectionStoreLogs);
-      socket->sendQue();
+      comm->pushWord(RELEASE_HANDLER, RELEASE_REQ, destid);
+      comm->pushWord(RELEASE_HANDLER, sizeCriticalSectionStoreLogs, destid);
+      comm->pushRange(RELEASE_HANDLER, storeLogs, sizeCriticalSectionStoreLogs, destid);
+      comm->sendQue(RELEASE_HANDLER, destid);
       sizeCriticalSectionStoreLogs = 0;
       free(storeLogs);
       vecCriticalSectionStoreLogs->clear();

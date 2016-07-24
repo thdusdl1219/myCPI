@@ -25,7 +25,6 @@ using namespace corelab::XMemory;
 namespace corelab {
   namespace UVA {
 
-    static QSocket* socket;
     static CommManager *comm;
     //pthread_t openThread; 
     //pthread_mutex_t acquireLock = PTHREAD_MUTEX_INITIALIZER;
@@ -47,6 +46,10 @@ namespace corelab {
       comm->setCallback(tag, storeHandler);
       //tag = STORE_HLRC_HANDLER;
       //comm->setCallback(tag, storeHandlerForHLRC); // XXX
+      tag = ACQUIRE_HANDLER;
+      comm->setCallback(tag, acquireHandler);
+      tag = RELEASE_HANDLER;
+      comm->setCallback(tag, releaseHandler);
       tag = SYNC_HANDLER;
       comm->setCallback(tag, syncHandler);
       tag = MMAP_HANDLER;
@@ -149,7 +152,10 @@ namespace corelab {
       }
     }
 
-    void invalidHandler(void *data_, uint32_t size, uint32_t srcid) {
+    void acquireHandler(void *data_, uint32_t size, uint32_t srcid) {
+#ifdef DEBUG_UVA
+      LOG("[server] acquireHandler START (srcid:%d)", srcid);
+#endif
       //pthread_mutex_lock(&acquireLock);
       set<uint32_t> sendAddrSet;
       // find same cliendId in accessSet in pageInfo
@@ -160,11 +166,11 @@ namespace corelab {
           memcpy(&intAddr, &(it->first), 4);
           sendAddrSet.insert(intAddr);
 #ifdef DEBUG_UVA
-          LOG("[server] add invalidation address (%p)(%d) for clientId (%d)\n", reinterpret_cast<void*>(it->first), intAddr, srcid);
+          LOG("[server] add invalidation address (%p)(%d) for srcid (%d)\n", reinterpret_cast<void*>(it->first), intAddr, srcid);
 #endif
         }
       }
-      comm->pushWord(BLOCKING, INVALID_REQ_ACK, srcid); 
+      //comm->pushWord(BLOCKING, ACQUIRE_REQ_ACK, srcid); 
       //socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
       comm->pushWord(BLOCKING, sendAddrSet.size(), srcid); // send addressNum 
 
@@ -181,7 +187,7 @@ namespace corelab {
       free(addressbuf);
 
 #ifdef DEBUG_UVA
-      LOG("[server] send invalid Address");
+      LOG("[server] acquireHandler END (srcid:%d)", srcid);
 #endif
     }
 
@@ -190,6 +196,9 @@ namespace corelab {
      *  2. apply store logs into Home's corresponding pages
      */
     void releaseHandler(void *data_, uint32_t size_, uint32_t srcid) {
+#ifdef DEBUG_UVA
+      LOG("[server] releaseHandler END (srcid:%d)", srcid);
+#endif
       int sizeStoreLogs;
       void *storeLogs;
 //      socket->receiveQue(clientId);

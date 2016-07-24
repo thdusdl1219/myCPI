@@ -26,10 +26,6 @@
 
 #define HLRC
 
-
-#define LOCALTEST 0
-#define CORELAB_SERVER_TEST 1
-
 extern "C" void __decl_const_global_range__();
 extern "C" void __fixed_global_initializer__();
 extern "C" void uva_sync();
@@ -56,37 +52,10 @@ namespace corelab {
     extern "C" void UVAClientInitializer(CommManager *comm_, uint32_t isGVInitializer, uint32_t destid_) {
 
       // FIXME: for sync
-      sleep(5);
+      sleep(4);
 
       comm = comm_;
       destid = destid_;
-/*
-      char ip[20];
-      char port[10];
-
-      FILE *fdesc = NULL;
-      fdesc = fopen("server_desc", "r");
-      
-      if (fdesc != NULL) {
-        fscanf(fdesc, "%20s %10s", ip, port);
-        fclose(fdesc);
-      } else {
-        printf("Server IP : ");
-        scanf("%20s", ip);
-        printf("Server Port : ");
-        scanf("%10s", port);
-      }
-      
-#ifdef DEBUG_UVA
-      printf("[CLIENT] ip (%s), port (%s)\n", ip, port);
-#endif
-
-      //Msocket = new QSocket();
-      //Msocket->connect(ip, port);
-
-      //XMemory::XMemoryManager::initialize(Msocket);
-      //UVAManager::initialize (Msocket);
-*/
       UVAManager::initialize (comm, destid);
 
       // segfault handler
@@ -126,15 +95,12 @@ namespace corelab {
       }
     }
     extern "C" void UVAClientFinalizer() {
-      // Msocket->sendQue();
       void *ptNoConstBegin;
       void *ptNoConstEnd;
-      //void *ptConstBegin;
-      //void *ptConstEnd;
+#ifdef DEBUG_UVA
       UVAManager::getFixedGlobalAddrRange(&ptNoConstBegin, &ptNoConstEnd/*, &ptConstBegin, &ptConstEnd*/);
       xmemDumpRange(ptNoConstBegin, 32);
-      //xmemDumpRange(ptConstBegin, 32);
-      //Msocket->disconnect();
+#endif
     }
 		/*** Internals ***/
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused) {
@@ -257,16 +223,7 @@ namespace corelab {
         comm->pushWord(GLOBAL_SEGFAULT_HANDLER, intAddrEnd, destid);
         comm->sendQue(GLOBAL_SEGFAULT_HANDLER, destid);
 
-/*#ifdef UVA_EVAL
-        StopWatch watchRecv;
-        watchRecv.start();
-#endif*/
         comm->receiveQue(destid);
-/*#ifdef UVA_EVAL
-        watchRecv.end();
-        FILE *fp = fopen("uva-eval.txt", "a");
-        fprintf(fp, "SEGFAULT | RECV %lf\n", watchRecv.diff());
-#endif*/
         uint32_t ack = comm->takeWord(destid);
         assert(ack == GLOBAL_SEGFAULT_REQ_ACK && "wrong!!!");
         comm->takeRange(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, destid);
@@ -291,16 +248,7 @@ namespace corelab {
         comm->pushWord(HEAP_SEGFAULT_HANDLER, intFaultAddr, destid);
         comm->sendQue(HEAP_SEGFAULT_HANDLER, destid);
 
-/*#ifdef UVA_EVAL
-        StopWatch watchRecv;
-        watchRecv.start();
-#endif*/
         comm->receiveQue(destid);
-/*#ifdef UVA_EVAL
-        watchRecv.end();
-        FILE *fp = fopen("uva-eval.txt", "a");
-        fprintf(fp, "SEGFAULT | RECV %lf\n", watchRecv.diff());
-#endif*/
         comm->takeRange(truncToPageAddr(fault_addr), PAGE_SIZE, destid);
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | getting a page in heap is done\n");
@@ -327,54 +275,49 @@ namespace corelab {
 				UVAManager::fetchIn (socket, addr);
 			}*/
 		} // segfaultHandler
-    extern "C" void uva_load(size_t len, void *addr) {
+    extern "C" void uva_load_sc(size_t len, void *addr) {
 #ifndef HLRC
       UVAManager::loadHandler(comm, destid, len, addr);
 #endif
       return;
     }
 
-    extern "C" void uva_store(size_t len, void *data, void *addr) {
-#ifdef HLRC
-      UVAManager::storeHandlerForHLRC(len, data, addr);
-#else
+    extern "C" void uva_store_sc(size_t len, void *data, void *addr) {
       UVAManager::storeHandler(comm, destid, len, data, addr);
-#endif
       return;
     }
 
-    extern "C" void *uva_memset(void *addr, int value, size_t num) {
-#ifdef HLRC
-      return UVAManager::memsetHandlerForHLRC(addr, value, num);
-#else
-      return UVAManager::memsetHandler(comm, destid, addr, value, num);
-#endif
+    extern "C" void uva_store(size_t len, void *data, void *addr) {
+      UVAManager::storeHandlerForHLRC(len, data, addr);
+      return;
     }
 
-    extern "C" void *uva_memcpy(void *dest, void *src, size_t num) {
-#ifdef HLRC
-      return UVAManager::memcpyHandlerForHLRC(comm, destid, dest, src, num);
-#else
+    extern "C" void *uva_memset_sc(void *addr, int value, size_t num) {
+      return UVAManager::memsetHandler(comm, destid, addr, value, num);
+    }
+
+    extern "C" void *uva_memset(void *addr, int value, size_t num) {
+      return UVAManager::memsetHandlerForHLRC(addr, value, num);
+    }
+
+    extern "C" void *uva_memcpy_sc(void *dest, void *src, size_t num) {
       return UVAManager::memcpyHandler(comm, destid, dest, src, num);
-#endif
     }
     
+    extern "C" void *uva_memcpy(void *dest, void *src, size_t num) {
+      return UVAManager::memcpyHandlerForHLRC(comm, destid, dest, src, num);
+    }
+
     extern "C" void uva_acquire() {
-#ifdef HLRC
-      //UVAManager::acquireHandler(Msocket);
-#endif
+      UVAManager::acquireHandler(comm, destid);
     }
     
     extern "C" void uva_release() {
-#ifdef HLRC
-      //UVAManager::releaseHandler(Msocket);
-#endif
+      UVAManager::releaseHandler(comm, destid);
     }
     
     extern "C" void uva_sync() {
-#ifdef HLRC
       UVAManager::syncHandler(comm, destid);
-#endif
     }
     
     extern "C" void sendInitCompleteSignal() {

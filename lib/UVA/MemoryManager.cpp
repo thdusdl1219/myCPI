@@ -45,21 +45,30 @@ static Function *getCalledFunction_aux(Instruction* indCall); // From AliasAnaly
 static const Value *getCalledValueOfIndCall(const Instruction* indCall);
 static const User *isGEP(const Value *V);
 
+static bool is_lightweight = false;
+
 static void filterStackAddrAccess(Module &M); 
 static void installMemAccessHandler(Module &M, 
-    Constant *Load, 
+    Constant *Load_sc, 
+    Constant *Store_sc, 
     Constant *Store, 
+    Constant *Memset_sc,
     Constant *Memset,
+    Constant *Memcpy_sc,
     Constant *Memcpy,
     Constant *Memmove, bool is32);
 
 //char MemoryManagerX86::ID = 0;
 char MemoryManagerX64::ID = 0;
+#if 0
 char MemoryManagerX64S::ID = 0;
+#endif
 char MemoryManagerArm::ID = 0;
 //static RegisterPass<MemoryManagerX86> XA("mm-64", "substitute memory allocation for 64bit platform", false, false);
 static RegisterPass<MemoryManagerX64> XB("mm-64", "substitute memory allocation for 64bit platform(Client)", false, false);
+#if 0
 static RegisterPass<MemoryManagerX64S> XBS("mm-64S", "substitute memory allocation for 64bit platform(Server)", false, false);
+#endif
 static RegisterPass<MemoryManagerArm> XA("mm-32-arm", "substitute memory allocation for 32bit ARM platform(Client)", false, false);
 //void MemoryManagerX86::getAnalysisUsage(AnalysisUsage &AU) const {
 //	AU.setPreservesAll();
@@ -67,48 +76,18 @@ static RegisterPass<MemoryManagerArm> XA("mm-32-arm", "substitute memory allocat
 void MemoryManagerX64::getAnalysisUsage(AnalysisUsage &AU) const {
 	AU.setPreservesAll();
 }
-
+#if 0
 void MemoryManagerX64S::getAnalysisUsage(AnalysisUsage &AU) const {
 	AU.setPreservesAll();
 }
-
+#endif
 void MemoryManagerArm::getAnalysisUsage(AnalysisUsage &AU) const {
 	AU.setPreservesAll();
 }
-//void MemoryManagerX86::setFunctions(Module &M) {
-//	LLVMContext &Context = getGlobalContext();
-//	voidTy = Type::getVoidTy(Context);
-//	ptrTy = Type::getInt8PtrTy(Context);
-//	intTy = Type::getInt64Ty(Context);
-//	
-//	Malloc = M.getOrInsertFunction(
-//			"offload_malloc",
-//			ptrTy,
-//			intTy,
-//			(Type*)0);
-//
-//	Calloc = M.getOrInsertFunction(
-//			"offload_calloc",
-//			ptrTy,
-//			intTy,
-//			intTy,
-//			(Type*)0);
-//
-//	Realloc = M.getOrInsertFunction(
-//			"offload_realloc",
-//			ptrTy,
-//			ptrTy,
-//			intTy,
-//			(Type*)0);
-//
-//	Free = M.getOrInsertFunction(
-//			"offload_free",
-//			voidTy,
-//			ptrTy,
-//			(Type*)0);
-//	
-//	return;
-//}
+
+static cl::opt<string> lightweight("lightweight",
+    cl::desc("Specify Lightweight device (1: light-weight device, 0: not)"), 
+      cl::value_desc("lightweight devie"));
 
 void MemoryManagerX64::setFunctions(Module &M) {
 	LLVMContext &Context = M.getContext();
@@ -161,10 +140,18 @@ void MemoryManagerX64::setFunctions(Module &M) {
 
 	// XXX 'munmap' skipped
 
-  Load = M.getOrInsertFunction(
-      "uva_load",
+  Load_sc = M.getOrInsertFunction(
+      "uva_load_sc",
       Type::getVoidTy(Context), /* Return type */
       Type::getInt64Ty(Context), /* Length */
+      Type::getInt8PtrTy(Context), /* Address */
+      (Type*)0);
+
+  Store_sc = M.getOrInsertFunction(
+      "uva_store_sc",
+      Type::getVoidTy(Context), /* Return type */
+      Type::getInt64Ty(Context), /* Length */
+      Type::getInt8PtrTy(Context), /* value */
       Type::getInt8PtrTy(Context), /* Address */
       (Type*)0);
 
@@ -176,12 +163,28 @@ void MemoryManagerX64::setFunctions(Module &M) {
       Type::getInt8PtrTy(Context), /* Address */
       (Type*)0);
 
+  Memset_sc = M.getOrInsertFunction(
+      "uva_memset_sc",
+      Type::getInt8PtrTy(Context),
+      Type::getInt8PtrTy(Context),
+      Type::getInt32Ty(Context),
+      Type::getInt64Ty(Context),
+      (Type*)0);
+
   Memset = M.getOrInsertFunction(
       "uva_memset",
       Type::getInt8PtrTy(Context),
       Type::getInt8PtrTy(Context),
       Type::getInt32Ty(Context),
       Type::getInt64Ty(Context),
+      (Type*)0);
+
+  Memcpy_sc = M.getOrInsertFunction(
+      "uva_memcpy_sc",
+      Type::getInt8PtrTy(Context), 
+      Type::getInt8PtrTy(Context),
+      Type::getInt8PtrTy(Context),
+      Type::getInt64Ty(Context), /* size_t */
       (Type*)0);
 
   Memcpy = M.getOrInsertFunction(
@@ -208,7 +211,7 @@ void MemoryManagerX64::setFunctions(Module &M) {
 
 	return;
 }
-
+#if 0
 void MemoryManagerX64S::setFunctions(Module &M) {
 	LLVMContext &Context = M.getContext();
 	voidTy = Type::getVoidTy(Context);
@@ -291,7 +294,7 @@ void MemoryManagerX64S::setFunctions(Module &M) {
 
 	return;
 }
-
+#endif
 void MemoryManagerArm::setFunctions(Module &M) {
 	LLVMContext &Context = M.getContext();
 	voidTy = Type::getVoidTy(Context);
@@ -343,13 +346,21 @@ void MemoryManagerArm::setFunctions(Module &M) {
 
 	// XXX 'munmap' skipped
 
-  Load = M.getOrInsertFunction(
-      "uva_load",
+  Load_sc = M.getOrInsertFunction(
+      "uva_load_sc",
       Type::getVoidTy(Context), /* Return type */
       Type::getInt32Ty(Context), /* Length */
       Type::getInt8PtrTy(Context), /* Address */
       (Type*)0);
 
+  Store_sc = M.getOrInsertFunction(
+      "uva_store_sc",
+      Type::getVoidTy(Context), /* Return type */
+      Type::getInt32Ty(Context), /* Length */
+      Type::getInt8PtrTy(Context), /* XXX: Not sure */
+      Type::getInt8PtrTy(Context), /* Address */
+      (Type*)0);
+  
   Store = M.getOrInsertFunction(
       "uva_store",
       Type::getVoidTy(Context), /* Return type */
@@ -357,7 +368,15 @@ void MemoryManagerArm::setFunctions(Module &M) {
       Type::getInt8PtrTy(Context), /* XXX: Not sure */
       Type::getInt8PtrTy(Context), /* Address */
       (Type*)0);
-  
+
+  Memset_sc = M.getOrInsertFunction(
+      "uva_memset_sc",
+      Type::getInt8PtrTy(Context),
+      Type::getInt8PtrTy(Context),
+      Type::getInt32Ty(Context),
+      Type::getInt32Ty(Context),
+      (Type*)0);
+
   Memset = M.getOrInsertFunction(
       "uva_memset",
       Type::getInt8PtrTy(Context),
@@ -366,13 +385,22 @@ void MemoryManagerArm::setFunctions(Module &M) {
       Type::getInt32Ty(Context),
       (Type*)0);
 
-  Memcpy = M.getOrInsertFunction(
-      "uva_memcpy",
+  Memcpy_sc = M.getOrInsertFunction(
+      "uva_memcpy_sc",
       Type::getInt8PtrTy(Context), 
       Type::getInt8PtrTy(Context),
       Type::getInt8PtrTy(Context),
       Type::getInt32Ty(Context), /* size_t (32 in arm(?)) */
       (Type*)0);
+
+  Memcpy = M.getOrInsertFunction(
+    "uva_memcpy",
+    Type::getInt8PtrTy(Context), 
+    Type::getInt8PtrTy(Context),
+    Type::getInt8PtrTy(Context),
+    Type::getInt32Ty(Context), /* size_t (32 in arm(?)) */
+    (Type*)0);
+
 
   // XXX: New64 need on ARM ??? XXX
   /* _Znmw : 64 bit 
@@ -399,11 +427,24 @@ bool MemoryManagerX64::runOnModule(Module& M) {
 		if (F->isDeclaration()) continue;
 		runOnFunction(F, false);
 	}
+  if (strcmp(lightweight.data(), "1") == 0) {
+    is_lightweight = true;
+  } else {
+    is_lightweight = false;
+  }
   filterStackAddrAccess(M);
-  installMemAccessHandler(M, Load, Store, Memset, Memcpy, Memmove, false);
+  installMemAccessHandler(M, 
+      Load_sc, 
+      Store_sc, 
+      Store, 
+      Memset_sc, 
+      Memset, 
+      Memcpy_sc, 
+      Memcpy, 
+      Memmove, false);
 	return false;
 }
-
+#if 0
 bool MemoryManagerX64S::runOnModule(Module& M) {
 	setFunctions(M);
 	for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
@@ -414,7 +455,7 @@ bool MemoryManagerX64S::runOnModule(Module& M) {
   //installLoadStoreHandler(M, Load, Store, false);
   return false;
 }
-
+#endif
 bool MemoryManagerArm::runOnModule(Module& M) {
 	setFunctions(M);
 	for(Module::iterator fi = M.begin(), fe = M.end(); fi != fe; ++fi) {
@@ -422,8 +463,21 @@ bool MemoryManagerArm::runOnModule(Module& M) {
 		if (F->isDeclaration()) continue;
 		runOnFunction(F, true);
 	}
+  if (strcmp(lightweight.data(), "1") == 0) {
+    is_lightweight = true;
+  } else {
+    is_lightweight = false;
+  }
   filterStackAddrAccess(M);
-  installMemAccessHandler(M, Load, Store, Memset, Memcpy, Memmove, true);
+  installMemAccessHandler(M, 
+      Load_sc, 
+      Store_sc, 
+      Store,
+      Memset_sc,
+      Memset, 
+      Memcpy_sc,
+      Memcpy, 
+      Memmove, true);
   return false;
 }
 
@@ -667,7 +721,7 @@ bool MemoryManagerX64::runOnFunction(Function *F, bool is32) {
 	}
 	return false; */
 }
-
+#if 0
 bool MemoryManagerX64S::runOnFunction(Function *F) {
 
 		for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
@@ -794,7 +848,7 @@ bool MemoryManagerX64S::runOnFunction(Function *F) {
 		}
   return false;
 }
-
+#endif
 bool MemoryManagerArm::runOnFunction(Function *F, bool is32) {
 
 		for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
@@ -1050,13 +1104,18 @@ static void filterStackAddrAccess(Module &M) {
       }
     } 
   }
+#ifdef DEBUG_MM
   printf("\n\n################## num of uva mem access : %d\n", vecUVAInst.size());
+#endif
 }
 /* installMemAccessHandler: for both X64, Arm */
 static void installMemAccessHandler(Module &M, 
-    Constant *Load, 
+    Constant *Load_sc, 
+    Constant *Store_sc, 
     Constant *Store, 
+    Constant *Memset_sc, 
     Constant *Memset, 
+    Constant *Memcpy_sc, 
     Constant *Memcpy, 
     Constant *Memmove, bool is32) {
   int count = 0;
@@ -1120,9 +1179,9 @@ static void installMemAccessHandler(Module &M,
           }
           args[0] = loadTypeSize_; 
           args[1] = addr;
-#ifndef HLRC
-          CallInst::Create(Load, args, "", ld);
-#endif
+          if (is_lightweight) {
+            CallInst::Create(Load_sc, args, "", ld);
+          }
         //}
       }
       // For each store instructions
@@ -1182,7 +1241,11 @@ static void installMemAccessHandler(Module &M,
           args[0] = storeValueTypeSize_;
           args[1] = arrOperand;
           args[2] = addr;
-          CallInst::Create(Store, args, "", st);
+          if (is_lightweight) {
+            CallInst::Create(Store_sc, args, "", st);
+          } else {
+            CallInst::Create(Store, args, "", st);
+          }
         } else if (StructType *tyStruct = dyn_cast<StructType>(valueOperand->getType())) {
           printf("mm: valueOperand is Struct Type!, type size is %d\n", storeValueTypeSize);
 
@@ -1206,7 +1269,11 @@ static void installMemAccessHandler(Module &M,
           args[0] = storeValueTypeSize_;
           args[1] = structOperand;
           args[2] = addr;
-          CallInst::Create(Store, args, "", st);
+          if (is_lightweight) {
+            CallInst::Create(Store_sc, args, "", st);
+          } else {
+            CallInst::Create(Store, args, "", st);
+          }
         } else if (VectorType *tyVector = dyn_cast<VectorType>(valueOperand->getType())) {
           printf("mm: valueOperand is Vector Type!, type size is %d\n", storeValueTypeSize);
 
@@ -1230,14 +1297,22 @@ static void installMemAccessHandler(Module &M,
           args[0] = storeValueTypeSize_;
           args[1] = vectorOperand;
           args[2] = addr;
-          CallInst::Create(Store, args, "", st);
+          if (is_lightweight) {
+            CallInst::Create(Store_sc, args, "", st);
+          } else {
+            CallInst::Create(Store, args, "", st);
+          }
         } else { /* TODO: may need to handle "vector" type operand */
           valueOperand = castTo(valueOperand, temp, out, &dataLayout);
 
           args[0] = storeValueTypeSize_;
           args[1] = valueOperand;
           args[2] = addr;
-          CallInst::Create(Store, args, "", st);
+          if (is_lightweight) {
+            CallInst::Create(Store_sc, args, "", st);
+          } else {
+            CallInst::Create(Store, args, "", st);
+          }
         }
       } else if (MemSetInst *MSI = dyn_cast<MemSetInst>(instruction)) {
         count++;
@@ -1271,7 +1346,11 @@ static void installMemAccessHandler(Module &M,
         args[0] = addr; // void* (Int8Ptr)
         args[1] = value_; // int (Int32Ty)
         args[2] = num; // size_t (Int64Ty or Int32Ty)
-        CallInst::Create(Memset, args, "", MSI);
+        if (is_lightweight) {
+          CallInst::Create(Memset_sc, args, "", MSI);
+        } else {
+          CallInst::Create(Memset, args, "", MSI);
+        }
       } else if (MemCpyInst *MCI = dyn_cast<MemCpyInst>(instruction)) {
         count++;
         //MCI->dump();
@@ -1308,13 +1387,17 @@ static void installMemAccessHandler(Module &M,
         args[0] = dest; // void* (Int8Ptr)
         args[1] = src; // void* (Int8Ptr)
         args[2] = num; // size_t (Int64Ty or Int32Ty)
-        CallInst::Create(Memcpy, args, "", MCI);
+        if (is_lightweight) {
+          CallInst::Create(Memcpy_sc, args, "", MCI);
+        } else {
+          CallInst::Create(Memcpy, args, "", MCI);
+        }
       } else if (MemMoveInst *MMI = dyn_cast<MemMoveInst>(instruction)) {
         printf("MemMoveInst! Unimplemented!!\n");
       }
     } // for
   } // for
-  printf("\n\n$$$$$$$$$$$$$$$ original uva operation : %d\n\n", count);
+  //printf("\n\n$$$$$$$$$$$$$$$ original uva operation : %d\n\n", count);
 }
 
 bool MemoryManagerX64::isCppDeleteOperator(Function* F) {
@@ -1340,7 +1423,7 @@ bool MemoryManagerX64::isCppNewOperator(Function* F) {
 }
 
 
-
+#if 0
 bool MemoryManagerX64S::isCppNewOperator(Function* F) {
 	string name = F->getName().str();
 	if (name.length() > 6) return false;
@@ -1362,7 +1445,7 @@ bool MemoryManagerX64S::isCppDeleteOperator(Function* F) {
 
 	return false;
 }
-
+#endif
 
 bool MemoryManagerArm::isCppNewOperator(Function* F) {
 	string name = F->getName().str();

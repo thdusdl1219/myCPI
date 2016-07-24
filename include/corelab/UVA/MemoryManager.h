@@ -32,9 +32,12 @@ namespace corelab
 			Constant* Free;
 			Constant* Strdup;
 			Constant* Mmap;
-      Constant* Load;
+      Constant* Load_sc;
+      Constant* Store_sc;
       Constant* Store;
+      Constant* Memset_sc;
       Constant* Memset;
+      Constant* Memcpy_sc;
       Constant* Memcpy;
       Constant* Memmove;
       Constant* New64;
@@ -43,7 +46,7 @@ namespace corelab
 			Type* ptrTy;
 			Type* intTy;
 	};
-
+#if 0
 	class MemoryManagerX64S : public ModulePass
 	{
 		public:
@@ -74,7 +77,7 @@ namespace corelab
 			Type* ptrTy;
 			Type* intTy;
 	};
-	
+#endif
   class MemoryManagerArm : public ModulePass
 	{
 		public:
@@ -97,9 +100,12 @@ namespace corelab
 			Constant* Free;
 			Constant* Strdup;
 			Constant* Mmap;
-      Constant* Load;
+      Constant* Load_sc;
+      Constant* Store_sc;
       Constant* Store;
+      Constant* Memset_sc;
       Constant* Memset;
+      Constant* Memcpy_sc;
       Constant* Memcpy;
       Constant* Memmove;
       //Constant* New64;
