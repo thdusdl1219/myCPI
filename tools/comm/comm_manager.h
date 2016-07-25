@@ -26,6 +26,7 @@
 //#include "tag.h"
 
 #define Q_MAX 262144 // max queue elements (256kB)
+#define JOB_Q_MAX 1024 
 
 namespace corelab {
 	typedef uint32_t QWord;
@@ -38,6 +39,19 @@ namespace corelab {
     uint32_t size;
     uint32_t sourceID;
   }Job;
+
+  class JobQueue{
+    public:
+      JobQueue(uint32_t size);
+      bool insertJob(Job* job);
+      Job* getJob();
+    private:
+      Job** data;
+      uint32_t q_max;
+      uint32_t head;
+      uint32_t tail;
+  };
+
 
   class CommManager {
     public:
@@ -78,15 +92,14 @@ namespace corelab {
     std::map<TAG,CallbackType>* getCallbackList(); 
     int getSocketNumber();
     int getSocketByIndex(uint32_t i);
+    JobQueue* getJobQue();
 
-    Job* getJob();
-    void insertJob(Job* job);
-    void insertDataToRecvQue(void* data, uint32_t size, uint32_t cid);
-    int getJobQueSize();
+    //Job* getJob();
+    //void insertJob(Job* job);
+    //int getJobQueSize();
 
     pthread_mutex_t callbackLock;
-    pthread_mutex_t jobQueLock;
-    pthread_mutex_t recvFlagLock;
+    //pthread_mutex_t jobQueLock;
     pthread_t handlingThread;
     pthread_t receivingThread;
 
@@ -97,24 +110,28 @@ namespace corelab {
       // Data field
       QWord size;
       char data[Q_MAX];
-
       // State field
       char *head;
-      int *ID;
     };
 
     uint32_t localID;
     uint32_t clntID;
+    uint32_t blockingPort;
 
     void (*connectionCallback)(void*);
 
-    std::queue<Job*> jobQue;
+    JobQueue* jobQue;
+    //std::queue<Job*> jobQue;
 
     std::map<uint32_t, std::map<TAG,Queue*>* > sendQues; // client_id : send_queue
     std::map<uint32_t, Queue*> recvQues; // client_id : recv_queue
 
+
+    std::map<uint32_t,int> blockingPortMap; // client_id : blocking port 
+    std::map<uint32_t,char*> blockingIPMap;
     std::map<uint32_t,int> socketMap; // client_id : socket_desc
-    std::map<uint32_t,bool> recvFlags;
+    std::map<uint32_t,int> blockingSocketMap; // client_id : socket_desc
+    //std::map<uint32_t,bool> recvFlags;
 
     std::map<TAG,CallbackType>* callbackList; // callback function list with TAG (key) 
 

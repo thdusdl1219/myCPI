@@ -305,7 +305,11 @@ namespace corelab {
       vecStoreLogs->clear(); // XXX
 
       /* Third, recv invalidate address list. */
+      StopWatch watch_recv;
+      watch_recv.start();
       comm->receiveQue(destid);
+      watch_recv.end();
+      //LOG("\n\n\n receiveQue in sync handler : %f\n\n\n",watch_recv.diff());
 #ifdef DEBUG_UVA
       LOG("[client] recv address list\n");
 #endif
@@ -337,6 +341,7 @@ namespace corelab {
 #ifdef UVA_EVAL
       watch.end();
       FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "RECVQ %lf\n",watch_recv.diff());
       fprintf(fp, "SYNC %lf %d\n", watch.diff(), 8 + sizeStoreLogs + 4 + (4 *addressNum));
       fclose(fp);
 #endif

@@ -14,10 +14,48 @@
 #include <unistd.h>
 
 #include "comm_manager.h"
+#include "TimeUtil.h"
 
 using namespace std;
 
 namespace corelab {
+  
+  JobQueue::JobQueue(uint32_t size){
+    data = (Job**)malloc(sizeof(Job*) * size);
+    q_max = size - 1;
+    head = 0;
+    tail = 0;
+  }
+
+  bool JobQueue::insertJob(Job* job){
+    if(data[tail] != NULL)
+      return false;
+    else{
+      data[tail] = job;
+      if(tail == q_max)
+        tail = 0;
+      else
+        tail++;
+      return true;
+    }
+  }
+
+  Job* JobQueue::getJob(){
+    if(data[head] == NULL)
+      return NULL;
+    
+    Job* ret = data[head];
+    data[head] = NULL;
+
+    if(head == q_max)
+      head = 0;
+    else
+      head++;
+
+    return ret;
+
+  }
+  
 
   void readComplete(int sock, char* data, uint32_t size){
     uint32_t recvSize = 0;
@@ -41,9 +79,14 @@ namespace corelab {
     }
   }
 
+  JobQueue* CommManager::getJobQue(){
+    return jobQue;
+  }
+
   void* requestReceiver(void* cm){
     //LOG("request receiver is started\n");
     CommManager* commManager = (CommManager*)cm;
+    JobQueue* jobQue = commManager->getJobQue();
     int sock;
     int recvSize = 0;
     uint32_t recvHeader[3];
@@ -71,12 +114,10 @@ namespace corelab {
           memcpy(newJob->data,recvData,recvHeader[0]);
           newJob->sourceID = recvHeader[2];
           //LOG("CommManager gives job to handler thread before\n");
-          if(newJob->tag == 1000)
-            commManager->insertDataToRecvQue(newJob->data,newJob->size,newJob->sourceID);         
-          else if(newJob->tag == 3)
+          if(newJob->tag == 3)
             (*(*(commManager->getCallbackList()))[newJob->tag])(newJob->data,newJob->size,newJob->sourceID);
           else
-            commManager->insertJob(newJob);
+            jobQue->insertJob(newJob);
           
 
           //LOG("CommManager gives job to handler thread\n");
@@ -89,11 +130,11 @@ namespace corelab {
   void* requestHandler(void* cm){
     CommManager* commManager = (CommManager*)cm;
     std::map<TAG, CallbackType>* callbackList = commManager->getCallbackList();
+    JobQueue* jobQue = commManager->getJobQue();
 
     while(1){
-      int jobNum = commManager->getJobQueSize();
-      if(jobNum > 0){
-        Job* job = commManager->getJob();
+      Job* job = jobQue->getJob();
+      if(job != NULL){
         (*(*callbackList)[job->tag])(job->data,job->size,job->sourceID);
       }
     }
@@ -104,15 +145,16 @@ namespace corelab {
 
   CommManager::CommManager(){
     callbackList = new std::map<TAG, CallbackType>();
-    localID = -1;
+    jobQue = new JobQueue(JOB_Q_MAX);
+
+    localID = 0;
     clntID = 1;
+    blockingPort = 25000;
   }
 
   void CommManager::start(){
     pthread_create(&receivingThread,NULL,requestReceiver,(void*)this);
     pthread_create(&handlingThread,NULL,requestHandler,(void*)this);
-    //pthread_detach(receivingThread);
-    //pthread_detach(handlingThread);
   }
 
   int CommManager::open(int port, int num){
@@ -143,7 +185,7 @@ namespace corelab {
 		}
 
 		struct sockaddr_in eptClient;
-		char strClientIP[20];
+		char* strClientIP = (char*)malloc(16);
 		socklen_t sizeEptClient = sizeof (eptClient);
 
     while(num != 0) { 
@@ -155,27 +197,75 @@ namespace corelab {
         //perror ("accept");
         return false;
       }
-      inet_ntop (AF_INET, &eptClient.sin_addr, strClientIP, 20);
+      inet_ntop (AF_INET, &eptClient.sin_addr, strClientIP, 16);
 
+      
       initializeSocketOpt (*clientID);
 
       std::map<TAG,Queue*>* sques = new std::map<TAG,Queue*>();
       Queue* rque = (Queue*)malloc(sizeof(Queue));
+      JobQueue* newJobQue = new JobQueue(128);
+
       assert(sques != NULL);
       assert(rque != NULL);
       initializeQueue(*rque);
 
 
-      uint32_t initial_data[2];
+      uint32_t initial_data[3];
       initial_data[0] = localID;
       initial_data[1] = clntID;
-      writeComplete(*clientID,(char*)initial_data,8);
+      initial_data[2] = blockingPort;
+      writeComplete(*clientID,(char*)initial_data,12);
+
+
+      LOG(" connected ip & port = %s / %d\n",strClientIP,initial_data[2]);
 
       socketMap[clntID] = *clientID;
+      blockingPortMap[clntID] = blockingPort;
+      blockingIPMap[clntID] = strClientIP;
 
 
-      sendQues.insert(std::pair<int, std::map<TAG,Queue*>*>(clntID, sques));
-      recvQues.insert(std::pair<int, Queue*>(clntID, rque)); 
+      sendQues.insert(std::pair<uint32_t, std::map<TAG,Queue*>*>(clntID, sques));
+      recvQues.insert(std::pair<uint32_t, Queue*>(clntID, rque)); 
+
+
+
+      struct sockaddr_in eptBLKHost;
+
+      int idHost = socket (PF_INET, SOCK_STREAM, 0);
+
+      memset (&eptBLKHost, 0, sizeof (eptHost));
+      eptBLKHost.sin_family = AF_INET;
+      eptBLKHost.sin_addr.s_addr = htonl (INADDR_ANY);
+      eptBLKHost.sin_port = htons (blockingPort);
+      blockingPort++;
+
+      if (bind (idHost, (sockaddr *)&eptBLKHost, sizeof (eptBLKHost)) == -1) {
+        //perror ("bind");
+        return -1;
+      }
+
+      if (listen (idHost, 5) == -1) {
+        //perror ("listen");
+        return -1;
+      }
+
+      struct sockaddr_in eptBLKClient;
+      socklen_t sizeEptBLKClient = sizeof (eptBLKClient);
+
+      int blockingSock = accept (idHost, (sockaddr *)&eptBLKClient, &sizeEptBLKClient);
+
+      int res;
+      int reuseaddr = 1;
+      res = setsockopt (blockingSock, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof (int));
+      assert (!res && "initialization failed: cannot set to reuse address");
+
+      int opt=1;
+      res = setsockopt(blockingSock, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
+      assert (!res && "initialization failed: cannot set optimization flags");
+
+      blockingSocketMap[clntID] = blockingSock;
+
       clntID++;
 
       if(num>0)
@@ -186,7 +276,10 @@ namespace corelab {
 
   int CommManager::tryConnect(const char* ip, int port){
     
+    StopWatch sw;
+    sw.start();
     LOG("DEBUG :: tryConnect\n");
+
 		struct sockaddr_in eptClient;
 
     int* idClient = (int*)malloc(sizeof(int));
@@ -205,23 +298,64 @@ namespace corelab {
 			return false;
 		}
 
+    sw.end();
+
 		initializeSocketOpt (*idClient);
 
-    uint32_t initial_data[2];
-    readComplete(*idClient,(char*)initial_data,8);
+    uint32_t initial_data[3];
+    
+    readComplete(*idClient,(char*)initial_data,12);
 
-    socketMap[initial_data[0]] = *idClient;
+    char* blockingIP = (char*)malloc(16);
+
+    memcpy(blockingIP,ip,16);
+
+    //socketMap[initial_data[0]] = *idClient;
+    
+    socketMap.insert(std::pair<uint32_t,int>(initial_data[0],*idClient));
     localID = initial_data[1];
-
+    blockingPortMap.insert(std::pair<uint32_t,uint32_t>(initial_data[0],initial_data[2]));
+    blockingIPMap.insert(std::pair<uint32_t,char*>(initial_data[0],blockingIP));
 
     std::map<TAG,Queue*>* sques = new std::map<TAG,Queue*>();
     Queue* rque = (Queue*)malloc(sizeof(Queue));
+    JobQueue* newJobQue = new JobQueue(128);
+
     assert(sques != NULL);
     assert(rque != NULL);
     initializeQueue(*rque);
 
-    sendQues.insert(std::pair<int, std::map<TAG,Queue*>*>(initial_data[0], sques));
-    recvQues.insert(std::pair<int, Queue*>(initial_data[0], rque)); 
+    sendQues.insert(std::pair<uint32_t, std::map<TAG,Queue*>*>(initial_data[0], sques));
+    recvQues.insert(std::pair<uint32_t, Queue*>(initial_data[0], rque)); 
+
+
+
+    struct sockaddr_in eptBLKClient;
+
+    int blockingSock;
+    blockingSock = socket (PF_INET, SOCK_STREAM, 0);
+    if (blockingSock < 0) {
+      //perror ("socket");
+      return -1;
+    }
+
+    memset (&eptBLKClient, 0, sizeof (sockaddr_in));
+    eptBLKClient.sin_family = AF_INET;
+    eptBLKClient.sin_addr.s_addr = inet_addr(ip);
+    eptBLKClient.sin_port = htons (initial_data[2]);
+    sleep(3);
+    while(connect(blockingSock, (sockaddr *)&eptBLKClient, sizeof (eptBLKClient)) == -1);
+    LOG("11111\n");
+    int res;
+    int reuseaddr = 1;
+    res = setsockopt (blockingSock, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof (int));
+    assert (!res && "initialization failed: cannot set to reuse address");
+
+    int opt=1;
+    res = setsockopt(blockingSock, SOL_TCP, TCP_NODELAY, &opt, sizeof(opt));
+    assert (!res && "initialization failed: cannot set optimization flags");
+
+    blockingSocketMap[initial_data[0]] = blockingSock;
 
     return initial_data[0];
   }
@@ -304,7 +438,18 @@ namespace corelab {
     if((sendQues[destID]->find(tag) == sendQues[destID]->end()) && (tag != 0))
       return; // error : There is no queue for cid & tag
 
-    if(tag != 0){
+    if(tag == 1000){
+      Queue* targetQue = (*(sendQues[destID]))[tag];
+
+      header[0] = targetQue->size;
+      writeComplete(blockingSocketMap[destID],(char*)header,4);
+      writeComplete(blockingSocketMap[destID],targetQue->data,targetQue->size);
+
+      memset((void*)header,0,12);
+      initializeQueue(*targetQue);
+
+    }
+    else if(tag != 0){
       Queue* targetQue = (*(sendQues[destID]))[tag];
 
       header[0] = targetQue->size;
@@ -374,25 +519,21 @@ namespace corelab {
   }
 
   void CommManager::receiveQue(uint32_t sourceID){
-    
-    pthread_mutex_lock(&recvFlagLock);
-    recvFlags[sourceID] = false;
-    pthread_mutex_unlock(&recvFlagLock);
-    //LOG("RECEIVE que is set\n");
-    while(1){
-      pthread_mutex_lock(&recvFlagLock);
-      if(recvFlags[sourceID]){
-        //LOG("RECEIVE message!!!\n");
-        pthread_mutex_unlock(&recvFlagLock);
-        break;
-      }
-      pthread_mutex_unlock(&recvFlagLock);
-    }
-  }
 
-  //void CommManager::sendWord(QWord word, int* cid){
+    Queue* targetQue = recvQues[sourceID];
+
+    uint32_t size;
+    readComplete(blockingSocketMap[sourceID],(char*)&size,4);
+    readComplete(blockingSocketMap[sourceID],targetQue->data,size);
     
-  //}
+    targetQue->size = size;
+    targetQue->head = targetQue->data;
+
+    LOG("\n\nblocking data : %d / %d\n",*(int*)(targetQue->data),size);
+
+    LOG("\n\nreceiveQue is end : port = %d\n\n",(int)blockingPortMap[sourceID]);
+
+  }
 
   void CommManager::initializeSocketOpt (int sock) {
     int res;
@@ -453,46 +594,6 @@ namespace corelab {
 
   int CommManager::getSocketNumber(){
     return (int)socketMap.size();
-  }
-
-  void CommManager::insertJob(Job* newJob){
-    //LOG("DEBUG :: comm manager : insert job\n");
-    pthread_mutex_lock(&jobQueLock);
-
-    //LOG("DEBUG :: comm manager : insert job before\n");
-    jobQue.push(newJob);
-    //LOG("DEBUG :: comm manager : insert job after \n");
-    pthread_mutex_unlock(&jobQueLock);
-    //LOG("DEBUG :: comm manager : insert job end \n");
-  }
-
-  void CommManager::insertDataToRecvQue(void* data, uint32_t size, uint32_t cid){
-    pthread_mutex_lock(&recvFlagLock);
-    Queue* targetQue = recvQues[cid];
-    targetQue->size = size;
-    targetQue->head = targetQue->data;
-    memcpy(targetQue->data,data,size);
-    recvFlags[cid] = true;
-    //LOG("insert data to recv que\n");
-    pthread_mutex_unlock(&recvFlagLock);
-
-  }
-
-  Job* CommManager::getJob(){
-    Job* job;
-    pthread_mutex_lock(&jobQueLock);
-    job = jobQue.front();
-    jobQue.pop();
-    pthread_mutex_unlock(&jobQueLock);
-    return job;
-  }
-
-  int CommManager::getJobQueSize(){
-    int jobNum;
-    pthread_mutex_lock(&jobQueLock);
-    jobNum = (int)jobQue.size();
-    pthread_mutex_unlock(&jobQueLock);
-    return jobNum;
   }
 
 }
