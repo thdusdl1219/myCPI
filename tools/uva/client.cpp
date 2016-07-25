@@ -275,58 +275,62 @@ namespace corelab {
 				UVAManager::fetchIn (socket, addr);
 			}*/
 		} // segfaultHandler
+
+    /* uva_load_sc for light-weight device (Strong-consistency) */
     extern "C" void uva_load_sc(size_t len, void *addr) {
-#ifndef HLRC
       UVAManager::loadHandler(comm, destid, len, addr);
-#endif
       return;
     }
 
+    /* uva_store_sc for light-weight device (Strong-consistency) */
     extern "C" void uva_store_sc(size_t len, void *data, void *addr) {
       UVAManager::storeHandler(comm, destid, len, data, addr);
       return;
     }
 
+    /* uva_store (Home-based Lazy Release Consistency) */
     extern "C" void uva_store(size_t len, void *data, void *addr) {
       UVAManager::storeHandlerForHLRC(len, data, addr);
       return;
     }
 
+    /* uva_memset_sc for light-weight device (Strong-consistency) */
     extern "C" void *uva_memset_sc(void *addr, int value, size_t num) {
       return UVAManager::memsetHandler(comm, destid, addr, value, num);
     }
 
+    /* uva_memset (Home-based Lazy Release Consistency) */
     extern "C" void *uva_memset(void *addr, int value, size_t num) {
       return UVAManager::memsetHandlerForHLRC(addr, value, num);
     }
 
+    /* uva_memcpy_sc for light-weight device (Strong-consistency) */
     extern "C" void *uva_memcpy_sc(void *dest, void *src, size_t num) {
       return UVAManager::memcpyHandler(comm, destid, dest, src, num);
     }
     
+    /* uva_memcpy (Home-based Lazy Release Consistency) */
     extern "C" void *uva_memcpy(void *dest, void *src, size_t num) {
       return UVAManager::memcpyHandlerForHLRC(comm, destid, dest, src, num);
     }
 
+    /* uva_acquire (Home-based Lazy Release Consistency) */
     extern "C" void uva_acquire() {
       UVAManager::acquireHandler(comm, destid);
     }
     
+    /* uva_release (Home-based Lazy Release Consistency) */
     extern "C" void uva_release() {
       UVAManager::releaseHandler(comm, destid);
     }
     
+    /* uva_sync (Home-based Lazy Release Consistency) */
     extern "C" void uva_sync() {
       UVAManager::syncHandler(comm, destid);
     }
     
     extern "C" void sendInitCompleteSignal() {
-      //Msocket->pushWordF(GLOBAL_INIT_COMPLETE_SIG); // Init complete signal
-      //Msocket->sendQue();
-
-      //Msocket->receiveQue();
-      //int ack = Msocket->takeWordF(); 
-      comm->pushWord(GLOBAL_INIT_COMPLETE_HANDLER, GLOBAL_INIT_COMPLETE_SIG, destid); // Init complete signal
+      comm->pushWord(GLOBAL_INIT_COMPLETE_HANDLER, GLOBAL_INIT_COMPLETE_SIG, destid); 
       comm->sendQue(GLOBAL_INIT_COMPLETE_HANDLER, destid);
 
       comm->receiveQue(destid);

@@ -259,7 +259,6 @@ namespace corelab {
       StopWatch watch;
       watch.start();
 #endif
-      LOG("\n\n@#!@#!#!@#!@#!@#!@#!@# destid (%d)\n", destid);
       /* At first, make store logs to be send to Home */
       void *storeLogs = malloc(sizeStoreLogs);
 #if UINTPTR_MAX == 0xffffffff
@@ -377,9 +376,9 @@ namespace corelab {
         comm->sendQue(LOAD_HANDLER, destid);
 
         comm->receiveQue(destid);
-        uint32_t mode = comm->takeWord(destid);
+        //uint32_t mode = comm->takeWord(destid);
 #ifdef DEBUG_UVA
-        LOG("[client] mode : %d\n", mode); // should be 3
+        //LOG("[client] mode : %d\n", mode); // should be 3
 #endif
         //assert(mode == LOAD_REQ_ACK && "wrong");
         uint32_t len = comm->takeWord(destid);
@@ -391,7 +390,6 @@ namespace corelab {
         free(buf);
 #ifdef DEBUG_UVA
         hexdump("load", addr, typeLen);
-        //xmemDumpRange(addr, typeLen);
         LOG("[client] Load : loadHandler END\n\n");
 #endif
       }

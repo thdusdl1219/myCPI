@@ -420,7 +420,7 @@ namespace corelab {
       uint32_t sizeOfAllocAddr = (uint32_t)sizeof(allocAddr);
       //comm->pushWord(BLOCKING, HEAP_ALLOC_REQ_ACK, srcid);
       comm->pushWord(BLOCKING, sizeOfAllocAddr, srcid);
-      comm->pushRange(BLOCKING, &allocAddr, sizeof(allocAddr), srcid);
+      comm->pushRange(BLOCKING, &allocAddr, sizeOfAllocAddr, srcid);
       comm->sendQue(BLOCKING, srcid);
 #ifdef DEBUG_UVA
       LOG("[SERVER] heapAllocHandler END (srcid:%d)\n", srcid);
@@ -446,9 +446,9 @@ namespace corelab {
 #endif
 
       // send ack with value (what to load)
-      comm->pushWord(BLOCKING, LOAD_REQ_ACK, srcid);
+      //comm->pushWord(BLOCKING, LOAD_REQ_ACK, srcid);
       comm->pushWord(BLOCKING, lenType, srcid);
-      comm->pushRange(BLOCKING, requestedAddr, lenType, srcid);
+      comm->pushRange(BLOCKING, requestedAddr, (uint32_t)lenType, srcid);
 #ifdef DEBUG_UVA
       LOG("[server] TEST loaded value (what): %d\n", *((int*)requestedAddr));
 #endif
@@ -488,6 +488,16 @@ namespace corelab {
       comm->pushWord(BLOCKING, 0, srcid); // ACK ( 0: normal, -1: abnormal ) FIXME useless
       comm->sendQue(BLOCKING, srcid);
 
+      struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(requestedAddr))];
+      if (pageInfo != NULL) {
+        pageInfo->accessS->clear();
+        pageInfo->accessS->insert(srcid);
+#ifdef DEBUG_UVA
+        LOG("[server] page (%p)'s accessSet is updated, srcid (%d)\n", truncToPageAddr(requestedAddr), srcid);
+#endif
+      } else {
+        assert(0);
+      }
 #ifdef DEBUG_UVA
       // test
       hexdump("store", requestedAddr, lenType);
@@ -618,7 +628,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[server] requested memcpy num (%d)\n", num);
 #endif
-        comm->pushRange(BLOCKING, src, num, srcid);
+        comm->pushRange(BLOCKING, src, (uint32_t)num, srcid);
         // don't need to do memcpy in server
         comm->sendQue(BLOCKING, srcid);
 #ifdef DEBUG_UVA
@@ -672,7 +682,7 @@ namespace corelab {
           }
           current += PAGE_SIZE;
         }
-        comm->pushRange(BLOCKING, src, num, srcid);
+        comm->pushRange(BLOCKING, src, (uint32_t)num, srcid);
         // don't need to do memcpy in server
         comm->sendQue(BLOCKING, srcid);
       }
@@ -684,7 +694,7 @@ namespace corelab {
     void heapSegfaultHandler(void *data_, uint32_t size, uint32_t srcid) {
       void **fault_heap_addr = reinterpret_cast<void**>(*(int*)data_);
 #ifdef DEBUG_UVA
-      LOG("[server] get HEAP_SEGFAULT_REQ from client (%d) on (%p)\n", srcid, fault_heap_addr);
+      LOG("[server] get HEAP_SEGFAULT_REQ from client (%d) on (%p)\n", srcid, *fault_heap_addr);
 #endif
       comm->pushRange(BLOCKING, truncToPageAddr(fault_heap_addr), 0x1000, srcid);
       
