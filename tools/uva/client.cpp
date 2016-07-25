@@ -53,6 +53,9 @@ namespace corelab {
 
       // FIXME: for sync
       sleep(4);
+#ifdef DEBUG_UVA
+      LOG("[CLIENT] UVAClientInitializer START (isGVInitializer:%d)\n", isGVInitializer);
+#endif
 
       comm = comm_;
       destid = destid_;
