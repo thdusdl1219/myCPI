@@ -16,5 +16,9 @@ namespace corelab {
     extern "C" void uva_release();
 
     extern "C" void uva_sync();
+
+    extern "C" void sendInitCompleteSignal();
+
+    extern "C" void waiter(void **stackAddr, uint32_t numGV);
   }
 }

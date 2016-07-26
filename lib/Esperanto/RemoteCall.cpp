@@ -34,6 +34,7 @@
 #include "corelab/Esperanto/InstMarker.h"
 
 #include <vector>
+#include <algorithm>
 
 using namespace corelab;
 using namespace std;
@@ -278,23 +279,54 @@ void RemoteCall::substituteRemoteCall(Module& M) {
     i->eraseFromParent();
   }
 
-  // BONG
+  // BONG BEGIN
   std::vector<GlobalVariable*> vecGvars;
   findGV(M, vecGvars);
   InstInsertPt out;
-  std::vector<Value*> actuals(0);
+  std::vector<Value*> actuals(2);
+  //actuals[0] = 0x15000000;
+  //actuals[1] = ;
+  std::vector<std::string> *vecClasses = new std::vector<std::string>();
+  NamedMDNode *classNamedMD = M.getNamedMetadata("esperanto.class");
+  if (classNamedMD != NULL) {
+    MDNode *classMD = classNamedMD->getOperand(0);
+
+    for (auto it = classMD->op_begin(); it != classMD->op_end(); ++it) {
+      std::string className = cast<MDString>(it->get())->getString().str();
+      vecClasses->push_back(className);
+    }
+  }
   for (GlobalVariable *gv : vecGvars) {
+    if (gv->getType()->isPointerTy() 
+        && gv->getType()->getPointerElementType()->isPointerTy()
+        && gv->getType()->getPointerElementType()->getPointerElementType()->isStructTy()) {
+      Type *type = gv->getType()->getPointerElementType()->getPointerElementType();
+      StringRef name = type->getStructName();
+      if (name.startswith_lower(StringRef("class."))) {
+        std::string name_ = name.str();
+        std::string realName = name_.substr(6);
+        if (std::find(vecClasses->begin(), vecClasses->end(), realName) != vecClasses->end()) {
+          //printf("\n\n############################\n");
+          //printf("%s\n", realName.c_str());
+          //gv->dump();
+        }
+      }
+    }
     for(auto U : gv->users()){  // U is of type User*
       if (Instruction *I = dyn_cast<Instruction>(U)){
         if(StoreInst *SI = dyn_cast<StoreInst>(I)) {
           // an instruction uses V
           out = InstInsertPt::After(I);
-          out << CallInst::Create(UvaSync, actuals, "");
+          //out << CallInst::Create(UvaSync, actuals, "");
+          
+          //AllocaInst *alloca = AllocaInst::Create(Type::getInt8Ptr(Context), ConstantInt::get(Type::getInt32Ty(Context), num), 8);
+          //out << StoreInst::Create( , alloca);
+          //out << CallInst::Create(Waiter, actuals, "");
         }
       }
     }
   }
-  // BONG
+  // BONG END
 }
 
 void RemoteCall::createProduceAsyncFArgs(Function* f, Instruction* I, Instruction *insertBefore) {

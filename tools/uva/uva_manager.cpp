@@ -126,7 +126,7 @@ namespace corelab {
 			setMEPages.clear ();
 			//uvaown = _uvaown;
       //socket = socket;
-
+#if 0
 			#ifdef INFLATE_READ
 			zInfStrm.zalloc = Z_NULL;
 			zInfStrm.zfree = Z_NULL;
@@ -146,20 +146,21 @@ namespace corelab {
 			deflateInit (&zDefStrm, DEFLATE_WRITE);
 			fprintf (stderr, "system: Deflate-write mode on (level: %d)\n", DEFLATE_WRITE);
 			#endif
-
+#endif
 			// install a page-mapped callback method.
 			// (Actually it's a 'signal handler', not a 'callback'.)
 			// now PAGE_MAPPED_CALL_BACK is called whenever
 			// XMemoryManager maps additional pages.
 			xmemSetPageMappedCallBack (pageMappedCallBack);
-
+#if 0
 			#ifdef OVERHEAD_TEST
 			OHDTEST_SETUP ();
 			#endif
+#endif
 		}
 
     /* @detail HLRC (Home-based Lazy Release Consistency): acquire */
-    void UVAManager::acquireHandler(CommManager *comm, uint32_t destid) {
+    void UVAManager::acquireHandler_hlrc(CommManager *comm, uint32_t destid) {
 
       // send invalidate address request.
      
@@ -203,7 +204,7 @@ namespace corelab {
     }
 
     /* @detail HLRC (Home-based Lazy Release Consistency): release */
-    void UVAManager::releaseHandler(CommManager *comm, uint32_t destid) {
+    void UVAManager::releaseHandler_hlrc(CommManager *comm, uint32_t destid) {
       /* At first, make store logs to be send to Home */
       void *storeLogs = malloc(sizeCriticalSectionStoreLogs);
 #if UINTPTR_MAX == 0xffffffff
@@ -249,12 +250,101 @@ namespace corelab {
       isInCriticalSection = false;
     }
 
-    /* XXX question XXX
-     * 1. all stores should be stored in slog for sync?
-     * 2. release -> acquire in sync? 
-     */
-    /* @detail Sync operation (mixing acquire & release) */
-    void UVAManager::syncHandler(CommManager *comm, uint32_t destid) {
+    /* @detail Sync operation for XXX Strong Consistency XXX (mixing acquire & release) */
+    void UVAManager::syncHandler_sc(CommManager *comm, uint32_t destid) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
+      /* At first, make store logs to be send to Home */
+      void *storeLogs = malloc(sizeStoreLogs);
+#if UINTPTR_MAX == 0xffffffff
+      /* 32-bit */
+      uint32_t intAddrOfStoreLogs;
+      memcpy(&intAddrOfStoreLogs, &storeLogs, 4); 
+      uint32_t current = intAddrOfStoreLogs;
+#elif UINTPTR_MAX == 0xffffffffffffffff
+      /* 64-bit */
+      uint64_t intAddrOfStoreLogs;
+      memcpy(&intAddrOfStoreLogs, &storeLogs, 8); 
+      uint64_t current = intAddrOfStoreLogs;
+#else
+      /* hmm ... */
+      assert(0);
+#endif
+      int i = 0;
+      while (current != intAddrOfStoreLogs + sizeStoreLogs) {
+        struct StoreLog* curStoreLog = (*vecStoreLogs)[i];
+#ifdef DEBUG_UVA
+        LOG("[client] in while | curStoreLog (size:%d, data:%p, data:%d, addr:%p)\n", curStoreLog->size, curStoreLog->data, *((int*)curStoreLog->data), curStoreLog->addr);
+#endif        
+        uint32_t intAddr;
+        memcpy(reinterpret_cast<void*>(current), &curStoreLog->size, 4);
+        memcpy(reinterpret_cast<void*>(current+4), curStoreLog->data, curStoreLog->size);
+        memcpy(&intAddr, &curStoreLog->addr, 4);
+        memcpy(reinterpret_cast<void*>(current+4+curStoreLog->size), &intAddr, 4);
+        current = current + 8 + curStoreLog->size;
+        //free(curStoreLog->data);
+        i++;
+      }
+#ifdef DEBUG_UVA
+      LOG("[client] # of vecStoreLogs %d | sizeStoreLogs %d\n", vecStoreLogs->size(), sizeStoreLogs);
+#endif 
+      /* Second, send them all */
+      //comm->pushWord(SYNC_HANDLER, SYNC_REQ, destid);
+      comm->pushWord(SYNC_HANDLER, sizeStoreLogs, destid);
+      if (sizeStoreLogs != 0)
+        comm->pushRange(SYNC_HANDLER, storeLogs, sizeStoreLogs, destid);
+      comm->sendQue(SYNC_HANDLER, destid);
+      sizeStoreLogs = 0;
+      free(storeLogs);
+      vecStoreLogs->clear(); // XXX
+
+      /* Third, recv invalidate address list. */
+      StopWatch watch_recv;
+      watch_recv.start();
+      comm->receiveQue(destid);
+      watch_recv.end();
+      //LOG("\n\n\n receiveQue in sync handler : %f\n\n\n",watch_recv.diff());
+#ifdef DEBUG_UVA
+      LOG("[client] recv address list\n");
+#endif
+      //int addressSize = socket->takeWordF(); // XXX: Currently, out UVA address space is 32 bits.
+      uint32_t addressNum = comm->takeWord(destid);
+      vector<void*> addressVector;
+      //void** addressbuf = (void **) malloc(addressSize);
+      void** addressbuf = (void **) malloc(4);
+      for(int i = 0; i < addressNum; i++) {
+        //socket->takeRangeF(addressbuf, addressSize);
+        comm->takeRange(addressbuf, 4, destid);
+        addressVector.push_back(*addressbuf);
+      }
+      free(addressbuf);
+      // all address invalidate.
+      
+      for(vector<void*>::iterator it = addressVector.begin(); it != addressVector.end(); it++) {
+        void* address = *it;
+#ifdef DEBUG_UVA
+        //LOG("invalidate address : %p\n", address);
+#endif
+        mprotect(truncToPageAddr(address), PAGE_SIZE, PROT_NONE);
+      }
+
+      //isInCriticalSection = true;
+#ifdef DEBUG_UVA
+      LOG("[client] sync handler end (%d)\n", addressNum);
+#endif
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "RECVQ %lf\n",watch_recv.diff());
+      fprintf(fp, "SYNC %lf %d\n", watch.diff(), 8 + sizeStoreLogs + 4 + (4 *addressNum));
+      fclose(fp);
+#endif
+    }
+    
+    /* @detail Sync operation for HLRC (mixing acquire & release) */
+    void UVAManager::syncHandler_hlrc(CommManager *comm, uint32_t destid) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
@@ -347,7 +437,7 @@ namespace corelab {
     }
 
     /*** Load/Store Handler @@@@@@@@ BONGJUN @@@@@@@@ ***/
-    void UVAManager::loadHandler(CommManager *comm, uint32_t destid, size_t typeLen, void *addr) {
+    void UVAManager::loadHandler_sc(CommManager *comm, uint32_t destid, size_t typeLen, void *addr) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
@@ -401,7 +491,7 @@ namespace corelab {
 #endif
     }
 
-    void UVAManager::storeHandler(CommManager *comm, uint32_t destid, size_t typeLen, void *data, void *addr) {
+    void UVAManager::storeHandler_sc(CommManager *comm, uint32_t destid, size_t typeLen, void *data, void *addr) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
@@ -460,7 +550,53 @@ namespace corelab {
 #endif
     }
 
-    void *UVAManager::memsetHandler(CommManager *comm, uint32_t destid, void *addr, int value, size_t num) {
+    void UVAManager::storeHandler_hlrc(size_t typeLen, void *data, void *addr) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
+#ifdef DEBUG_UVA
+      LOG("[client] storeHandlerForHLRC START (isInCriticalSection %d)\n", isInCriticalSection);
+#endif
+      uint32_t intAddr = makeInt32Addr(addr);
+      if(!isUVAaddr(addr)) {
+#ifdef UVA_EVAL
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "STORE %lf\n", watch.diff());
+        fclose(fp);
+#endif
+        return;
+      }
+#ifdef DEBUG_UVA
+      LOG("[client] in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
+#endif
+
+      void *tmpData = malloc(typeLen);
+      memcpy(tmpData, &data, typeLen);
+#ifdef DEBUG_UVA
+      //LOG("[client] tmpData (data:%d)\n", *((int*)tmpData));
+#endif
+      struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), tmpData, addr);
+      if(!isInCriticalSection) {
+        vecStoreLogs->push_back(slog);
+        sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
+      } else {
+        vecCriticalSectionStoreLogs->push_back(slog);
+        sizeCriticalSectionStoreLogs = sizeCriticalSectionStoreLogs + 8 + typeLen;
+      }
+#ifdef DEBUG_UVA
+      LOG("[client] storeHandlerForHLRC END\n\n");
+#endif
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "STORE %lf\n", watch.diff());
+      fclose(fp);
+#endif
+    }
+
+    void *UVAManager::memsetHandler_sc(CommManager *comm, uint32_t destid, void *addr, int value, size_t num) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
@@ -508,7 +644,42 @@ namespace corelab {
       return addr;
     }
 
-    void *UVAManager::memcpyHandler(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num) {
+    void *UVAManager::memsetHandler_hlrc(void *addr, int value, size_t num) {
+#ifdef UVA_EVAL
+      StopWatch watch;
+      watch.start();
+#endif
+      uint32_t intAddr = makeInt32Addr(addr);
+      if(!isUVAaddr(addr)) {
+#ifdef UVA_EVAL
+        watch.end();
+        FILE *fp = fopen("uva-eval.txt", "a");
+        fprintf(fp, "MEMSET %lf\n", watch.diff());
+        fclose(fp);
+#endif
+        return addr;
+      }
+      
+      void *tmpValue = malloc(num);
+      memcpy(tmpValue, &value, num);
+      struct StoreLog* slog = new StoreLog (static_cast<int>(num), tmpValue, addr);
+      if(!isInCriticalSection) {
+        vecStoreLogs->push_back(slog);
+        sizeStoreLogs = sizeStoreLogs + 8 + num;
+      } else {
+        vecCriticalSectionStoreLogs->push_back(slog);
+        sizeCriticalSectionStoreLogs = sizeCriticalSectionStoreLogs + 8 + num;
+      }
+#ifdef UVA_EVAL
+      watch.end();
+      FILE *fp = fopen("uva-eval.txt", "a");
+      fprintf(fp, "MEMSET %lf\n", watch.diff());
+      fclose(fp);
+#endif
+      return addr;
+    }
+
+    void *UVAManager::memcpyHandler_sc(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
@@ -589,113 +760,7 @@ namespace corelab {
       return dest;
     }
 
-		/*** Get/Set Interfaces ***/
-		void UVAManager::setConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/) { /* FIXME */
-      ptNoConstBegin = truncToPageAddr (begin_noconst);
-      ptNoConstEnd = truncToPageAddr ((void *)((XmemUintPtr)end_noconst + XMEM_PAGE_SIZE - 1));
-			//ptConstBegin = truncToPageAddr (begin_const);
-			//ptConstEnd = truncToPageAddr ((void *)((XmemUintPtr)end_const + XMEM_PAGE_SIZE - 1));
-
-#ifdef DEBUG_UVA
-      LOG("ptNoConst (%p~%p) \n", ptNoConstBegin, ptNoConstEnd/*, ptConstBegin, ptConstEnd*/);
-#endif
-			// FIXME: To enforce the constantness of the given range,
-			// 	We should rule out pages in the range from the EXCLUSIVE set
-			// 	whenever consistency operations (such as 'synch', 'flush') are done.
-			// 	But for the sake of the performance, it would be better to
-			// 	rule out the pages just once (i.e. when this function is called),
-			// 	and believe that the constantness will not be harmed.
-			/*bool turnaround_guard = false;
-			for (XmemUintPtr upt = (XmemUintPtr)ptConstBegin; upt < (XmemUintPtr)ptConstEnd; upt += XMEM_PAGE_SIZE) {
-				if (upt == NULL && turnaround_guard) break;
-				turnaround_guard = true;
-			
-				setMEPages.erase (upt);
-			}*/
-		}
-
-    void UVAManager::storeHandlerForHLRC(size_t typeLen, void *data, void *addr) {
-#ifdef UVA_EVAL
-      StopWatch watch;
-      watch.start();
-#endif
-#ifdef DEBUG_UVA
-      LOG("[client] storeHandlerForHLRC START (isInCriticalSection %d)\n", isInCriticalSection);
-#endif
-      uint32_t intAddr = makeInt32Addr(addr);
-      if(!isUVAaddr(addr)) {
-#ifdef UVA_EVAL
-        watch.end();
-        FILE *fp = fopen("uva-eval.txt", "a");
-        fprintf(fp, "STORE %lf\n", watch.diff());
-        fclose(fp);
-#endif
-        return;
-      }
-#ifdef DEBUG_UVA
-      LOG("[client] in storeLog (size:%d, addr:%p, data:%p)\n", typeLen, addr, data);
-#endif
-
-      void *tmpData = malloc(typeLen);
-      memcpy(tmpData, &data, typeLen);
-#ifdef DEBUG_UVA
-      //LOG("[client] tmpData (data:%d)\n", *((int*)tmpData));
-#endif
-      struct StoreLog* slog = new StoreLog (static_cast<int>(typeLen), tmpData, addr);
-      if(!isInCriticalSection) {
-        vecStoreLogs->push_back(slog);
-        sizeStoreLogs = sizeStoreLogs + 8 + typeLen;
-      } else {
-        vecCriticalSectionStoreLogs->push_back(slog);
-        sizeCriticalSectionStoreLogs = sizeCriticalSectionStoreLogs + 8 + typeLen;
-      }
-#ifdef DEBUG_UVA
-      LOG("[client] storeHandlerForHLRC END\n\n");
-#endif
-#ifdef UVA_EVAL
-      watch.end();
-      FILE *fp = fopen("uva-eval.txt", "a");
-      fprintf(fp, "STORE %lf\n", watch.diff());
-      fclose(fp);
-#endif
-    }
-
-    void *UVAManager::memsetHandlerForHLRC(void *addr, int value, size_t num) {
-#ifdef UVA_EVAL
-      StopWatch watch;
-      watch.start();
-#endif
-      uint32_t intAddr = makeInt32Addr(addr);
-      if(!isUVAaddr(addr)) {
-#ifdef UVA_EVAL
-        watch.end();
-        FILE *fp = fopen("uva-eval.txt", "a");
-        fprintf(fp, "MEMSET %lf\n", watch.diff());
-        fclose(fp);
-#endif
-        return addr;
-      }
-      
-      void *tmpValue = malloc(num);
-      memcpy(tmpValue, &value, num);
-      struct StoreLog* slog = new StoreLog (static_cast<int>(num), tmpValue, addr);
-      if(!isInCriticalSection) {
-        vecStoreLogs->push_back(slog);
-        sizeStoreLogs = sizeStoreLogs + 8 + num;
-      } else {
-        vecCriticalSectionStoreLogs->push_back(slog);
-        sizeCriticalSectionStoreLogs = sizeCriticalSectionStoreLogs + 8 + num;
-      }
-#ifdef UVA_EVAL
-      watch.end();
-      FILE *fp = fopen("uva-eval.txt", "a");
-      fprintf(fp, "MEMSET %lf\n", watch.diff());
-      fclose(fp);
-#endif
-      return addr;
-    }
-
-    void *UVAManager::memcpyHandlerForHLRC(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num) {
+    void *UVAManager::memcpyHandler_hlrc(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num) {
       // XXX: no need...
       if((long)dest > 0xffffffff && (long)src > 0xffffffff)
         return dest;
@@ -794,6 +859,31 @@ namespace corelab {
       }
       return dest;
     }
+
+		/*** Get/Set Interfaces ***/
+		void UVAManager::setConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/) { /* FIXME */
+      ptNoConstBegin = truncToPageAddr (begin_noconst);
+      ptNoConstEnd = truncToPageAddr ((void *)((XmemUintPtr)end_noconst + XMEM_PAGE_SIZE - 1));
+			//ptConstBegin = truncToPageAddr (begin_const);
+			//ptConstEnd = truncToPageAddr ((void *)((XmemUintPtr)end_const + XMEM_PAGE_SIZE - 1));
+
+#ifdef DEBUG_UVA
+      LOG("ptNoConst (%p~%p) \n", ptNoConstBegin, ptNoConstEnd/*, ptConstBegin, ptConstEnd*/);
+#endif
+			// FIXME: To enforce the constantness of the given range,
+			// 	We should rule out pages in the range from the EXCLUSIVE set
+			// 	whenever consistency operations (such as 'synch', 'flush') are done.
+			// 	But for the sake of the performance, it would be better to
+			// 	rule out the pages just once (i.e. when this function is called),
+			// 	and believe that the constantness will not be harmed.
+			/*bool turnaround_guard = false;
+			for (XmemUintPtr upt = (XmemUintPtr)ptConstBegin; upt < (XmemUintPtr)ptConstEnd; upt += XMEM_PAGE_SIZE) {
+				if (upt == NULL && turnaround_guard) break;
+				turnaround_guard = true;
+			
+				setMEPages.erase (upt);
+			}*/
+		}
 
 		size_t UVAManager::getHeapSize () {
 			return xmemGetHeapSize ();

@@ -20,6 +20,7 @@
 #include "corelab/UVA/FixedGlobal.h"
 #include "corelab/Utilities/GlobalCtors.h"
 #include "corelab/Utilities/InstInsertPt.h"
+#include "corelab/Utilities/Casting.h"
 
 #include <set>
 #include <list>
@@ -441,6 +442,17 @@ namespace corelab {
 			mapGlobalToFixed.insert (GlobalToFixedPair (gvar, fgvar));
 		}
 
+    std::vector<std::string> *vecClasses = new std::vector<std::string>();
+    std::vector<FixedGlobalVariable*> *vecEspClassGvar = new std::vector<FixedGlobalVariable*>();
+    NamedMDNode *classNamedMD = pM->getNamedMetadata("esperanto.class");
+    if (classNamedMD != NULL) {
+      MDNode *classMD = classNamedMD->getOperand(0);
+
+      for (auto it = classMD->op_begin(); it != classMD->op_end(); ++it) {
+        std::string className = cast<MDString>(it->get())->getString().str();
+        vecClasses->push_back(className);
+      }
+    }
 		/* Correct references to globals */
 		for (GlobalToFixedMap::iterator it = mapGlobalToFixed.begin ();
 				 it != mapGlobalToFixed.end (); ++it) {
@@ -448,8 +460,63 @@ namespace corelab {
 			FixedGlobalVariable *fgvar = it->second;
 			
 			gvar->replaceAllUsesWith (fgvar);
+      //fgvar->dump();
+      //std::vector<GlobalVariable*> vecGvars;
+      //findGV(M, vecGvars);
+      InstInsertPt out;
+      std::vector<Value*> actuals(2);
+      //actuals[0] = 0x15000000;
+      //actuals[1] = ;
+      //for (GlobalVariable *gv : vecGvars) {
+      if (fgvar->getType()->isPointerTy() 
+          && fgvar->getType()->getPointerElementType()->isPointerTy()
+          && fgvar->getType()->getPointerElementType()->getPointerElementType()->isStructTy()) {
+        Type *type = fgvar->getType()->getPointerElementType()->getPointerElementType();
+        StringRef name = type->getStructName();
+        if (name.startswith_lower(StringRef("class."))) {
+          std::string name_ = name.str();
+          std::string realName = name_.substr(6);
+          if (std::find(vecClasses->begin(), vecClasses->end(), realName) != vecClasses->end()) {
+            vecEspClassGvar->push_back(fgvar);
+          }
+        }
+      }
+      //}
+
       //findAndInsertLoadInstForAllUsesRecursively(fgvar);
-		}	
+    }	
+    InstInsertPt out;
+    std::vector<Value*> actuals(2);
+
+    Constant *Waiter = pM->getOrInsertFunction(
+        "waiter",
+        Type::getVoidTy(pM->getContext()),
+        Type::getInt8PtrTy(pM->getContext()),
+        Type::getInt32Ty(pM->getContext()),
+        (Type*)0);
+
+    for(auto Fgvar : *vecEspClassGvar) {
+      for(auto U : Fgvar->users()){  // U is of type User*
+        if (Instruction *I = dyn_cast<Instruction>(U)){
+          if(StoreInst *SI = dyn_cast<StoreInst>(I)) {
+            // an instruction uses V
+            out = InstInsertPt::After(I);
+            //out << CallInst::Create(UvaSync, actuals, "");
+
+            AllocaInst *alloca = new AllocaInst(Type::getInt8PtrTy(pM->getContext()), ConstantInt::get(Type::getInt32Ty(pM->getContext()), vecEspClassGvar->size()), (unsigned)8);
+            out << alloca;
+            Value *temp = ConstantPointerNull::get(Type::getInt8PtrTy(pM->getContext()));
+            for (auto fgvar_ : *vecEspClassGvar) {
+              StoreInst *si = new StoreInst(Casting::castTo(fgvar_, temp, out, &(pM->getDataLayout())), alloca);
+              out << si;
+            }
+            actuals[0] = Casting::castTo((Value*)alloca, temp, out, &(pM->getDataLayout()));
+            actuals[1] = ConstantInt::get(Type::getInt32Ty(pM->getContext()), vecEspClassGvar->size());
+            out << CallInst::Create(Waiter, actuals, "");
+          }
+        }
+      }
+    }
 
 		sizeTotalGvars = FixedGlobalFactory::getTotalGlobalSize ();
 #ifdef DEBUG_FIXGLB

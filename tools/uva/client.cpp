@@ -281,57 +281,67 @@ namespace corelab {
 
     /* uva_load_sc for light-weight device (Strong-consistency) */
     extern "C" void uva_load_sc(size_t len, void *addr) {
-      UVAManager::loadHandler(comm, destid, len, addr);
+      UVAManager::loadHandler_sc(comm, destid, len, addr);
       return;
     }
 
     /* uva_store_sc for light-weight device (Strong-consistency) */
     extern "C" void uva_store_sc(size_t len, void *data, void *addr) {
-      UVAManager::storeHandler(comm, destid, len, data, addr);
+      UVAManager::storeHandler_sc(comm, destid, len, data, addr);
       return;
     }
 
     /* uva_store (Home-based Lazy Release Consistency) */
     extern "C" void uva_store(size_t len, void *data, void *addr) {
-      UVAManager::storeHandlerForHLRC(len, data, addr);
+      UVAManager::storeHandler_hlrc(len, data, addr);
       return;
     }
 
     /* uva_memset_sc for light-weight device (Strong-consistency) */
     extern "C" void *uva_memset_sc(void *addr, int value, size_t num) {
-      return UVAManager::memsetHandler(comm, destid, addr, value, num);
+      return UVAManager::memsetHandler_sc(comm, destid, addr, value, num);
     }
 
     /* uva_memset (Home-based Lazy Release Consistency) */
     extern "C" void *uva_memset(void *addr, int value, size_t num) {
-      return UVAManager::memsetHandlerForHLRC(addr, value, num);
+      return UVAManager::memsetHandler_hlrc(addr, value, num);
     }
 
     /* uva_memcpy_sc for light-weight device (Strong-consistency) */
     extern "C" void *uva_memcpy_sc(void *dest, void *src, size_t num) {
-      return UVAManager::memcpyHandler(comm, destid, dest, src, num);
+      return UVAManager::memcpyHandler_hlrc(comm, destid, dest, src, num);
     }
     
     /* uva_memcpy (Home-based Lazy Release Consistency) */
     extern "C" void *uva_memcpy(void *dest, void *src, size_t num) {
-      return UVAManager::memcpyHandlerForHLRC(comm, destid, dest, src, num);
+      return UVAManager::memcpyHandler_hlrc(comm, destid, dest, src, num);
     }
 
     /* uva_acquire (Home-based Lazy Release Consistency) */
     extern "C" void uva_acquire() {
-      UVAManager::acquireHandler(comm, destid);
+      UVAManager::acquireHandler_hlrc(comm, destid);
     }
     
     /* uva_release (Home-based Lazy Release Consistency) */
     extern "C" void uva_release() {
-      UVAManager::releaseHandler(comm, destid);
+      UVAManager::releaseHandler_hlrc(comm, destid);
+    }
+    
+    /* uva_sync (Home-based Lazy Release Consistency) */
+    extern "C" void uva_sync_sc() {
+      UVAManager::syncHandler_sc(comm, destid);
     }
     
     /* uva_sync (Home-based Lazy Release Consistency) */
     extern "C" void uva_sync() {
-      UVAManager::syncHandler(comm, destid);
+      UVAManager::syncHandler_hlrc(comm, destid);
     }
     
+    /* sendInitCompleteSignal function:
+     *
+     *  This function is called only by global initializer 
+     *  when he have done with global variable initailization.
+     */
     extern "C" void sendInitCompleteSignal() {
       comm->pushWord(GLOBAL_INIT_COMPLETE_HANDLER, GLOBAL_INIT_COMPLETE_SIG, destid); 
       comm->sendQue(GLOBAL_INIT_COMPLETE_HANDLER, destid);
@@ -341,5 +351,24 @@ namespace corelab {
       assert(ack == GLOBAL_INIT_COMPLETE_SIG_ACK && "Server says \"Hey, I didn't get global initialization complete signal correctly. \"");
       return;
     }
+
+    /* waiter function:
+     *
+     *  This function is called after RegisterDevice of Esperanto.
+     *  Waiter will wait until all global variables are registered. 
+     */
+    extern "C" void waiter(void **stackAddr, uint32_t numGV) {
+      void *gv = *stackAddr;
+      for (uint32_t i = 0; i < numGV; i++) {
+        while(!gv) {
+          LOG("$$$$$$$$$$$$$$$$ %p\n\n", gv);
+          uva_sync();
+          sleep(1);
+        }
+        gv = (void*)((char*)gv + 8);
+      }
+    } // waiter
+
+
   }
 }

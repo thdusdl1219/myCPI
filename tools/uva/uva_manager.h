@@ -43,6 +43,7 @@ namespace corelab {
 		namespace UVAManager {
 			void initialize (CommManager *comm, uint32_t destid);
 
+#if 0 // GWANGMU LEGACY
 			// UVA Management
 			void synchIn (QSocket *socket);
 			void synchOut (QSocket *socket);
@@ -51,24 +52,25 @@ namespace corelab {
 			void flushIn (QSocket *socket);
 			void flushOut (QSocket *socket);
 			void resolveModified (void *addr);
+#endif
 
       // synchronization for HLRC (Home-based Lazy Release Consistency)
-      void acquireHandler(CommManager *comm, uint32_t destid);
-      void releaseHandler(CommManager *comm, uint32_t destid);
+      void acquireHandler_hlrc(CommManager *comm, uint32_t destid);
+      void releaseHandler_hlrc(CommManager *comm, uint32_t destid);
       
-      void syncHandler(CommManager *comm, uint32_t destid);
+      void syncHandler_sc(CommManager *comm, uint32_t destid);
+      void syncHandler_hlrc(CommManager *comm, uint32_t destid);
 
       // Memory Access handler (BONGJUN)
-      void loadHandler(CommManager *comm, uint32_t destid, size_t typeLen, void *addr);
-      void storeHandler(CommManager *comm, uint32_t destid, size_t typeLen, void *data, void *addr);
+      void loadHandler_sc(CommManager *comm, uint32_t destid, size_t typeLen, void *addr);
+      void storeHandler_sc(CommManager *comm, uint32_t destid, size_t typeLen, void *data, void *addr);
+      void storeHandler_hlrc(size_t typeLen, void *data, void *addr);
     
-      void *memsetHandler(CommManager *comm, uint32_t destid, void *addr, int value, size_t num);
-      void *memcpyHandler(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num);
+      void *memsetHandler_sc(CommManager *comm, uint32_t destid, void *addr, int value, size_t num);
+      void *memsetHandler_hlrc(void *addr, int value, size_t num);
+      void *memcpyHandler_sc(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num);
+      void *memcpyHandler_hlrc(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num);
      
-      // Memory Access handler for HLRC 
-      void storeHandlerForHLRC(size_t typeLen, void *data, void *addr);
-      void *memsetHandlerForHLRC(void *addr, int value, size_t num);
-      void *memcpyHandlerForHLRC(CommManager *comm, uint32_t destid, void *dest, void *src, size_t num);
 
       // Get/Set/Test interfaces
 			void setConstantRange (void *begin_noconst, void *end_noconst/*, void *begin_const, void *end_const*/);
