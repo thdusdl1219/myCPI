@@ -16,6 +16,8 @@
 
 #include <inttypes.h>
 #include <sys/mman.h>
+#include "../comm/comm_manager.h"
+#include "uva_comm_enum.h"
 #include "memspec.h"
 #include "qsocket.h"
 		
@@ -38,7 +40,8 @@ namespace corelab {
 			typedef void (*PageMappedCallBack) (UintPtr paddr);
       
 			// Initializer
-			void initialize (QSocket* Msocket);
+			//void initialize (QSocket* Msocket);
+			void initialize (CommManager *comm, uint32_t destid);
 
 			// Allocator/Deallocator
 			void* pagemap (void *addr, size_t size, bool isServer);

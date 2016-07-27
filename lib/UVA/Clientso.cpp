@@ -14,6 +14,7 @@
 #include <vector>
 
 #define GLOBAL_DEBUG
+//#define UVA_ONLY
 
 using namespace corelab;
 
@@ -26,10 +27,12 @@ void UVAClient::getAnalysisUsage(AnalysisUsage &AU) const {
   AU.setPreservesAll();
 }
 
+#ifdef UVA_ONLY
 // command line argument
 static cl::opt<string> GVInitializer("gv_initializer", 
     cl::desc("Specify Global variable initializer (1: gv_initializer, 0: not)"), 
       cl::value_desc("global initializer in charge"));
+#endif
 
 bool UVAClient::runOnModule(Module& M) {
   setFunctions(M);
@@ -42,11 +45,13 @@ bool UVAClient::runOnModule(Module& M) {
   //hoist->distinguishGlobalVariables();
 
   if(M.getFunction("__constructor__") != NULL){
-    printf("ctor exists\n");
+    //printf("ctor exists\n");
     modifyIniFini(M);
   } else {
-    printf("ctor don't exists\n");
+    //printf("ctor don't exists\n");
+#ifdef UVA_ONLY
     setIniFini(M);
+#endif
   }
   return true;
 
@@ -56,18 +61,18 @@ void UVAClient::setFunctions(Module& M) {
   LLVMContext &Context = M.getContext();
  
   UVAClientInit = M.getOrInsertFunction(
-      "UVAClientInitialize",
+      "UVAClientInitializer",
       Type::getVoidTy(Context),
       Type::getInt32Ty(Context),
       (Type*)0);
 
   UVAClientFinal = M.getOrInsertFunction(
-      "UVAClientFinalize",
+      "UVAClientFinalizer",
       Type::getVoidTy(Context),
       (Type*)0);
   
 }
-
+#ifdef UVA_ONLY
 /* XXX: this is for UVA-only module XXX*/
 void UVAClient::setIniFini(Module& M) {
   LLVMContext &Context = M.getContext();
@@ -108,6 +113,7 @@ void UVAClient::setIniFini(Module& M) {
 	callAfterMain(finiForDtr);
 
 }
+#endif
 
 /* XXX: this is for UVA in Esperanto XXX */
 void UVAClient::modifyIniFini(Module &M) {
@@ -117,21 +123,21 @@ void UVAClient::modifyIniFini(Module &M) {
   
   FunctionType *voidFcnVoidType = FunctionType::get(Type::getVoidTy(Context), formals, false); 
 
-  Function *ctor = M.getFunction("__constructor__");
+  //Function *ctor = M.getFunction("__constructor__");
   Function *dtor = M.getFunction("__destructor__");
-  assert(ctor != NULL && "wrong");
+  //assert(ctor != NULL && "wrong");
   //assert(dtor != NULL && "wrong");
-  BasicBlock *bbOfCtor = &(ctor->front());
+  //BasicBlock *bbOfCtor = &(ctor->front());
   BasicBlock *bbOfDtor = &(dtor->front());
 
-  Instruction *targetCallInst;
+  /*Instruction *targetCallInst;
   InstInsertPt out;
   bool isExistEariler = false;
   for(inst_iterator I = inst_begin(ctor); I != inst_end(ctor); I++) {
     if(isa<CallInst>(&*I)) {
       CallInst *tarFun = dyn_cast<CallInst>(&*I);
       Function *callee = tarFun->getCalledFunction();
-      if(callee->getName() == "deviceInit") {
+      if(callee->getName() == "EspInit") {
         targetCallInst = &*I;
         out = InstInsertPt::After(targetCallInst);
         isExistEariler = true;
@@ -159,7 +165,7 @@ void UVAClient::modifyIniFini(Module &M) {
   } else {
     CallInst::Create(UVAClientInit, vecArgs, "", bbOfCtor->getFirstNonPHI());
   }
-
+*/
   if (bbOfDtor->getFirstNonPHI() != NULL) {
     CallInst::Create(UVAClientFinal, actuals, "", bbOfDtor->getFirstNonPHI());
   } else {

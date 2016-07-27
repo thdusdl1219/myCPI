@@ -60,7 +60,11 @@ namespace corelab {
 		static uint32_t sizeHeap;
 		//static void *ptHeapTop = HEAP_START_ADDR;
 		static uint32_t freeSizeList[MAX_BIN_INDEX + 1];
-    static QSocket* socket;
+    //static QSocket* socket;
+    
+    // XXX For integrated comm layer
+    static CommManager *comm;
+    static uint32_t destid;
 
 		XMemoryManager::PageMappedCallBack pageMappedCallBack;
 
@@ -88,11 +92,15 @@ namespace corelab {
 
 
 		/*** Initializer ***/
-		void XMemoryManager::initialize (QSocket* Msocket) {
+		//void XMemoryManager::initialize (QSocket* Msocket) {
+		void XMemoryManager::initialize (CommManager *comm_, uint32_t destid_) {
 			// XXX DEPRECATED: MUST NEED TO BE INITIALIZED FOR NETWORK XXX
       
-      socket = Msocket;
-      assert(socket != NULL);
+      //socket = Msocket;
+      //assert(socket != NULL);
+      comm = comm_;
+      destid = destid_;
+      assert(comm != NULL);
 
 			//ptHeapTop = HEAP_START_ADDR;
 			//protAutoHeap = PROT_READ | PROT_WRITE;
@@ -423,7 +431,7 @@ namespace corelab {
 				}
 			}
 		}
-
+  
 		static inline void* allocatePage (void *addr, size_t size, unsigned protmode, bool isMmap, bool isServer) {
 
 #ifdef UVA_EVAL
@@ -433,56 +441,65 @@ namespace corelab {
       }
 #endif
 #ifdef DEBUG_UVA
-      fprintf(stderr, "[mm] allocatePage: addr (%p) / size (%d) / protmode (%d) / isMmap (%d) / isServer (%d)\n", addr, size, protmode, isMmap, isServer);
+      LOG("[mm] allocatePage: addr (%p) / size (%d) / protmode (%d) / isMmap (%d) / isServer (%d)\n", addr, size, protmode, isMmap, isServer);
 #endif
       if(!isMmap && !isServer) {
+#ifdef DEBUG_UVA
+        LOG("[mm] [client] malloc request!\n");
+#endif
 
         // [client side] just send size he want and get addr allocated
-        socket->pushWordF(0);
-        socket->pushWordF(4);
-        socket->pushWordF(size);
-        socket->sendQue();
+        //socket->pushWordF(0);
+        //socket->pushWordF(4);
+        //socket->pushWordF(size);
+        //socket->sendQue();
         
-        socket->receiveQue();
-        int mode = socket->takeWord();
-#ifdef DEBUG_UVA
-        fprintf(stderr, "mode : %d\n", mode);
-#endif
+        //socket->receiveQue();
+        //int mode = socket->takeWord();
+        //comm->pushWord(MALLOC_HANDLER, 0, destid);
+        comm->pushWord(MALLOC_HANDLER, 4, destid);
+        comm->pushWord(MALLOC_HANDLER, (uint32_t)size, destid);
+        comm->sendQue(MALLOC_HANDLER, destid);
+        
+        comm->receiveQue(destid);
+        //uint32_t mode = comm->takeWord(destid); // XXX here
         //assert(mode == 1);
-        int len = socket->takeWord();
+        uint32_t len = comm->takeWord(destid);
 #ifdef DEBUG_UVA
-        fprintf(stderr, "len : %d\n", len);
+        LOG("len : %d\n", len);
 #endif
         char buf[len];
 
-        socket->takeRange(buf, len);
+        comm->takeRange(buf, len, destid);
         memcpy(&addr, buf, len);
-//#ifdef DEBUG_UVA
-        fprintf(stderr, "[mm] client get a page with mapAddr : %p\n", addr);
-//#endif
+#ifdef DEBUG_UVA
+        LOG("[mm] client get a page with mapAddr : %p\n", addr);
+        LOG("[mm] malloc request (allocatePage) END (%p)\n", addr);
+#endif
 
 
       } else if (isMmap && !isServer && protmode == 3) { /* XXX: is it safe ? */
 #ifdef DEBUG_UVA
-        printf("[mm] [client] mmap allocatePage\n");
+        LOG("[mm] [client] mmap allocatePage\n");
 #endif
 
         // [client side] just send size and addr
-        socket->pushWordF(6); // mmap request mode
+        //comm->pushWord(MALLOC_HANDLER, 6, destid); // mmap request mode
         uint32_t intAddr;
+        uint32_t size_ = (uint32_t)sizeof(size);
         memcpy(&intAddr, &addr, 4);
-        socket->pushWordF(intAddr);
-        socket->pushWordF(sizeof(size));
-        socket->pushRangeF(&size, sizeof(size)); // send size
-        socket->sendQue();
+        comm->pushWord(MMAP_HANDLER, intAddr, destid);
+        comm->pushWord(MMAP_HANDLER, size_, destid);
+        comm->pushRange(MMAP_HANDLER, &size, (uint32_t)sizeof(size), destid); // send size
+        comm->sendQue(MMAP_HANDLER, destid);
         
-        socket->receiveQue();
-        int mode = socket->takeWord();
+        //comm->receiveQue(destid);
+        //uint32_t mode = comm->takeWord(destid);
 #ifdef DEBUG_UVA
-        fprintf(stderr, "mode : %d\n", mode);
+        //fprintf(stderr, "mode : %d\n", mode);
 #endif
         //assert(mode == 7);
-        int ack = socket->takeWord();
+        //uint32_t ack = comm->takeWord(destid);
         //assert(ack == 0);
         //fprintf(stderr, "len : %d\n", len);
         //char buf[len];
@@ -511,6 +528,13 @@ namespace corelab {
 fprintf (stderr, "while allocating '%p'..\n", addr);
 				perror ("mmap failed");
 			}
+#ifdef DEBUG_UVA
+      if (!isMmap) {
+        LOG("[mm] malloc request (allocatePage) END (%p)\n", addr);
+      } else {
+        LOG("[mm] mmap request (allocatePage) END (%p)\n", addr);
+      }
+#endif
 #ifdef UVA_EVAL
       if(!isServer) {
         watch.end();

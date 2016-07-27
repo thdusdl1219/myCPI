@@ -20,6 +20,7 @@
 #include "corelab/UVA/FixedGlobal.h"
 #include "corelab/Utilities/GlobalCtors.h"
 #include "corelab/Utilities/InstInsertPt.h"
+#include "corelab/Utilities/Casting.h"
 
 #include <set>
 #include <list>
@@ -188,9 +189,6 @@ namespace corelab {
              gvar->getName().str().substr (0, 5) != string ("llvm."))) {
           if (!gvar->isConstant ()) {
             vecGvars.push_back (gvar);
-#ifdef DEBUG_FIXGLB
-            printf("$$$$$$$$$$$$$$$$$$ %s\n", gvar->getName().data());
-#endif
             fprintf(fp, "%s\n", gvar->getName().data());
 #ifdef DEBUG_FIXGLB
             printf("FIXGLB: runOnModule: no const (has init func): %s\n", gvar->getName().data());
@@ -208,9 +206,6 @@ namespace corelab {
             if (hasFunction (gvar->getInitializer ())) {
               gvar->setConstant (false);
               vecGvars.push_back (gvar);
-#ifdef DEBUG_FIXGLB
-            printf("$$$$$$$$$$$$$$$$$$ %s\n", gvar->getName().data());
-#endif
               fprintf(fp, "%s\n", gvar->getName().data());
 #ifdef DEBUG_FIXGLB
               printf("FIXGLB: runOnModule: const (has init func): %s\n", gvar->getName().data());
@@ -260,7 +255,7 @@ namespace corelab {
 		/* Set constant range */
 		FunctionType *tyFnVoidVoid = FunctionType::get (
 				Type::getVoidTy (pM->getContext ()), false);
-		Function *fnDeclCRange = Function::Create (tyFnVoidVoid, GlobalValue::InternalLinkage, 
+		Function *fnDeclCRange = Function::Create (tyFnVoidVoid, GlobalValue::ExternalLinkage, 
 				"__decl_const_global_range__", pM);
 		BasicBlock *blkDeclCRange = BasicBlock::Create (pM->getContext (), "initzer", fnDeclCRange);
 		/*Function *fnSendInitCompleteSignal = Function::Create (tyFnVoidVoid, GlobalValue::InternalLinkage, 
@@ -274,8 +269,8 @@ namespace corelab {
 
 		Constant *cnstOffSetCRange = M.getOrInsertFunction ("UVAUtilSetConstantRange",
 				tyVoid, tyInt8Pt, tyInt8Pt/*, tyInt8Pt, tyInt8Pt*/, NULL);
-    Constant *uvaSync = M.getOrInsertFunction ("uva_sync", tyVoid, NULL);
-    Constant *cnstSendInitCompleteSignal = M.getOrInsertFunction ("sendInitCompleteSignal", tyVoid, NULL);
+    //Constant *uvaSync = M.getOrInsertFunction ("uva_sync", tyVoid, NULL);
+    //Constant *cnstSendInitCompleteSignal = M.getOrInsertFunction ("sendInitCompleteSignal", tyVoid, NULL);
 
 		vector<Value *> vecSetCRangeArgs;
 		vecSetCRangeArgs.push_back (ConstantExpr::getCast (Instruction::IntToPtr,
@@ -290,7 +285,7 @@ namespace corelab {
 
 		ReturnInst::Create (M.getContext (), blkDeclCRange);
 
-    if (this->isFixGlbDuty) {
+    /*if (this->isFixGlbDuty) {
       //callBeforeMain (fnDeclCRange, 0);
 
       Function *ctor = M.getFunction("__constructor__"); 
@@ -321,14 +316,14 @@ namespace corelab {
           }
         }
         if (isExistEarlierCallInst) {
-          out << CallInst::Create(fnDeclCRange, actuals, "");
-          out2 << CallInst::Create (uvaSync, actuals, "");
-          out2 << CallInst::Create(cnstSendInitCompleteSignal, actuals, "");
+          //out << CallInst::Create(fnDeclCRange, actuals, "");
+          //out2 << CallInst::Create (uvaSync, actuals, "");
+          //out2 << CallInst::Create(cnstSendInitCompleteSignal, actuals, "");
         } else {
-          BasicBlock *bbOfCtor = &(ctor->front());
-          CallInst *CI2 = CallInst::Create (uvaSync, actuals, "", bbOfCtor->getFirstNonPHI());
-          CallInst *CI = CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
-          CallInst::Create(cnstSendInitCompleteSignal, actuals, "", CI);
+          //BasicBlock *bbOfCtor = &(ctor->front());
+          //CallInst *CI2 = CallInst::Create (uvaSync, actuals, "", bbOfCtor->getFirstNonPHI());
+          //CallInst *CI = CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
+          //CallInst::Create(cnstSendInitCompleteSignal, actuals, "", CI);
         }
       }
     } else { // client who have no duty to initalize fixed global variables. But have to call fnDeclCRange.
@@ -352,14 +347,14 @@ namespace corelab {
           }
         }
         if (isExistEarlierCallInst) {
-          out << CallInst::Create(fnDeclCRange, actuals, "");
+          //out << CallInst::Create(fnDeclCRange, actuals, "");
         } else {
-          BasicBlock *bbOfCtor = &(ctor->front());
-          CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
+          //BasicBlock *bbOfCtor = &(ctor->front());
+          //CallInst::Create(fnDeclCRange, actuals, "", bbOfCtor->getFirstNonPHI());
         }
         
       }
-    }
+    }*/
 
 		/* Finalize */
 		list<GlobalVariable *> lstDispGvars;
@@ -447,6 +442,19 @@ namespace corelab {
 			mapGlobalToFixed.insert (GlobalToFixedPair (gvar, fgvar));
 		}
 
+    /* BONG: make vecClasses from metadata */
+    std::vector<std::string> *vecClasses = new std::vector<std::string>();
+    std::vector<FixedGlobalVariable*> *vecEspClassGvar = new std::vector<FixedGlobalVariable*>();
+    NamedMDNode *classNamedMD = pM->getNamedMetadata("esperanto.class");
+    if (classNamedMD != NULL) {
+      MDNode *classMD = classNamedMD->getOperand(0);
+
+      for (auto it = classMD->op_begin(); it != classMD->op_end(); ++it) {
+        std::string className = cast<MDString>(it->get())->getString().str();
+        vecClasses->push_back(className);
+      }
+    }
+
 		/* Correct references to globals */
 		for (GlobalToFixedMap::iterator it = mapGlobalToFixed.begin ();
 				 it != mapGlobalToFixed.end (); ++it) {
@@ -454,10 +462,101 @@ namespace corelab {
 			FixedGlobalVariable *fgvar = it->second;
 			
 			gvar->replaceAllUsesWith (fgvar);
+      
+      /* BONG: make vecEspClassGvar */
+      if (fgvar->getType()->isPointerTy() 
+          && fgvar->getType()->getPointerElementType()->isPointerTy()
+          && fgvar->getType()->getPointerElementType()->getPointerElementType()->isStructTy()) {
+        Type *type = fgvar->getType()->getPointerElementType()->getPointerElementType();
+        StringRef name = type->getStructName();
+        if (name.startswith_lower(StringRef("class."))) {
+          std::string name_ = name.str();
+          std::string realName = name_.substr(6);
+          if (std::find(vecClasses->begin(), vecClasses->end(), realName) != vecClasses->end()) {
+            vecEspClassGvar->push_back(fgvar);
+          }
+        }
+      }
       //findAndInsertLoadInstForAllUsesRecursively(fgvar);
-		}	
+    }	
 
-		sizeTotalGvars = FixedGlobalFactory::getTotalGlobalSize ();
+    InstInsertPt out;
+    std::vector<Value*> actuals(2);
+
+    Constant *Waiter = pM->getOrInsertFunction(
+        "waiter",
+        Type::getVoidTy(pM->getContext()),
+        Type::getInt8PtrTy(pM->getContext()),
+        Type::getInt32Ty(pM->getContext()),
+        (Type*)0);
+
+		for(auto FI = pM->begin();FI != pM->end(); ++FI){
+			Function* F = (Function*) &*FI;
+			//if (F->isDeclaration()) continue;
+			for(auto BI = F->begin();BI != F->end(); ++BI){
+        BasicBlock* B = (BasicBlock*) &*BI;
+        for(auto Ii = B->begin();Ii != B->end(); ++Ii){
+          Instruction* inst = (Instruction*)&*Ii;
+          MDNode* MD = inst->getMetadata("esperanto.constructor");
+				  if (MD == NULL) continue;
+          Function *target_func = F;
+          //target_func->dump();
+          for (auto bb = target_func->begin(); bb != target_func->end(); ++bb) {
+            for (auto ii = bb->begin(); ii != bb->end(); ++ii) {
+              if (StoreInst *si = dyn_cast<StoreInst>(ii)) {
+                Type *ptrOpType = si->getPointerOperand()->getType();
+                if (ptrOpType->isPointerTy()
+                    && ptrOpType->getPointerElementType()->isPointerTy()
+                    && ptrOpType->getPointerElementType()->getPointerElementType()->isStructTy()) {
+                  Type *classType = ptrOpType->getPointerElementType()->getPointerElementType();
+                  StringRef className = classType->getStructName();
+                  if (className.startswith_lower(StringRef("class."))) {
+                    std::string name_ = className.str();
+                    std::string realName = name_.substr(6);
+                    if (std::find(vecClasses->begin(), vecClasses->end(), realName) != vecClasses->end()) {
+                      // an instruction uses V
+                      out = InstInsertPt::After(si);
+                      //out << CallInst::Create(UvaSync, actuals, "");
+
+                      AllocaInst *alloca = new AllocaInst(Type::getInt8PtrTy(pM->getContext()), ConstantInt::get(Type::getInt32Ty(pM->getContext()), vecEspClassGvar->size()), (unsigned)8);
+                      out << alloca;
+                      Value *temp = ConstantPointerNull::get(Type::getInt8PtrTy(pM->getContext()));
+                      
+                      int cnt = 0;
+                      Value *allocaAddr = alloca;
+                      for (auto fgvar_ : *vecEspClassGvar) {
+                        
+                        Value *tempInt = ConstantInt::get(Type::getInt64Ty(pM->getContext()), 0);
+                        Value *intAddr = Casting::castTo((Value*)alloca, tempInt, out, &(pM->getDataLayout()));
+                        Value *addAddr = BinaryOperator::CreateAdd(intAddr, ConstantInt::get(Type::getInt64Ty(pM->getContext()), 8*(cnt)));
+                        out << (Instruction*)addAddr;
+
+                        Value *tempPtrPtr = ConstantPointerNull::get(Type::getInt8PtrTy(pM->getContext())->getPointerTo());
+                        allocaAddr = Casting::castTo(addAddr, tempPtrPtr, out, &(pM->getDataLayout())); 
+
+                        Value *gvarPtr = Casting::castTo(fgvar_, temp, out, &(pM->getDataLayout()));
+                        StoreInst *si = new StoreInst(gvarPtr, allocaAddr);
+                        out << si;
+
+                        cnt++;
+                        //out << allocaAddr;
+                      }
+                      actuals[0] = Casting::castTo((Value*)alloca, temp, out, &(pM->getDataLayout()));
+                      actuals[1] = ConstantInt::get(Type::getInt32Ty(pM->getContext()), vecEspClassGvar->size());
+                      out << CallInst::Create(Waiter, actuals, "");
+                      goto waiterend;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+waiterend:
+		
+    sizeTotalGvars = FixedGlobalFactory::getTotalGlobalSize ();
 #ifdef DEBUG_FIXGLB
     printf("FIXGLB: convertToFixedGlobals: sizeTotalGvars: %ld\n", sizeTotalGvars);
 #endif

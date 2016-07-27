@@ -97,13 +97,13 @@ void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
   if (isFixGlbDuty){
     FunctionType *tyFnVoidVoid = FunctionType::get (
         Type::getVoidTy (pM->getContext ()), false);
-    fnGInitzer = Function::Create (tyFnVoidVoid, GlobalValue::InternalLinkage, 
+    fnGInitzer = Function::Create (tyFnVoidVoid, GlobalValue::ExternalLinkage, 
         "__fixed_global_initializer__", pM);
     blkGInitzer = BasicBlock::Create (pM->getContext (), "initzer", fnGInitzer);
 
     //callBeforeMain (fnGInitzer, 0);
 
-    std::vector<Value*> actuals(0);
+    /*std::vector<Value*> actuals(0);
 
     Function *ctor = module->getFunction("__constructor__"); 
 
@@ -139,7 +139,15 @@ void FixedGlobalFactory::begin (Module *module, void *base, bool isFixGlbDuty) {
     } else {
       BasicBlock *bbOfCtor = &(ctor->front());
       CallInst::Create(fnGInitzer, actuals, "", bbOfCtor->getFirstNonPHI());
-    }
+    }*/
+  } else {
+    FunctionType *tyFnVoidVoid = FunctionType::get (
+        Type::getVoidTy (pM->getContext ()), false);
+    fnGInitzer = Function::Create (tyFnVoidVoid, GlobalValue::ExternalLinkage, 
+        "__fixed_global_initializer__", pM);
+    blkGInitzer = BasicBlock::Create (pM->getContext (), "not.initzer", fnGInitzer);
+    ReturnInst::Create(pM->getContext(), blkGInitzer);
+
   }
 }
 
@@ -170,7 +178,6 @@ void FixedGlobalFactory::end (bool isFixGlbDuty) {
 
 	blkGInitzer->moveAfter (blkMmap);
 
-  printf("############## %d \n", dataLayout->getPointerSizeInBits());
 	vector<Value *> vecMmapArgs;
 	vecMmapArgs.push_back (
 			ConstantExpr::getCast (Instruction::IntToPtr,
@@ -238,7 +245,6 @@ FixedGlobalVariable* FixedGlobalFactory::create (Type *type, Constant *initzer,
 	mapFGvars.insert (pair<FixedGlobalVariable *, FGInfo> (fgvar, fginfo));
 
 	/* update the total chunk size of globals. */
-	const DataLayout *dataLayout = &(pM->getDataLayout ());
 #ifdef DEBUG_FIXGLB
   type->dump();
   printf("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ type size : %d\n", dataLayout->getTypeAllocSize(type));

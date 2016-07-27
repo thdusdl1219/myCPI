@@ -257,6 +257,8 @@ namespace corelab {
         DITable.insertDevice(*mi.arg1, did); 
       }
     }
+    else
+      printf("\n\n\n\n\nfucking null\n\n\n\n\n");
 
 #if 0
 		FILE* metadataFile = fopen("EspMetadata.profile","r");

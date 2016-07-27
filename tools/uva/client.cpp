@@ -5,9 +5,10 @@
 #include <csignal>
 #include <stdint.h>
 
+#include "../comm/comm_manager.h"
 #include "client.h"
 #include "qsocket.h"
-#include "mm.h" // FIXME
+#include "mm.h" // FIXME I don't wanna access directly to mm module (better: through xmem)
 #include "uva_manager.h"
 #include "xmem_info.h"
 #include "uva_macro.h"
@@ -17,21 +18,24 @@
 #include "log.h"
 #include "hexdump.h"
 
+#include "uva_comm_enum.h"
+
 #include "uva_debug_eval.h"
 
 #define GET_PAGE_ADDR(x) ((x) & 0xFFFFF000)
 
 #define HLRC
 
-
-#define LOCALTEST 0
-#define CORELAB_SERVER_TEST 1
-
-#define FORKTEST 0
+extern "C" void __decl_const_global_range__();
+extern "C" void __fixed_global_initializer__();
+extern "C" void uva_sync();
+extern "C" void sendInitCompleteSignal();
 
 namespace corelab {
   namespace UVA {
-    static QSocket *Msocket;
+    //static QSocket *Msocket;
+    static CommManager *comm;
+    static uint32_t destid;
 
 		struct sigaction segvAction;
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused);
@@ -40,56 +44,22 @@ namespace corelab {
 		static inline void* truncToPageAddr (void *addr) {
 			return (void *)((XmemUintPtr)addr & XMEM_PAGE_MASK);
 		}
-    extern "C" void UVAClientInitialize(uint32_t isGVInitializer) {
-      // FIXME: for sync
-      sleep(5);
-      char ip[20];
-      char port[10];
 
-      FILE *fdesc = NULL;
-      fdesc = fopen("server_desc", "r");
-      
-      if (fdesc != NULL) {
-        fscanf(fdesc, "%20s %10s", ip, port);
-        fclose(fdesc);
-      } else {
-        printf("Server IP : ");
-        scanf("%20s", ip);
-        printf("Server Port : ");
-        scanf("%10s", port);
-      }
-      
+    extern "C" void UVAClientCallbackSetter(CommManager *comm) { 
+      // XXX Currently, no need callback in client.
+    }
+
+    extern "C" void UVAClientInitializer(CommManager *comm_, uint32_t isGVInitializer, uint32_t destid_) {
+
+      // FIXME: for sync
+      sleep(4);
 #ifdef DEBUG_UVA
-      printf("[CLIENT] ip (%s), port (%s)\n", ip, port);
+      LOG("[CLIENT] UVAClientInitializer START (isGVInitializer:%d)\n", isGVInitializer);
 #endif
 
-#if FORKTEST
-      pid_t pid;
-      pid = fork();
-      if (pid == -1)
-        assert(0 && "fork failed");
-      else if (pid == 0) {
-        printf("[CLIENT] child\n");
-        Msocket = new QSocket();
-        Msocket->connect(ip, port);
-  
-        //XMemory::XMemoryManager::initialize(Msocket);
-        UVAManager::initialize (Msocket);
-      } else {
-        printf("[CLIENT] parent\n");
-        Msocket = new QSocket();
-        Msocket->connect(ip, port);
-      
-        //XMemory::XMemoryManager::initialize(Msocket);
-        UVAManager::initialize (Msocket);
-
-      }
-#else
-      Msocket = new QSocket();
-      Msocket->connect(ip, port);
-
-      //XMemory::XMemoryManager::initialize(Msocket);
-      UVAManager::initialize (Msocket);
+      comm = comm_;
+      destid = destid_;
+      UVAManager::initialize (comm, destid);
 
       // segfault handler
 			segvAction.sa_flags = SA_SIGINFO | SA_NODEFER;
@@ -101,12 +71,18 @@ namespace corelab {
 #endif
 			int hr = sigaction (SIGSEGV, &segvAction, NULL);
 			assert (hr != -1);
-#endif
+
+      /* For declaration Constant Gloabal Variables Range */
+      __decl_const_global_range__();
 
       /* For synchronized clients start */
       if(!isGVInitializer) {
-        Msocket->receiveQue();
-        int mayIstart = Msocket->takeWordF();
+        comm->pushWord(NEWFACE_HANDLER, 1, destid);
+        comm->sendQue(NEWFACE_HANDLER, destid);
+        //Msocket->receiveQue();
+        comm->receiveQue(destid);
+        //int mayIstart = Msocket->takeWordF();
+        uint32_t mayIstart = comm->takeWord(destid);
         if (mayIstart == 1) {
 #ifdef DEBUG_UVA
           printf("[CLIENT] I got start permission !!\n");
@@ -115,18 +91,19 @@ namespace corelab {
         } else {
           assert(false && "[CLIENT] server doesn't allow me start.\n");
         }
+      } else { /* GV Initializer */
+        __fixed_global_initializer__();
+        uva_sync();
+        sendInitCompleteSignal();
       }
     }
-    extern "C" void UVAClientFinalize() {
-      // Msocket->sendQue();
+    extern "C" void UVAClientFinalizer() {
       void *ptNoConstBegin;
       void *ptNoConstEnd;
-      //void *ptConstBegin;
-      //void *ptConstEnd;
+#ifdef DEBUG_UVA
       UVAManager::getFixedGlobalAddrRange(&ptNoConstBegin, &ptNoConstEnd/*, &ptConstBegin, &ptConstEnd*/);
       xmemDumpRange(ptNoConstBegin, 32);
-      //xmemDumpRange(ptConstBegin, 32);
-      Msocket->disconnect();
+#endif
     }
 		/*** Internals ***/
 		static void segfaultHandler (int sig, siginfo_t* si, void* unused) {
@@ -136,11 +113,11 @@ namespace corelab {
 #endif
       
       if (fault_addr < (void*)0x15000000) {
-        LOG_BACKTRACE(fault_addr);
+        //LOG_BACKTRACE(fault_addr);
         assert(0 && "fault_addr : under 0x15000000");
       }
       if (fault_addr > (void*)0x38000000) {
-        LOG_BACKTRACE(fault_addr);
+        //LOG_BACKTRACE(fault_addr);
         assert(0 && "fault_addr : above 0x38000000");
       }
       mmap((void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), 
@@ -162,7 +139,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | fault_addr is in FixedGlobalAddr space %p\n",ptNoConstBegin);
 #endif
-        Msocket->pushWordF(GLOBAL_SEGFAULT_REQ); // send GLOBAL_SEGFAULT_REQ
+        //comm->pushWord(GLOBAL_SEGFAULT_HANDLER, GLOBAL_SEGFAULT_REQ, destid); // send GLOBAL_SEGFAULT_REQ
         //uint32_t intAddrBegin = reinterpret_cast<uint32_t>(ptNoConstBegin);
         //uint32_t intAddrEnd = reinterpret_cast<uint32_t>(ptNoConstEnd);
         uint32_t intAddrBegin;
@@ -171,14 +148,14 @@ namespace corelab {
         memcpy(&intAddrBegin, &ptNoConstBegin, 4);
         memcpy(&intAddrEnd, &ptNoConstEnd, 4);
         
-        Msocket->pushWordF(intAddrBegin);
-        Msocket->pushWordF(intAddrEnd);
-        Msocket->sendQue();
+        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, intAddrBegin, destid);
+        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, intAddrEnd, destid);
+        comm->sendQue(GLOBAL_SEGFAULT_HANDLER, destid);
 
-        Msocket->receiveQue();
-        int ack = Msocket->takeWordF();
+        comm->receiveQue(destid);
+        uint32_t ack = comm->takeWord(destid);
         assert(ack == GLOBAL_SEGFAULT_REQ_ACK && "wrong!!!");
-        Msocket->takeRangeF(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin);
+        comm->takeRange(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, destid);
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | get global variables done\n");
         LOG("[client] segfaultHandler (TEST print)\n");
@@ -210,11 +187,11 @@ namespace corelab {
 #endif
       
       if (fault_addr < (void*)0x15000000) {
-        LOG_BACKTRACE(fault_addr);
+        //LOG_BACKTRACE(fault_addr);
         assert(0 && "fault_addr : under 0x15000000");
       }
       if (fault_addr > (void*)0x38000000) {
-        LOG_BACKTRACE(fault_addr);
+        //LOG_BACKTRACE(fault_addr);
         assert(0 && "fault_addr : above 0x38000000");
       }
       mmap((void*) GET_PAGE_ADDR((uintptr_t)si->si_addr), 
@@ -236,7 +213,7 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | fault_addr is in FixedGlobalAddr space %p\n",ptNoConstBegin);
 #endif
-        Msocket->pushWordF(GLOBAL_SEGFAULT_REQ); // send GLOBAL_SEGFAULT_REQ
+        //comm->pushWord(GLOBAL_SEGFAULT_HANDLER, GLOBAL_SEGFAULT_REQ, destid); // send GLOBAL_SEGFAULT_REQ
         //uint32_t intAddrBegin = reinterpret_cast<uint32_t>(ptNoConstBegin);
         //uint32_t intAddrEnd = reinterpret_cast<uint32_t>(ptNoConstEnd);
         uint32_t intAddrBegin;
@@ -245,23 +222,14 @@ namespace corelab {
         memcpy(&intAddrBegin, &ptNoConstBegin, 4);
         memcpy(&intAddrEnd, &ptNoConstEnd, 4);
         
-        Msocket->pushWordF(intAddrBegin);
-        Msocket->pushWordF(intAddrEnd);
-        Msocket->sendQue();
+        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, intAddrBegin, destid);
+        comm->pushWord(GLOBAL_SEGFAULT_HANDLER, intAddrEnd, destid);
+        comm->sendQue(GLOBAL_SEGFAULT_HANDLER, destid);
 
-/*#ifdef UVA_EVAL
-        StopWatch watchRecv;
-        watchRecv.start();
-#endif*/
-        Msocket->receiveQue();
-/*#ifdef UVA_EVAL
-        watchRecv.end();
-        FILE *fp = fopen("uva-eval.txt", "a");
-        fprintf(fp, "SEGFAULT | RECV %lf\n", watchRecv.diff());
-#endif*/
-        int ack = Msocket->takeWordF();
+        comm->receiveQue(destid);
+        uint32_t ack = comm->takeWord(destid);
         assert(ack == GLOBAL_SEGFAULT_REQ_ACK && "wrong!!!");
-        Msocket->takeRangeF(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin);
+        comm->takeRange(ptNoConstBegin, (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, destid);
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | get global variables done\n");
         LOG("[client] segfaultHandler (TEST print)\n");
@@ -279,21 +247,12 @@ namespace corelab {
 #endif
         uint32_t intFaultAddr;
         memcpy(&intFaultAddr, &fault_addr, 4);
-        Msocket->pushWordF(HEAP_SEGFAULT_REQ);
-        Msocket->pushWordF(intFaultAddr);
-        Msocket->sendQue();
+        //comm->pushWord(HEAP_SEGFAULT_HANDLER, HEAP_SEGFAULT_REQ, destid);
+        comm->pushWord(HEAP_SEGFAULT_HANDLER, intFaultAddr, destid);
+        comm->sendQue(HEAP_SEGFAULT_HANDLER, destid);
 
-/*#ifdef UVA_EVAL
-        StopWatch watchRecv;
-        watchRecv.start();
-#endif*/
-        Msocket->receiveQue();
-/*#ifdef UVA_EVAL
-        watchRecv.end();
-        FILE *fp = fopen("uva-eval.txt", "a");
-        fprintf(fp, "SEGFAULT | RECV %lf\n", watchRecv.diff());
-#endif*/
-        Msocket->takeRangeF(truncToPageAddr(fault_addr), PAGE_SIZE);
+        comm->receiveQue(destid);
+        comm->takeRange(truncToPageAddr(fault_addr), PAGE_SIZE, destid);
 #ifdef DEBUG_UVA
         LOG("[client] segfaultHandler | getting a page in heap is done\n");
         LOG("[client] segfaultHandler (TEST print)\n");
@@ -319,64 +278,100 @@ namespace corelab {
 				UVAManager::fetchIn (socket, addr);
 			}*/
 		} // segfaultHandler
-    extern "C" void uva_load(size_t len, void *addr) {
-#ifndef HLRC
-      UVAManager::loadHandler(Msocket, len, addr);
-#endif
+
+    /* uva_load_sc for light-weight device (Strong-consistency) */
+    extern "C" void uva_load_sc(size_t len, void *addr) {
+      UVAManager::loadHandler_sc(comm, destid, len, addr);
       return;
     }
 
+    /* uva_store_sc for light-weight device (Strong-consistency) */
+    extern "C" void uva_store_sc(size_t len, void *data, void *addr) {
+      UVAManager::storeHandler_sc(comm, destid, len, data, addr);
+      return;
+    }
+
+    /* uva_store (Home-based Lazy Release Consistency) */
     extern "C" void uva_store(size_t len, void *data, void *addr) {
-#ifdef HLRC
-      UVAManager::storeHandlerForHLRC(Msocket, len, data, addr);
-#else
-      UVAManager::storeHandler(Msocket, len, data, addr);
-#endif
+      UVAManager::storeHandler_hlrc(len, data, addr);
       return;
     }
 
+    /* uva_memset_sc for light-weight device (Strong-consistency) */
+    extern "C" void *uva_memset_sc(void *addr, int value, size_t num) {
+      return UVAManager::memsetHandler_sc(comm, destid, addr, value, num);
+    }
+
+    /* uva_memset (Home-based Lazy Release Consistency) */
     extern "C" void *uva_memset(void *addr, int value, size_t num) {
-#ifdef HLRC
-      return UVAManager::memsetHandlerForHLRC(Msocket, addr, value, num);
-#else
-      return UVAManager::memsetHandler(Msocket, addr, value, num);
-#endif
+      return UVAManager::memsetHandler_hlrc(addr, value, num);
     }
 
+    /* uva_memcpy_sc for light-weight device (Strong-consistency) */
+    extern "C" void *uva_memcpy_sc(void *dest, void *src, size_t num) {
+      return UVAManager::memcpyHandler_hlrc(comm, destid, dest, src, num);
+    }
+    
+    /* uva_memcpy (Home-based Lazy Release Consistency) */
     extern "C" void *uva_memcpy(void *dest, void *src, size_t num) {
-#ifdef HLRC
-      return UVAManager::memcpyHandlerForHLRC(Msocket, dest, src, num);
-#else
-      return UVAManager::memcpyHandler(Msocket, dest, src, num);
-#endif
+      return UVAManager::memcpyHandler_hlrc(comm, destid, dest, src, num);
     }
-    
-    extern "C" void uva_acquire() {
-#ifdef HLRC
-      UVAManager::acquireHandler(Msocket);
-#endif
-    }
-    
-    extern "C" void uva_release() {
-#ifdef HLRC
-      UVAManager::releaseHandler(Msocket);
-#endif
-    }
-    
-    extern "C" void uva_sync() {
-#ifdef HLRC
-      UVAManager::syncHandler(Msocket);
-#endif
-    }
-    
-    extern "C" void sendInitCompleteSignal() {
-      Msocket->pushWordF(GLOBAL_INIT_COMPLETE_SIG); // Init complete signal
-      Msocket->sendQue();
 
-      Msocket->receiveQue();
-      int ack = Msocket->takeWordF(); 
+    /* uva_acquire (Home-based Lazy Release Consistency) */
+    extern "C" void uva_acquire() {
+      UVAManager::acquireHandler_hlrc(comm, destid);
+    }
+    
+    /* uva_release (Home-based Lazy Release Consistency) */
+    extern "C" void uva_release() {
+      UVAManager::releaseHandler_hlrc(comm, destid);
+    }
+    
+    /* uva_sync (Home-based Lazy Release Consistency) */
+    extern "C" void uva_sync_sc() {
+      UVAManager::syncHandler_sc(comm, destid);
+    }
+    
+    /* uva_sync (Home-based Lazy Release Consistency) */
+    extern "C" void uva_sync() {
+      UVAManager::syncHandler_hlrc(comm, destid);
+    }
+    
+    /* sendInitCompleteSignal function:
+     *
+     *  This function is called only by global initializer 
+     *  when he have done with global variable initailization.
+     */
+    extern "C" void sendInitCompleteSignal() {
+      comm->pushWord(GLOBAL_INIT_COMPLETE_HANDLER, GLOBAL_INIT_COMPLETE_SIG, destid); 
+      comm->sendQue(GLOBAL_INIT_COMPLETE_HANDLER, destid);
+
+      comm->receiveQue(destid);
+      uint32_t ack = comm->takeWord(destid); 
       assert(ack == GLOBAL_INIT_COMPLETE_SIG_ACK && "Server says \"Hey, I didn't get global initialization complete signal correctly. \"");
       return;
     }
+
+    /* waiter function:
+     *
+     *  This function is called after RegisterDevice of Esperanto.
+     *  Waiter will wait until all global variables are registered. 
+     */
+    extern "C" void waiter(void ***stackAddr, uint32_t numGV) {
+      void *gv = NULL;
+      uva_sync();
+      for (uint32_t i = 0; i < numGV; i++) {
+        gv = **stackAddr;
+        while(!gv) {
+          gv = **stackAddr;
+          uva_sync();
+          sleep(1);
+        }
+        if (i == numGV-1) break;
+        stackAddr = (void***)((char*)stackAddr + 8);
+      }
+    } // waiter
+
+
   }
 }

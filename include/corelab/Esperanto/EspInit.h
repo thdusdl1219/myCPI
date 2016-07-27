@@ -105,7 +105,8 @@ namespace corelab
 				temp->arg2 = mi.arg2;
 				temp->arg3 = mi.arg3;
 				EspDevDecl.push_back(temp);
-				//printf("DEBUG :: EspDevDecl is inserted\n");
+				printf("DEBUG :: EspDevDecl is inserted / %s / %s / %s / \n",temp->arg1->data(),temp->arg2->data(),temp->arg3->data());
+        
 			}
 			void insertEspVarDecl(struct MetadataInfo mi){
 				struct MetadataInfo* temp = new (struct MetadataInfo)();

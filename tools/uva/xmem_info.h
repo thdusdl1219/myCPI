@@ -12,6 +12,7 @@
 
 #include <stddef.h>
 #include <inttypes.h>
+#include "../comm/comm_manager.h"
 #include "xmem_spec.h"
 #include "qsocket.h" // BONGJUN
 
@@ -27,7 +28,8 @@ struct XmemStateInfo {
 };
 
 /* initializer BONGJUN */
-extern "C" void xmemInitialize (QSocket *socket);
+//extern "C" void xmemInitialize (QSocket *socket);
+extern "C" void xmemInitialize (CommManager *comm, uint32_t destid);
 
 /* Page mapper */
 extern "C" void* xmemPagemap (void *addr, size_t size, bool isServer);

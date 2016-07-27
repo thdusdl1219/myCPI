@@ -19,6 +19,8 @@ namespace corelab {
   using namespace llvm;
   using namespace std;
 
+  static cl::opt<string> GVInitializer("gv_initializer",cl::desc("Specify Global variable initializer (1: gv_initializer, 0: not)"),cl::value_desc("global initializer in charge"));
+  
   static RegisterPass<SwitchCase> X("switch-case", "Switch-Case Test for Esperanto", false, false);
   char SwitchCase::ID = 0;
 
@@ -46,23 +48,18 @@ namespace corelab {
     Function* targetFcn = getOrInsertConstructor(M);
     Instruction* targetInst = targetFcn->front().getFirstNonPHI();
     
-    std::vector<Value*> actuals(2);
-    // actuals.resize(2);
+      
 
-    //	char filename[50];
-    //std::string className = remoteCall.deviceName;
-    //DeviceMapEntry* dme = new DeviceMapEntry();
-    //dme->setName(className.c_str());
-    //int val = (en.deviceMap.getEntry(dme))->id;
-    // sprintf(filename,"functionTable-%s",remoteCall.deviceName.c_str());
-
-    /*StringRef s(filename);
-      Constant *valueStr = ConstantDataArray::getString(Context, s);
-      GlobalVariable *GV = new GlobalVariable(M, valueStr->getType(), true, GlobalValue::PrivateLinkage, valueStr);
-      */
+    std::vector<Value*> actuals(3);
     actuals[0] = execFunction;
     Value* devID = ConstantInt::get(Type::getInt32Ty(Context), espInit.DITable.getDeviceID(remoteCall.deviceName),1);
     actuals[1] = devID;
+
+    if(strcmp(GVInitializer.data(),"1") == 0)
+      actuals[2] = ConstantInt::get(Type::getInt32Ty(Context),1);
+    else
+      actuals[2] = ConstantInt::get(Type::getInt32Ty(Context),0);
+
     CallInst::Create(Init, actuals, "", targetInst);
 
     //actuals.resize(1);
@@ -107,6 +104,7 @@ namespace corelab {
         Type::getInt32Ty(Context),
         (Type*) 0);
 
+    
     /**** Set "Init" Function ****/
     std::vector<Type*> args;
     args.push_back(IntegerType::get(Context, 32));
@@ -116,13 +114,15 @@ namespace corelab {
         /*Params=*/args,
         /*isVarArg=*/false);
     PointerType* callbackPointer = PointerType::get(callback, 0);
-    std::vector<Type*> formals(2);
+    std::vector<Type*> formals(3);
     formals[0] = callbackPointer;
     formals[1] = Type::getInt32Ty(Context);
+    formals[2] = Type::getInt32Ty(Context);
+
     FunctionType *initFunc = FunctionType::get(Type::getVoidTy(Context),formals,false);
 
     string functionName; // char functionName[50];
-		functionName = "deviceInit";
+		functionName = "EspInit";
 
     Init = (Function*) M.getOrInsertFunction(functionName, initFunc);
   }

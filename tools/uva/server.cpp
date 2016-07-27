@@ -17,6 +17,7 @@
 #include "uva_debug_eval.h"
 
 #define HLRC
+//#define DEBUG_UVA
 
 #define TEST 1
 
@@ -24,25 +25,63 @@ using namespace corelab::XMemory;
 namespace corelab {
   namespace UVA {
 
-    static QSocket* socket;
-    static bool isFirstUvaSync = true;
-    pthread_t openThread; 
-    pthread_mutex_t acquireLock =PTHREAD_MUTEX_INITIALIZER;
+    static CommManager *comm;
+    //pthread_t openThread; 
+    //pthread_mutex_t acquireLock = PTHREAD_MUTEX_INITIALIZER;
 
 		static inline void* truncToPageAddr (void *addr) {
 			return (void *)((XmemUintPtr)addr & XMEM_PAGE_MASK);
 		}
 
-    extern "C" void UVAServerInitialize() {
+    extern "C" void UVAServerCallbackSetter(CommManager *comm) {
+      TAG tag;
+
+      tag = NEWFACE_HANDLER;
+      comm->setCallback(tag, newfaceHandler);
+      tag = MALLOC_HANDLER;
+      comm->setCallback(tag, heapAllocHandler);
+      tag = LOAD_HANDLER;
+      comm->setCallback(tag, loadHandler);
+      tag = STORE_HANDLER;
+      comm->setCallback(tag, storeHandler);
+      //tag = STORE_HLRC_HANDLER;
+      //comm->setCallback(tag, storeHandlerForHLRC); // XXX
+      tag = ACQUIRE_HANDLER;
+      comm->setCallback(tag, acquireHandler);
+      tag = RELEASE_HANDLER;
+      comm->setCallback(tag, releaseHandler);
+      tag = SYNC_HANDLER;
+      comm->setCallback(tag, syncHandler);
+      tag = MMAP_HANDLER;
+      comm->setCallback(tag, mmapHandler);
+      tag = MEMSET_HANDLER;
+      comm->setCallback(tag, memsetHandler);
+      tag = MEMCPY_HANDLER;
+      comm->setCallback(tag, memcpyHandler);
+      tag = MEMCPY_HLRC_HANDLER;
+      comm->setCallback(tag, memcpyHandlerForHLRC);
+      tag = GLOBAL_SEGFAULT_HANDLER;
+      comm->setCallback(tag, globalSegfaultHandler);
+      tag = HEAP_SEGFAULT_HANDLER;
+      comm->setCallback(tag, heapSegfaultHandler);
+      tag = GLOBAL_INIT_COMPLETE_HANDLER;
+      comm->setCallback(tag, globalInitCompleteHandler);
+
+    }
+
+    extern "C" void UVAServerInitializer(CommManager *comm_) {
 #ifdef DEBUG_UVA
       LOG("UVA manager(server) : initialize\n");
 #endif
-      RuntimeClientConnTb = new map<int *, QSocket *>(); 
+      //RuntimeClientConnTb = new map<int *, QSocket *>(); 
+      RuntimeClientConnTb = new vector<uint32_t>();
       pageMap = new map<long, struct pageInfo*>();
       assert(!isInitEnd && "When server init, isInitEnd value should be false.");
-      pthread_create(&openThread, NULL, ServerOpenRoutine, NULL);
-    }
 
+      comm = comm_;
+      //pthread_create(&openThread, NULL, ServerOpenRoutine, NULL);
+    }
+/*
     static void resetServer() {
       if (RuntimeClientConnTb->empty()) {
         delete RuntimeClientConnTb;
@@ -52,11 +91,13 @@ namespace corelab {
         isInitEnd = false;
       }
     }
-
-    extern "C" void UVAServerFinalize() {
-      pthread_join(openThread, NULL);
+*/
+    extern "C" void UVAServerFinalizer() {
+      //pthread_join(openThread, NULL);
+      delete RuntimeClientConnTb;
+      delete pageMap;
     }
-
+#if 0
     void* ServerOpenRoutine(void *) {
 #ifdef DEBUG_UVA
       LOG("UVA manager(server) : after pthread_create serveropenroutine\n");
@@ -80,117 +121,58 @@ namespace corelab {
 #endif
       return NULL;
     }
-
-    void* ClientRoutine(void * data) {
-#ifdef DEBUG_UVA
-      printf("[SERVER] client Routine called (%d)\n", *((int*)data));
-#endif
-      (*RuntimeClientConnTb)[(int*)data] = socket; 
-      if (isInitEnd) {
-#ifdef DEBUG_UVA
-        printf("[SERVER] Oh.. you are late (This client comes in after glb init finished\n");
-#endif
-        socket->pushWordF(1, (int*)data);
-        socket->sendQue((int*)data);
-      }
-      int *clientId = (int *)data;
-      int mode;
-      int rval = 0; // for thread_exit
-
-      while(true) {
-//        pthread_mutex_lock(&mutex);
-        socket->receiveQue(clientId);
-#ifdef UVA_EVAL
-        StopWatch watchHandle;
-        watchHandle.start();
-#endif
-        
-        mode = socket->takeWordF(clientId);
-#ifdef DEBUG_UVA
-        LOG("[server] *** Receive message from client (id: %d, mode %d) ***\n", *clientId, mode);  
 #endif
 
-        switch(mode) {
-          case THREAD_EXIT:
-            //pthread_mutex_unlock(&mutex);
-            RuntimeClientConnTb->erase(clientId);
+    // XXX XXX XXX
+    void newfaceHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-            LOG("[server] thread exit! now # of connected clients : (%d)\n\n", RuntimeClientConnTb->size());
+      LOG("[SERVER] New Face is comming !! (srcid:%d)\n", srcid);
 #endif
-            pthread_exit(&rval);
-            break;
-          case HEAP_ALLOC_REQ: /*** heap allocate request ***/
-            heapAllocHandler(clientId); 
-            break;
-          case LOAD_REQ: /*** load request ***/
-            loadHandler(clientId);
-            break;
-          case STORE_REQ: /*** store request ***/
-            storeHandler(clientId);
-            break;
-          case MMAP_REQ: /*** mmap request ***/
-            mmapHandler(clientId);
-            break;
-          case MEMSET_REQ:
-            // XXX: should handle HLRC version.
-            memsetHandler(clientId);
-            break;
-          case MEMCPY_REQ:
-#ifdef HLRC
-            memcpyHandlerForHLRC(clientId);
-#else
-            memcpyHandler(clientId);
+      if (std::find(RuntimeClientConnTb->begin(), RuntimeClientConnTb->end(), srcid) != RuntimeClientConnTb->end()) {
+        assert(0 && "[SERVER] YOU ARE NOT A NEW FACE !!\n");
+      } else { 
+#ifdef DEBUG_UVA
+        LOG("[SERVER] New Face (%d) is going in RuntimeClientConnTb\n", srcid);
 #endif
-            break;
-          case HEAP_SEGFAULT_REQ:
-            heapSegfaultHandler(clientId);
-            break;
-          case GLOBAL_SEGFAULT_REQ:
-            globalSegfaultHandler(clientId);
-            break;
-          case GLOBAL_INIT_COMPLETE_SIG:
-            globalInitCompleteHandler(clientId);
-            break;
-          case INVALID_REQ:
-            invalidHandler(clientId);
-            break;
-          case RELEASE_REQ:
-            releaseHandler(clientId);
-            break;
-          case SYNC_REQ:
-            syncHandler(clientId);
-            break;
-          default:
-            assert(0 && "wrong request mode");
-            break;
+        RuntimeClientConnTb->push_back(srcid);
+        if (isInitEnd) {
+#ifdef DEBUG_UVA
+          LOG("[SERVER] Oh.. you are late (This client comes in after glb init finished\n");
+#endif
+          comm->pushWord(BLOCKING, 1, srcid); // send permission.
+          comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+          LOG("[SERVER] newfaceHandler END (successfully sends start permission) (srcid:%d)\n", srcid);
+#endif
+        } else {
+#ifdef DEBUG_UVA
+          LOG("[SERVER] newfaceHandler END (couldn't sends start permission) (srcid:%d)\n", srcid);
+#endif
         }
-        //pthread_mutex_unlock(&mutex); // TODO need acquire & release lock
-/*#ifdef UVA_EVAL
-        watchHandle.end();
-        printf("HANDLE %lf mode (%d) %08x\n", watchHandle.diff(), mode, id);
-#endif*/
       }
-      return NULL;
     }
 
-    void invalidHandler(int* clientId) {
-      pthread_mutex_lock(&acquireLock);
+    void acquireHandler(void *data_, uint32_t size, uint32_t srcid) {
+#ifdef DEBUG_UVA
+      LOG("[server] acquireHandler START (srcid:%d)", srcid);
+#endif
+      //pthread_mutex_lock(&acquireLock);
       set<uint32_t> sendAddrSet;
       // find same cliendId in accessSet in pageInfo
       for(map<long, struct pageInfo*>::iterator it = pageMap->begin(); it != pageMap->end(); it++) {
         set<int>* my_var = it->second->accessS;
-        if(my_var->find(*clientId) == my_var->end()) {
+        if(my_var->find(srcid) == my_var->end()) {
           uint32_t intAddr;
           memcpy(&intAddr, &(it->first), 4);
           sendAddrSet.insert(intAddr);
 #ifdef DEBUG_UVA
-          LOG("[server] add invalidation address (%p)(%d) for clientId (%d)\n", reinterpret_cast<void*>(it->first), intAddr, *clientId);
+          LOG("[server] add invalidation address (%p)(%d) for srcid (%d)\n", reinterpret_cast<void*>(it->first), intAddr, srcid);
 #endif
         }
       }
-      socket->pushWord(INVALID_REQ_ACK, clientId); 
+      //comm->pushWord(BLOCKING, ACQUIRE_REQ_ACK, srcid); 
       //socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
-      socket->pushWord(sendAddrSet.size(), clientId); // send addressNum 
+      comm->pushWord(BLOCKING, sendAddrSet.size(), srcid); // send addressNum 
 
       // send address
       //long* addressbuf = (long *) malloc(sizeof(void*));
@@ -199,13 +181,13 @@ namespace corelab {
         //*addressbuf = *it * PAGE_SIZE;
         *addressbuf = *it;
         //socket->pushRange(addressbuf, sizeof(void*), clientId); 
-        socket->pushRange(addressbuf, 4, clientId); 
+        comm->pushRange(BLOCKING, addressbuf, 4, srcid); 
       }
-      socket->sendQue(clientId);
+      comm->sendQue(BLOCKING, srcid);
       free(addressbuf);
 
 #ifdef DEBUG_UVA
-      LOG("[server] send invalid Address");
+      LOG("[server] acquireHandler END (srcid:%d)", srcid);
 #endif
     }
 
@@ -213,19 +195,23 @@ namespace corelab {
      *  1. take store logs (aka diff or changes) from releaser
      *  2. apply store logs into Home's corresponding pages
      */
-    void releaseHandler(int *clientId) {
+    void releaseHandler(void *data_, uint32_t size_, uint32_t srcid) {
+#ifdef DEBUG_UVA
+      LOG("[server] releaseHandler END (srcid:%d)", srcid);
+#endif
       int sizeStoreLogs;
       void *storeLogs;
 //      socket->receiveQue(clientId);
-      sizeStoreLogs = socket->takeWordF(clientId);
+      sizeStoreLogs = *(int*)data_;
 #ifdef DEBUG_UVA
-          LOG("[server] sizeStoreLogs : (%d)\n", sizeStoreLogs);
+      LOG("[server] sizeStoreLogs : (%d)\n", sizeStoreLogs);
 #endif
       storeLogs = malloc(sizeStoreLogs);
 #ifdef DEBUG_UVA
-          LOG("[server] StoreLogs address : (%p)\n", storeLogs);
+      LOG("[server] StoreLogs address : (%p)\n", storeLogs);
 #endif
-      socket->takeRangeF(storeLogs, sizeStoreLogs, clientId);
+      //socket->takeRangeF(storeLogs, sizeStoreLogs, clientId);
+      memcpy(storeLogs, (char*)data_ + 4, sizeStoreLogs);
       
 #if UINTPTR_MAX == 0xffffffff
       /* 32-bit */
@@ -264,30 +250,44 @@ namespace corelab {
       } // while END
       free(addr);
       free(storeLogs);
-      pthread_mutex_unlock(&acquireLock);
+      //pthread_mutex_unlock(&acquireLock);
     }
 
-    void syncHandler(int *clientId) {
+    /******************************/
+    /******** SYNC HANDLER ********/
+    /******************************/
+    void syncHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef UVA_EVAL
       StopWatch watch;
       watch.start();
 #endif
-      pthread_mutex_lock(&acquireLock);
+      //pthread_mutex_lock(&acquireLock);
 #ifdef DEBUG_UVA
-      LOG("[server] syncHandler START\n");
+      LOG("[server] syncHandler START (srcid:%d)\n", srcid);
 #endif
       int sizeStoreLogs;
       void *storeLogs;
-      sizeStoreLogs = socket->takeWordF(clientId);
+      sizeStoreLogs = *(int*)data_;
 #ifdef DEBUG_UVA
       LOG("[server] sizeStoreLogs : (%d)\n", sizeStoreLogs);
 #endif
+      set<uint32_t> sendAddrSet;
+      // find same cliendId in accessSet in pageInfo
+      for(map<long, struct pageInfo*>::iterator it = pageMap->begin(); it != pageMap->end(); it++) {
+        set<int>* my_var = it->second->accessS;
+        if(my_var->find(srcid) == my_var->end()) {
+          uint32_t intAddr;
+          memcpy(&intAddr, &(it->first), 4);
+          sendAddrSet.insert(intAddr);
+#ifdef DEBUG_UVA
+          LOG("[server] add invalidation address (%p)(%d) for srcid (%d)\n", reinterpret_cast<void*>(it->first), intAddr, srcid);
+#endif
+        }
+      }
       if (sizeStoreLogs != 0) {
         storeLogs = malloc(sizeStoreLogs);
-#ifdef DEBUG_UVA
-        LOG("[server] StoreLogs address : (%p)\n", storeLogs);
-#endif
-        socket->takeRangeF(storeLogs, sizeStoreLogs, clientId);
+        //socket->takeRangeF(storeLogs, sizeStoreLogs, clientId);
+        memcpy(storeLogs, (char*)data_ + 4, sizeStoreLogs); // XXX
 #if UINTPTR_MAX == 0xffffffff
         /* 32-bit */
         uint32_t intAddrOfStoreLogs;
@@ -321,16 +321,9 @@ namespace corelab {
           struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*addr))];
           if (pageInfo != NULL) {
             pageInfo->accessS->clear();
-            /* XXX XXX XXX XXX XXX This is for preventing ... */
-            if (isFirstUvaSync) {
-              if ((void*)0x15000000 <= addr && addr < (void*)0x16000000) {
-                isFirstUvaSync = false;
-              }
-            } else {  
-              pageInfo->accessS->insert(*clientId);
-            }
+            pageInfo->accessS->insert(srcid);
 #ifdef DEBUG_UVA
-            LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(*addr), *clientId);
+            LOG("[server] page (%p)'s accessSet is updated, srcid (%d)\n", truncToPageAddr(*addr), srcid);
 #endif
           } else {
             assert(0);
@@ -345,22 +338,10 @@ namespace corelab {
         free(storeLogs);
       }
 
-      set<uint32_t> sendAddrSet;
-      // find same cliendId in accessSet in pageInfo
-      for(map<long, struct pageInfo*>::iterator it = pageMap->begin(); it != pageMap->end(); it++) {
-        set<int>* my_var = it->second->accessS;
-        if(my_var->find(*clientId) == my_var->end()) {
-          uint32_t intAddr;
-          memcpy(&intAddr, &(it->first), 4);
-          sendAddrSet.insert(intAddr);
-#ifdef DEBUG_UVA
-          LOG("[server] add invalidation address (%p)(%d) for clientId (%d)\n", reinterpret_cast<void*>(it->first), intAddr, *clientId);
-#endif
-        }
-      }
       //socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
       //socket->pushWord(4, clientId); // send addressSize XXX support x64
-      socket->pushWord(sendAddrSet.size(), clientId); // send addressNum 
+      LOG("\n\nsendAddrSet,size : %d\n\n",sendAddrSet.size());
+      comm->pushWord(BLOCKING, sendAddrSet.size(), srcid); // send addressNum 
 
       // send address
       //long* addressbuf = (long *) malloc(sizeof(void*));
@@ -369,15 +350,15 @@ namespace corelab {
         //*addressbuf = *it * PAGE_SIZE;
         *addressbuf = *it;
         //socket->pushRange(addressbuf, sizeof(void*), clientId); 
-        socket->pushRange(addressbuf, 4, clientId); 
+        comm->pushRange(BLOCKING, addressbuf, 4, srcid); 
       }
-      socket->sendQue(clientId);
+      comm->sendQue(BLOCKING, srcid);
       free(addressbuf);
 
 #ifdef DEBUG_UVA
-      LOG("[server] syncHandler END\n\n");
+      LOG("[server] syncHandler END (srcid:%d)\n\n", srcid);
 #endif
-      pthread_mutex_unlock(&acquireLock);
+      //pthread_mutex_unlock(&acquireLock);
 #ifdef UVA_EVAL
       watch.end();
       FILE *fp = fopen("uva-eval-server.txt", "a");
@@ -386,13 +367,18 @@ namespace corelab {
 #endif
     }
 
-    void heapAllocHandler(int* clientId) {
+    void heapAllocHandler(void *data_, uint32_t size, uint32_t srcid) {
+#ifdef DEBUG_UVA
+      LOG("[SERVER] heapAllocHandler START (srcid:%d)\n", srcid);
+#endif
       int lenbuf;
-      int datalen = socket->takeWordF(clientId);
+      //int datalen = socket->takeWordF(clientId);
+      int datalen = *(int*)data_;
 #ifdef DEBUG_UVA
       LOG("[server] (datalen) : (%d)\n", datalen);
 #endif
-      socket->takeRange(&lenbuf, datalen, clientId);
+      //socket->takeRange(&lenbuf, datalen, clientId);
+      memcpy(&lenbuf, (char*)data_ + 4, datalen);
 #ifdef DEBUG_UVA
       LOG("[server] (takeRange) : (%d)\n", lenbuf);
 #endif
@@ -420,71 +406,76 @@ namespace corelab {
 #endif
       while(current <= lastPageAddr) {
         struct pageInfo* newPageInfo = new pageInfo();
-        newPageInfo->accessS->insert(*clientId);
+        newPageInfo->accessS->insert(srcid);
         //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
         (*pageMap)[(long)current] = newPageInfo;
 #ifdef DEBUG_UVA
-        LOG("[server] current (%p) is added into PageMap\n", reinterpret_cast<void*>(current));
+        //LOG("[server] current (%p) is added into PageMap\n", reinterpret_cast<void*>(current));
 #endif
         //assert(allocAddr != NULL && "mmap alloc failed in server");
         current += PAGE_SIZE;
       }
 
       // memory operation end
-      socket->pushWordF(HEAP_ALLOC_REQ_ACK, clientId);
-      socket->pushWordF(sizeof(allocAddr), clientId);
-      socket->pushRangeF(&allocAddr, sizeof(allocAddr), clientId);
-      socket->sendQue(clientId);
+      uint32_t sizeOfAllocAddr = (uint32_t)sizeof(allocAddr);
+      //comm->pushWord(BLOCKING, HEAP_ALLOC_REQ_ACK, srcid);
+      comm->pushWord(BLOCKING, sizeOfAllocAddr, srcid);
+      comm->pushRange(BLOCKING, &allocAddr, sizeOfAllocAddr, srcid);
+      comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+      LOG("[SERVER] heapAllocHandler END (srcid:%d)\n", srcid);
+#endif
       return;
     }
 
-    void loadHandler(int* clientId) {
+    void loadHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] get Load request from client (id: %d)\n", *clientId);
+      LOG("[server] get Load request from client (id: %d)\n", srcid);
 #endif
 
       // receive type length (how much load in byte)
-      size_t lenType = socket->takeWordF(clientId);
+      size_t lenType = *(size_t*)data_;
 #ifdef DEBUG_UVA
       LOG("[server] type length (how much): %d\n", lenType);
 #endif
 
       // receive requested addr (where)
-      void* requestedAddr = reinterpret_cast<void*>(socket->takeWordF(clientId));
+      void* requestedAddr = reinterpret_cast<void*>(*(int*)((char*)data_ + 4));
 #ifdef DEBUG_UVA
       LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
 #endif
 
       // send ack with value (what to load)
-      socket->pushWordF(LOAD_REQ_ACK, clientId);
-      socket->pushWordF(lenType, clientId);
-      socket->pushRangeF(requestedAddr, lenType, clientId);
+      //comm->pushWord(BLOCKING, LOAD_REQ_ACK, srcid);
+      comm->pushWord(BLOCKING, lenType, srcid);
+      comm->pushRange(BLOCKING, requestedAddr, (uint32_t)lenType, srcid);
 #ifdef DEBUG_UVA
       LOG("[server] TEST loaded value (what): %d\n", *((int*)requestedAddr));
 #endif
-      socket->sendQue(clientId);
+      comm->sendQue(BLOCKING, srcid);
       return;
     }
-    void storeHandler(int* clientId) {
+    void storeHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] get store request from client\n");
+      LOG("[server] get store request from client (%d)\n", srcid);
 #endif
 
       // get type length (how much store in byte)
-      size_t lenType = socket->takeWordF(clientId);
+      size_t lenType = *(int*)data_;
 #ifdef DEBUG_UVA
       LOG("[server] type length (how much store in byte): %d\n", lenType);
 #endif
 
       // get requested addr (where)
-      void* requestedAddr = reinterpret_cast<void*>(socket->takeWordF(clientId));
+      void* requestedAddr = reinterpret_cast<void*>(*(int*)((char*)data_ + 4));
 #ifdef DEBUG_UVA
       LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
 #endif
 
       // get value which client want to store (what to store)
       void* valueToStore = malloc(lenType);
-      socket->takeRangeF(valueToStore, lenType, clientId);
+      //socket->takeRangeF(valueToStore, lenType, clientId);
+      memcpy(valueToStore, (char*)data_ + 8, lenType);
 #ifdef DEBUG_UVA
       LOG("[server] TEST stored value (what): %d\n", *((int*)valueToStore));
 #endif
@@ -493,10 +484,20 @@ namespace corelab {
       memcpy(requestedAddr, valueToStore, lenType);
       free(valueToStore);
       // send ack
-      socket->pushWordF(STORE_REQ_ACK, clientId); // ACK
-      socket->pushWordF(0, clientId); // ACK ( 0: normal, -1: abnormal ) FIXME useless
-      socket->sendQue(clientId);
+      comm->pushWord(BLOCKING, STORE_REQ_ACK, srcid); // ACK
+      comm->pushWord(BLOCKING, 0, srcid); // ACK ( 0: normal, -1: abnormal ) FIXME useless
+      comm->sendQue(BLOCKING, srcid);
 
+      struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(requestedAddr))];
+      if (pageInfo != NULL) {
+        pageInfo->accessS->clear();
+        pageInfo->accessS->insert(srcid);
+#ifdef DEBUG_UVA
+        LOG("[server] page (%p)'s accessSet is updated, srcid (%d)\n", truncToPageAddr(requestedAddr), srcid);
+#endif
+      } else {
+        assert(0);
+      }
 #ifdef DEBUG_UVA
       // test
       hexdump("store", requestedAddr, lenType);
@@ -504,23 +505,24 @@ namespace corelab {
 #endif
       return;
     }
-    void mmapHandler(int* clientId) {
+    void mmapHandler(void *data_, uint32_t size, uint32_t srcid) {
       size_t lenMmap;
 #ifdef DEBUG_UVA
-      LOG("[server] get mmap request from client (%d)\n", *clientId);
+      LOG("[server] mmapHandler START (srcid:%d)\n", srcid);
 #endif
 
       // get requested addr (where)
-      void* requestedAddr = reinterpret_cast<void*>(socket->takeWordF(clientId));
+      void* requestedAddr = reinterpret_cast<void*>(*(int*)data_);
 #ifdef DEBUG_UVA
       LOG("[server] requestedAddr (where): (%p)\n", requestedAddr);
 #endif
 
       // get size variable's length (32 or 64 bits)
-      size_t sizeOfLength = socket->takeWordF(clientId);
+      uint32_t sizeOfLength = *(uint32_t*)((char*)data_ + 4);
 
       // get length (how much mmap)
-      socket->takeRangeF(&lenMmap, sizeOfLength, clientId);
+      //socket->takeRangeF(&lenMmap, sizeOfLength, clientId);
+      memcpy(&lenMmap, (char*)data_ + 8, (size_t)sizeOfLength);
 #ifdef DEBUG_UVA
       LOG("[server] mmap length (how much mmap in byte): %d\n", lenMmap);
 #endif
@@ -541,7 +543,7 @@ namespace corelab {
 #endif
       while(current <= lastPageAddr) {
         struct pageInfo* newPageInfo = new pageInfo();
-        newPageInfo->accessS->insert(*clientId);
+        newPageInfo->accessS->insert(srcid);
         //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
         (*pageMap)[(long)current] = newPageInfo;
 #ifdef DEBUG_UVA
@@ -551,48 +553,55 @@ namespace corelab {
         current += PAGE_SIZE;
       }
 
-      socket->pushWordF(MMAP_REQ_ACK, clientId); // ACK
-      socket->pushWordF(0, clientId); // ACK (0: normal, -1:abnormal)
-      socket->sendQue(clientId);
+      //comm->pushWord(BLOCKING, MMAP_REQ_ACK, srcid); // ACK
+      //comm->pushWord(BLOCKING, 0, srcid); // ACK (0: normal, -1:abnormal)
+      //comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+      LOG("[server] mmapHandler END (srcid:%d)\n", srcid);
+#endif
       return;
     }
-    void memsetHandler(int* clientId) {
+    void memsetHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] get memset request from client (%d)\n", *clientId);
+      LOG("[server] memsetHandler START (srcid:%d)\n", srcid);
 #endif
-      void* requestedAddr = reinterpret_cast<void*>(socket->takeWordF(clientId));
-      int value = socket->takeWordF(clientId);
-      size_t num = socket->takeWordF(clientId);
+      void* requestedAddr = reinterpret_cast<void*>(*(int*)data_);
+      int value = *(int*)((char*)data_ + 4);;
+      size_t num = *(size_t*)((char*)data_ + 8);
 
 #ifdef DEBUG_UVA
       LOG("[server] memset(%p, %d, %d)\n", requestedAddr, value, num);
 #endif
       memset(requestedAddr, value, num);
 
-      socket->pushWordF(MEMSET_REQ_ACK, clientId);
-      socket->sendQue(clientId);
+      comm->pushWord(BLOCKING, MEMSET_REQ_ACK, srcid);
+      comm->sendQue(BLOCKING, srcid);
 #ifdef DEBUG_UVA
       hexdump("memset", requestedAddr, num);
 #endif
       //xmemDumpRange(requestedAddr, num);
+#ifdef DEBUG_UVA
+      LOG("[server] memsetHandler END (srcid:%d)\n", srcid);
+#endif
       return;
     }
-    void memcpyHandler(int* clientId) {
+    void memcpyHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] get memcpy request from client\n");
+      LOG("[server] memcpyHandler START (srcid:%d)\n", srcid);
 #endif
-      int typeMemcpy = socket->takeWordF(clientId);
+      int typeMemcpy = *(int*)data_;
       if (typeMemcpy == 1) {
 #ifdef DEBUG_UVA
         LOG("[server] typeMemcpy 1 | dest is in UVA\n");
 #endif
-        void* dest = reinterpret_cast<void*>(socket->takeWordF(clientId));
+        void* dest = reinterpret_cast<void*>(*(int*)((char*)data_ + 4));
 #ifdef DEBUG_UVA
         LOG("[server] requested memcpy dest addr (%p)\n", dest);
 #endif
-        size_t num = socket->takeWordF(clientId);
+        size_t num = *(size_t*)((char*)data_ + 8);
         void* valueToStore = malloc(num);
-        socket->takeRangeF(valueToStore, num, clientId);
+        //socket->takeRangeF(valueToStore, num, clientId);
+        memcpy(valueToStore, (char*)data_ + 12, num);
 #ifdef DEBUG_UVA
         //hexdump("server", valueToStore, num);
         LOG("[server] memcpy(%p, , %d)\n", dest, num);
@@ -602,8 +611,8 @@ namespace corelab {
         memcpy(dest, valueToStore, num);
         free(valueToStore);
 
-        socket->pushWordF(MEMCPY_REQ_ACK, clientId);
-        socket->sendQue(clientId);
+        comm->pushWord(BLOCKING, MEMCPY_REQ_ACK, srcid);
+        comm->sendQue(BLOCKING, srcid);
 #ifdef DEBUG_UVA
         //hexdump("memcpy dest", dest, num); 
 #endif
@@ -611,26 +620,29 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[server] typeMemcpy 2 | src is in UVA, dest isn't in UVA\n");
 #endif
-        void* src = reinterpret_cast<void*>(socket->takeWordF(clientId));
+        void* src = reinterpret_cast<void*>(*(int*)((char*)data_ + 4));
 #ifdef DEBUG_UVA
         LOG("[server] requested memcpy src addr (%p)\n", src);
 #endif
-        size_t num = socket->takeWordF(clientId);
+        size_t num = *(size_t*)((char*)data_ + 8);
 #ifdef DEBUG_UVA
         LOG("[server] requested memcpy num (%d)\n", num);
 #endif
-        socket->pushRangeF(src, num, clientId);
+        comm->pushRange(BLOCKING, src, (uint32_t)num, srcid);
         // don't need to do memcpy in server
-        socket->sendQue(clientId);
+        comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+      LOG("[server] memcpyHandler END (srcid:%d)\n", srcid);
+#endif
       }
       return;
     }
 
-    void memcpyHandlerForHLRC(int* clientId) {
+    void memcpyHandlerForHLRC(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] HLRC get memcpy request from client\n");
+      LOG("[server] HLRC-MEMCPY memcpyHandlerForHLRC START (srcid:%d)\n", srcid);
 #endif
-      int typeMemcpy = socket->takeWordF(clientId);
+      int typeMemcpy = *(int*)data_;
       if (typeMemcpy == 1) {
 #ifdef DEBUG_UVA
         LOG("[server] typeMemcpy 1 | dest is in UVA | SHOULD NOT BE!!!!\n");
@@ -640,11 +652,11 @@ namespace corelab {
 #ifdef DEBUG_UVA
         LOG("[server] HLRC typeMemcpy 2 | src is in UVA, dest isn't in UVA\n");
 #endif
-        void* src = reinterpret_cast<void*>(socket->takeWordF(clientId));
+        void* src = reinterpret_cast<void*>(*(int*)((char*)data_ + 4));
 #ifdef DEBUG_UVA
         LOG("[server] HLRC requested memcpy src addr (%p)\n", src);
 #endif
-        size_t num = socket->takeWordF(clientId);
+        size_t num = *(size_t*)((char*)data_ + 8);
 #ifdef DEBUG_UVA
         LOG("[server] HLRC requested memcpy num (%d)\n", num);
 #endif
@@ -660,28 +672,31 @@ namespace corelab {
         while(current <= lastPageAddr) {
           struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(current_))];
           if (pageInfo != NULL) {
-          pageInfo->accessS->insert(*clientId);
+          pageInfo->accessS->insert(srcid);
           //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
 #ifdef DEBUG_UVA
-          LOG("[server] client (%d) is added into (%p) in PageMap\n", *clientId, reinterpret_cast<void*>(current));
+          LOG("[server] client (%d) is added into (%p) in PageMap\n", srcid, reinterpret_cast<void*>(current));
 #endif
           } else {
             assert(0);
           }
           current += PAGE_SIZE;
         }
-        socket->pushRangeF(src, num, clientId);
+        comm->pushRange(BLOCKING, src, (uint32_t)num, srcid);
         // don't need to do memcpy in server
-        socket->sendQue(clientId);
+        comm->sendQue(BLOCKING, srcid);
       }
+#ifdef DEBUG_UVA
+      LOG("[server] HLRC-MEMCPY memcpyHandlerForHLRC END (srcid:%d)\n", srcid);
+#endif
       return;
     }
-    void heapSegfaultHandler(int* clientId) {
-      void **fault_heap_addr = reinterpret_cast<void**>(socket->takeWordF(clientId));
+    void heapSegfaultHandler(void *data_, uint32_t size, uint32_t srcid) {
+      void **fault_heap_addr = reinterpret_cast<void**>(*(int*)data_);
 #ifdef DEBUG_UVA
-      LOG("[server] get HEAP_SEGFAULT_REQ from client (%d) on (%p)\n", *clientId, fault_heap_addr);
+      LOG("[server] get HEAP_SEGFAULT_REQ from client (%d) on (%p)\n", srcid, *fault_heap_addr);
 #endif
-      socket->pushRangeF(truncToPageAddr(fault_heap_addr), 0x1000, clientId);
+      comm->pushRange(BLOCKING, truncToPageAddr(fault_heap_addr), 0x1000, srcid);
       
       /* XXX: Below are for optimization ... not sure XXX */
       void *trunc = truncToPageAddr(fault_heap_addr);
@@ -691,24 +706,27 @@ namespace corelab {
       struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(fault_heap_addr))];
       if (pageInfo != NULL) {
         //pageInfo->accessS->clear();
-        pageInfo->accessS->insert(*clientId);
+        pageInfo->accessS->insert(srcid);
 #ifdef DEBUG_UVA
-        LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(fault_heap_addr), *clientId);
+        LOG("[server] page (%p)'s accessSet is updated, srcid (%d)\n", truncToPageAddr(fault_heap_addr), srcid);
 #endif
       } else {
         assert(0);
       }
-      socket->sendQue(clientId);
+      comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+      LOG("[server] heapSegfaultHandler END ** client (%d)'s fault on (%p) **\n", srcid, fault_heap_addr);
+#endif
       return;
     }
     
-    void globalSegfaultHandler(int* clientId) {
+    void globalSegfaultHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] get GLOBAL_SEGFALUT_REQ from client (%d)\n", *clientId);
+      LOG("[server] get GLOBAL_SEGFALUT_REQ from client (%d)\n", srcid);
 #endif
 
-      void* ptNoConstBegin = reinterpret_cast<void*>(socket->takeWordF(clientId));
-      void* ptNoConstEnd = reinterpret_cast<void*>(socket->takeWordF(clientId));
+      void* ptNoConstBegin = reinterpret_cast<void*>(*(int*)data_);
+      void* ptNoConstEnd = reinterpret_cast<void*>(*(int*)((char*)data_ + 4));
 
       uintptr_t target = (uintptr_t)(&ptNoConstBegin);
 #ifdef DEBUG_UVA
@@ -716,9 +734,9 @@ namespace corelab {
 
       LOG("[server] send ack (%d)\n", GLOBAL_SEGFAULT_REQ_ACK);
 #endif
-      socket->pushWordF(GLOBAL_SEGFAULT_REQ_ACK, clientId); // ACK
-      socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptNoConstBegin))),
-          (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, clientId);
+      comm->pushWord(BLOCKING, GLOBAL_SEGFAULT_REQ_ACK, srcid); // ACK
+      comm->pushRange(BLOCKING, (void*)(*((uintptr_t *)(uintptr_t)(&ptNoConstBegin))),
+          (uintptr_t)ptNoConstEnd - (uintptr_t)ptNoConstBegin, srcid);
       //socket->pushRangeF((void*)(*((uintptr_t *)(uintptr_t)(&ptConstBegin))), (uintptr_t)ptConstEnd - (uintptr_t)ptConstBegin, clientId);
       
       /* XXX: Below are for optimization ... not sure XXX */
@@ -726,49 +744,51 @@ namespace corelab {
       struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(ptNoConstBegin))];
       if (pageInfo != NULL) {
         //pageInfo->accessS->clear();
-        pageInfo->accessS->insert(*clientId);
+        pageInfo->accessS->insert(srcid);
 #ifdef DEBUG_UVA
-        LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(ptNoConstBegin), *clientId);
+        LOG("[server] page (%p)'s accessSet is updated, clientId (%d)\n", truncToPageAddr(ptNoConstBegin), srcid);
 #endif
       } else {
         assert(0);
       }
 
-      socket->sendQue(clientId);
+      comm->sendQue(BLOCKING, srcid);
 #ifdef DEBUG_UVA
-      LOG("[server] GLOBAL_SEGFALUT_REQ process end (%d)\n", *clientId);
+      LOG("[server] GLOBAL_SEGFALUT_REQ process end (%d)\n", srcid);
 #endif
       return;
     }
 
-    void globalInitCompleteHandler(int* clientId) {
+    void globalInitCompleteHandler(void *data_, uint32_t size, uint32_t srcid) {
 #ifdef DEBUG_UVA
-      LOG("[server] get GLOBAL_INIT_COMPLETE_SIG from client (%d)\n", *clientId);
+      LOG("[server] Global Init Complete Signal is comming !! (srcid:%d)\n", srcid);
 #endif
       if (isInitEnd) {
-#ifdef DEBUG_UVA
-        LOG("[server] already complete... somthing wrong..\n");
-#endif
+        assert(0 && "[server] already complete ... !? what did you do ?");
         return;
       }
 
       isInitEnd = true;
+      RuntimeClientConnTb->push_back(srcid);
       for(auto &i : *RuntimeClientConnTb) {
-        if(*(i.first) != *clientId) {
+        if(i != srcid) {
 #ifdef DEBUG_UVA
-          LOG("[server] send 'start permission' signal to client (%d)\n", *(i.first));
+          LOG("[server] send 'start permission' signal to client (%d)\n", i);
 #endif
-          socket->pushWordF(1, i.first);
-          socket->sendQue(i.first);
+          comm->pushWord(BLOCKING, 1, i);
+          comm->sendQue(BLOCKING, i);
         }
       }
-      socket->pushWordF(GLOBAL_INIT_COMPLETE_SIG_ACK, clientId);
-      socket->sendQue(clientId);
+      comm->pushWord(BLOCKING, GLOBAL_INIT_COMPLETE_SIG_ACK, srcid);
+      comm->sendQue(BLOCKING, srcid);
+#ifdef DEBUG_UVA
+      LOG("[server] globalInitCompleteHandler END (srcid:%d)\n", srcid);
+#endif
       return;
     }
 
 
-
+#if 0
     // XXX XXX XXX XXX XXX 
     // XXX DEPRECATED : These two function may not be used.
     extern "C" void uva_server_load(void *addr, size_t len) {
@@ -783,5 +803,7 @@ namespace corelab {
       LOG("[server] Store instr, addr %p, len %d\n", addr, len); 
 #endif
     }
+#endif
+
   }
 }
