@@ -357,15 +357,18 @@ namespace corelab {
      *  This function is called after RegisterDevice of Esperanto.
      *  Waiter will wait until all global variables are registered. 
      */
-    extern "C" void waiter(void **stackAddr, uint32_t numGV) {
-      void *gv = *stackAddr;
+    extern "C" void waiter(void ***stackAddr, uint32_t numGV) {
+      void *gv = NULL;
+      uva_sync();
       for (uint32_t i = 0; i < numGV; i++) {
+        gv = **stackAddr;
         while(!gv) {
-          LOG("$$$$$$$$$$$$$$$$ %p\n\n", gv);
+          gv = **stackAddr;
           uva_sync();
           sleep(1);
         }
-        gv = (void*)((char*)gv + 8);
+        if (i == numGV-1) break;
+        stackAddr = (void***)((char*)stackAddr + 8);
       }
     } // waiter
 

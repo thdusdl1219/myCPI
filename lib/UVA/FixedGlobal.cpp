@@ -442,6 +442,7 @@ namespace corelab {
 			mapGlobalToFixed.insert (GlobalToFixedPair (gvar, fgvar));
 		}
 
+    /* BONG: make vecClasses from metadata */
     std::vector<std::string> *vecClasses = new std::vector<std::string>();
     std::vector<FixedGlobalVariable*> *vecEspClassGvar = new std::vector<FixedGlobalVariable*>();
     NamedMDNode *classNamedMD = pM->getNamedMetadata("esperanto.class");
@@ -453,6 +454,7 @@ namespace corelab {
         vecClasses->push_back(className);
       }
     }
+
 		/* Correct references to globals */
 		for (GlobalToFixedMap::iterator it = mapGlobalToFixed.begin ();
 				 it != mapGlobalToFixed.end (); ++it) {
@@ -460,14 +462,8 @@ namespace corelab {
 			FixedGlobalVariable *fgvar = it->second;
 			
 			gvar->replaceAllUsesWith (fgvar);
-      //fgvar->dump();
-      //std::vector<GlobalVariable*> vecGvars;
-      //findGV(M, vecGvars);
-      InstInsertPt out;
-      std::vector<Value*> actuals(2);
-      //actuals[0] = 0x15000000;
-      //actuals[1] = ;
-      //for (GlobalVariable *gv : vecGvars) {
+      
+      /* BONG: make vecEspClassGvar */
       if (fgvar->getType()->isPointerTy() 
           && fgvar->getType()->getPointerElementType()->isPointerTy()
           && fgvar->getType()->getPointerElementType()->getPointerElementType()->isStructTy()) {
@@ -481,10 +477,9 @@ namespace corelab {
           }
         }
       }
-      //}
-
       //findAndInsertLoadInstForAllUsesRecursively(fgvar);
     }	
+
     InstInsertPt out;
     std::vector<Value*> actuals(2);
 
@@ -495,30 +490,73 @@ namespace corelab {
         Type::getInt32Ty(pM->getContext()),
         (Type*)0);
 
-    for(auto Fgvar : *vecEspClassGvar) {
-      for(auto U : Fgvar->users()){  // U is of type User*
-        if (Instruction *I = dyn_cast<Instruction>(U)){
-          if(StoreInst *SI = dyn_cast<StoreInst>(I)) {
-            // an instruction uses V
-            out = InstInsertPt::After(I);
-            //out << CallInst::Create(UvaSync, actuals, "");
+		for(auto FI = pM->begin();FI != pM->end(); ++FI){
+			Function* F = (Function*) &*FI;
+			//if (F->isDeclaration()) continue;
+			for(auto BI = F->begin();BI != F->end(); ++BI){
+        BasicBlock* B = (BasicBlock*) &*BI;
+        for(auto Ii = B->begin();Ii != B->end(); ++Ii){
+          Instruction* inst = (Instruction*)&*Ii;
+          MDNode* MD = inst->getMetadata("esperanto.constructor");
+				  if (MD == NULL) continue;
+          Function *target_func = F;
+          //target_func->dump();
+          for (auto bb = target_func->begin(); bb != target_func->end(); ++bb) {
+            for (auto ii = bb->begin(); ii != bb->end(); ++ii) {
+              if (StoreInst *si = dyn_cast<StoreInst>(ii)) {
+                Type *ptrOpType = si->getPointerOperand()->getType();
+                if (ptrOpType->isPointerTy()
+                    && ptrOpType->getPointerElementType()->isPointerTy()
+                    && ptrOpType->getPointerElementType()->getPointerElementType()->isStructTy()) {
+                  Type *classType = ptrOpType->getPointerElementType()->getPointerElementType();
+                  StringRef className = classType->getStructName();
+                  if (className.startswith_lower(StringRef("class."))) {
+                    std::string name_ = className.str();
+                    std::string realName = name_.substr(6);
+                    if (std::find(vecClasses->begin(), vecClasses->end(), realName) != vecClasses->end()) {
+                      // an instruction uses V
+                      out = InstInsertPt::After(si);
+                      //out << CallInst::Create(UvaSync, actuals, "");
 
-            AllocaInst *alloca = new AllocaInst(Type::getInt8PtrTy(pM->getContext()), ConstantInt::get(Type::getInt32Ty(pM->getContext()), vecEspClassGvar->size()), (unsigned)8);
-            out << alloca;
-            Value *temp = ConstantPointerNull::get(Type::getInt8PtrTy(pM->getContext()));
-            for (auto fgvar_ : *vecEspClassGvar) {
-              StoreInst *si = new StoreInst(Casting::castTo(fgvar_, temp, out, &(pM->getDataLayout())), alloca);
-              out << si;
+                      AllocaInst *alloca = new AllocaInst(Type::getInt8PtrTy(pM->getContext()), ConstantInt::get(Type::getInt32Ty(pM->getContext()), vecEspClassGvar->size()), (unsigned)8);
+                      out << alloca;
+                      Value *temp = ConstantPointerNull::get(Type::getInt8PtrTy(pM->getContext()));
+                      
+                      int cnt = 0;
+                      Value *allocaAddr = alloca;
+                      for (auto fgvar_ : *vecEspClassGvar) {
+                        
+                        Value *tempInt = ConstantInt::get(Type::getInt64Ty(pM->getContext()), 0);
+                        Value *intAddr = Casting::castTo((Value*)alloca, tempInt, out, &(pM->getDataLayout()));
+                        Value *addAddr = BinaryOperator::CreateAdd(intAddr, ConstantInt::get(Type::getInt64Ty(pM->getContext()), 8*(cnt)));
+                        out << (Instruction*)addAddr;
+
+                        Value *tempPtrPtr = ConstantPointerNull::get(Type::getInt8PtrTy(pM->getContext())->getPointerTo());
+                        allocaAddr = Casting::castTo(addAddr, tempPtrPtr, out, &(pM->getDataLayout())); 
+
+                        Value *gvarPtr = Casting::castTo(fgvar_, temp, out, &(pM->getDataLayout()));
+                        StoreInst *si = new StoreInst(gvarPtr, allocaAddr);
+                        out << si;
+
+                        cnt++;
+                        //out << allocaAddr;
+                      }
+                      actuals[0] = Casting::castTo((Value*)alloca, temp, out, &(pM->getDataLayout()));
+                      actuals[1] = ConstantInt::get(Type::getInt32Ty(pM->getContext()), vecEspClassGvar->size());
+                      out << CallInst::Create(Waiter, actuals, "");
+                      goto waiterend;
+                    }
+                  }
+                }
+              }
             }
-            actuals[0] = Casting::castTo((Value*)alloca, temp, out, &(pM->getDataLayout()));
-            actuals[1] = ConstantInt::get(Type::getInt32Ty(pM->getContext()), vecEspClassGvar->size());
-            out << CallInst::Create(Waiter, actuals, "");
           }
         }
       }
     }
-
-		sizeTotalGvars = FixedGlobalFactory::getTotalGlobalSize ();
+waiterend:
+		
+    sizeTotalGvars = FixedGlobalFactory::getTotalGlobalSize ();
 #ifdef DEBUG_FIXGLB
     printf("FIXGLB: convertToFixedGlobals: sizeTotalGvars: %ld\n", sizeTotalGvars);
 #endif

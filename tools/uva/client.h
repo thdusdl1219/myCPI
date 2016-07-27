@@ -19,6 +19,6 @@ namespace corelab {
 
     extern "C" void sendInitCompleteSignal();
 
-    extern "C" void waiter(void **stackAddr, uint32_t numGV);
+    extern "C" void waiter(void ***stackAddr, uint32_t numGV);
   }
 }
