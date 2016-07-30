@@ -340,7 +340,7 @@ namespace corelab {
 
       //socket->pushWord(sizeof(void*), clientId); // send addressSize XXX support x64
       //socket->pushWord(4, clientId); // send addressSize XXX support x64
-      LOG("\n\nsendAddrSet,size : %d\n\n",sendAddrSet.size());
+      //LOG("\n\nsendAddrSet,size : %d\n\n",sendAddrSet.size());
       comm->pushWord(BLOCKING, sendAddrSet.size(), srcid); // send addressNum 
 
       // send address

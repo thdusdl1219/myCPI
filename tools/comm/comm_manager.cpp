@@ -100,7 +100,7 @@ namespace corelab {
         sock = commManager->getSocketByIndex((uint32_t)i);
         recvSize = read(sock,recvHeader,12);
         if(recvSize > 0 ){
-          printf("socket number is %d / recvSize : %d\n",(int)size,recvSize);
+          //printf("socket number is %d / recvSize : %d\n",(int)size,recvSize);
 
         }
         if(recvSize  == 12){
@@ -159,7 +159,7 @@ namespace corelab {
 
   int CommManager::open(int port, int num){
 
-    LOG("DEBUG :: comm_manager open\n");
+    //LOG("DEBUG :: comm_manager open\n");
     struct sockaddr_in eptHost;
 
     int idHost = socket (PF_INET, SOCK_STREAM, 0);
@@ -218,7 +218,7 @@ namespace corelab {
       writeComplete(*clientID,(char*)initial_data,12);
 
 
-      LOG(" connected ip & port = %s / %d\n",strClientIP,initial_data[2]);
+      //LOG(" connected ip & port = %s / %d\n",strClientIP,initial_data[2]);
 
       socketMap[clntID] = *clientID;
       blockingPortMap[clntID] = blockingPort;
@@ -278,7 +278,7 @@ namespace corelab {
     
     StopWatch sw;
     sw.start();
-    LOG("DEBUG :: tryConnect\n");
+    //LOG("DEBUG :: tryConnect\n");
 
 		struct sockaddr_in eptClient;
 
@@ -345,7 +345,7 @@ namespace corelab {
     eptBLKClient.sin_port = htons (initial_data[2]);
     sleep(3);
     while(connect(blockingSock, (sockaddr *)&eptBLKClient, sizeof (eptBLKClient)) == -1);
-    LOG("11111\n");
+    //LOG("11111\n");
     int res;
     int reuseaddr = 1;
     res = setsockopt (blockingSock, SOL_SOCKET, SO_REUSEADDR, &reuseaddr, sizeof (int));
@@ -529,9 +529,9 @@ namespace corelab {
     targetQue->size = size;
     targetQue->head = targetQue->data;
 
-    LOG("\n\nblocking data : %d / %d\n",*(int*)(targetQue->data),size);
+    //LOG("\n\nblocking data : %d / %d\n",*(int*)(targetQue->data),size);
 
-    LOG("\n\nreceiveQue is end : port = %d\n\n",(int)blockingPortMap[sourceID]);
+    //LOG("\n\nreceiveQue is end : port = %d\n\n",(int)blockingPortMap[sourceID]);
 
   }
 

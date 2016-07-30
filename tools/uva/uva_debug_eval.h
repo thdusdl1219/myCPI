@@ -2,6 +2,6 @@
 #define __UVA_DEBUG_EVAL_H__
 
 //#define DEBUG_UVA
-//#define UVA_EVAL
+#define UVA_EVAL
 
 #endif 

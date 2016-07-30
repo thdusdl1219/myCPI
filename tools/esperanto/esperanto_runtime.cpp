@@ -263,7 +263,7 @@ void* consumeReturn(int jobID){
 
 void remotecall_callback(void* data, uint32_t size, uint32_t sourceID){
 
-  LOG("DEBUG::Remotecall handler is started\n");
+  //LOG("DEBUG::Remotecall handler is started\n");
   if(size < 8){
 #ifdef DEBUG_ESP
     LOG("DEBUG::Remotecall needs least 8 bytes argument\n");
@@ -277,9 +277,9 @@ void remotecall_callback(void* data, uint32_t size, uint32_t sourceID){
   int functionID = *(int*)(data_+4);
   int localJobID = drm->getJobID();
 
-    LOG("DEBUG::Before UVA sync\n");
+    //LOG("DEBUG::Before UVA sync\n");
   uva_sync();
-    LOG("DEBUG::After UVA sync\n");
+    //LOG("DEBUG::After UVA sync\n");
 
 #ifdef DEBUG_ESP
   LOG("-------------------------------------------------------------------------------------\n");
@@ -400,24 +400,24 @@ void EspInit(ApiCallback fcn, int id, int isGvarInitializer){
   comm_manager = new CommManager();
   drm = new DeviceRuntimeManager();
   dqm = new DataQManager();
-  LOG("DEBUG :: EspInit start\n");
+  //LOG("DEBUG :: EspInit start\n");
 
   callback = fcn;
   sprintf(filename,"functionTable-%d",id);
 
   esperanto_callback_setter(comm_manager);
 
-  LOG("DEBUG :: EspInit start\n");
+  //LOG("DEBUG :: EspInit start\n");
   uva_callback_setter(comm_manager);
 
-  LOG("DEBUG :: EspInit start\n");
+  //LOG("DEBUG :: EspInit start\n");
   network_initializer(comm_manager);
-  LOG("DEBUG :: EspInit start\n");
+  //LOG("DEBUG :: EspInit start\n");
   esperanto_initializer(comm_manager);
-  LOG("DEBUG :: EspInit start\n");
+  //LOG("DEBUG :: EspInit start\n");
   uva_initializer(comm_manager, isGvarInitializer, connectionID);
 
-  LOG("DEBUG :: EspInit start\n");
+  //LOG("DEBUG :: EspInit start\n");
 }
 
 extern "C"
