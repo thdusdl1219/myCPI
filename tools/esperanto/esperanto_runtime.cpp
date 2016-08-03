@@ -165,7 +165,11 @@ void produceReturn(int jobID, void* buf, int size){
   if(jobID == -2)
     return;
 
+
+  uva_sync();
+
   if(jobID != -1){
+
     int sourceJobID = drm->getSourceJobID(jobID);
     TAG tag = RETURN_VALUE;
 
