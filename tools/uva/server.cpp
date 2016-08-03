@@ -317,6 +317,8 @@ namespace corelab {
           LOG("[server] in while | curStoreLog (size:%d, addr:%p, data:%x)\n", size, *addr, *(int*)data);
 #endif
           memcpy(*addr, data, size);
+
+#if 0
           //pageMap[(long)(truncToPageAddr(*addr))]->accessS->insert(*clientId);
           struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(*addr))];
           if (pageInfo != NULL) {
@@ -328,6 +330,35 @@ namespace corelab {
           } else {
             assert(0);
           }
+#endif
+          /*********************************************/
+          uint32_t pageAddr;
+          uint32_t lastPageAddr;
+          void *current_ = truncToPageAddr(*addr);
+          memcpy(&pageAddr, &current_, 4);
+          void *lastPageAddr_ = truncToPageAddr((void*)(pageAddr + size - 1));
+          memcpy(&lastPageAddr, &lastPageAddr_, 4);
+#ifdef DEBUG_UVA
+          LOG("[server] pageAddr (%p) lastPageAddr (%p)\n", reinterpret_cast<void*>(pageAddr), reinterpret_cast<void*>(lastPageAddr));
+#endif
+          while(pageAddr <= lastPageAddr) {
+            struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(reinterpret_cast<void*>(pageAddr)))];
+            if (pageInfo != NULL) {
+              pageInfo->accessS->clear();
+              pageInfo->accessS->insert(srcid);
+              //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
+#ifdef DEBUG_UVA
+              LOG("[server] page (%p)'s accessSet is updated, srdid (%d)\n", reinterpret_cast<void*>(pageAddr), srcid);
+#endif
+            } else {
+              assert(0);
+            }
+            pageAddr += PAGE_SIZE;
+          }
+#ifdef DEBUG_UVA
+          LOG("[server] page accessSet update done (addr:%p, size:%d)\n", *addr, size);
+#endif
+          /********************************************/
 #ifdef DEBUG_UVA
           //hexdump("release", *addr, size);
 #endif
@@ -670,7 +701,7 @@ namespace corelab {
         LOG("[server] current (%p) lastPageAddr (%p)\n", reinterpret_cast<void*>(current), reinterpret_cast<void*>(lastPageAddr));
 #endif
         while(current <= lastPageAddr) {
-          struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(current_))];
+          struct pageInfo *pageInfo = (*pageMap)[(long)(truncToPageAddr(reinterpret_cast<void*>(current)))]; // XXX: !!!!!!!!
           if (pageInfo != NULL) {
           pageInfo->accessS->insert(srcid);
           //pageMap->insert(map<long, struct pageInfo*>::value_type((long)allocAddr / PAGE_SIZE, newPageInfo));
@@ -694,7 +725,7 @@ namespace corelab {
     void heapSegfaultHandler(void *data_, uint32_t size, uint32_t srcid) {
       void **fault_heap_addr = reinterpret_cast<void**>(*(int*)data_);
 #ifdef DEBUG_UVA
-      LOG("[server] get HEAP_SEGFAULT_REQ from client (%d) on (%p)\n", srcid, *fault_heap_addr);
+      LOG("[server] get HEAP_SEGFAULT_REQ from client (%d) on (%p)\n", srcid, fault_heap_addr);
 #endif
       comm->pushRange(BLOCKING, truncToPageAddr(fault_heap_addr), 0x1000, srcid);
       

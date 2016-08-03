@@ -44,7 +44,7 @@ extern "C" void* uva_mmap (void *addr, size_t length, int prot,
 	assert (fd == -1 && "devices/files cannot be mmaped.");
 	assert (offset == 0 && "no offset options allowed.");
 
-  printf("[xmem_alloc] uva_mmap called! addr (%p) / length (%d)\n", addr, length);
+  //printf("[xmem_alloc] uva_mmap called! addr (%p) / length (%d)\n", addr, length);
 	return XMemoryManager::pagemap (addr, length, false);
 }
 
