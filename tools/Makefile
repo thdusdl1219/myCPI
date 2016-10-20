@@ -13,6 +13,7 @@ DIRS=esperanto\
 		 dataQ\
      networkUtils\
      uva\
-		 comm
+		 comm\
+		 cpi
 
 include $(LEVEL)/Makefile.common

@@ -13,6 +13,7 @@ DIRS=Utilities\
 		 Esperanto\
      Metadata\
      UVA\
+		 CPI
 
 
 include $(LEVEL)/Makefile.common
