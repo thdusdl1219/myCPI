@@ -10,10 +10,11 @@ LEVEL=..
 #
 
 DIRS=Utilities\
-		 Esperanto\
+		 CPI
+		 #Esperanto\
      Metadata\
      UVA\
-		 CPI
+		 
 
 
 include $(LEVEL)/Makefile.common

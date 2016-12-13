@@ -4,9 +4,9 @@
 #include <sys/prctl.h>
 
 void* __cpi_table = 0;
-void __cpi_init() {
+__CPI_INLINE void __cpi_init() {
   
-  __cpi_table = mmap((void*) 0,
+  __cpi_table = mmap((void*) CPI_TABLE_ADDR,
                 CPI_TABLE_NUM_ENTRIES * sizeof(cpi_entry),
                 PROT_READ | PROT_WRITE,
                 MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
@@ -22,16 +22,16 @@ void __cpi_init() {
 
 }
 
-void __cpi_set(void **ptr, void *val) {
+__CPI_INLINE void __cpi_set(void **ptr, void *val) {
   size_t offset = cpi_offset(ptr);
   __CPI_SET(offset, val);
 }
 
-void* __cpi_get(void **ptr) {
+__CPI_INLINE void* __cpi_get(void **ptr) {
   size_t offset = cpi_offset(ptr);
   return __CPI_GET(offset);
 }
 
-void __cpi_fini() {
+__CPI_INLINE void __cpi_fini() {
   
 }

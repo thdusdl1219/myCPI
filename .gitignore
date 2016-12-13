@@ -7,4 +7,5 @@
 *.profile
 *.log
 *.swp
+.ycm*
 tags

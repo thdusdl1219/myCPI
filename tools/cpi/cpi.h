@@ -13,7 +13,9 @@
 
 #define CPI_TABLE_NUM_ENTRIES (1ull << (40 - 3))
 #define CPI_ADDR_MASK (0xfffffffff8ull)
+#define CPI_TABLE_ADDR (1ull << 45)
 #define entry_size_n (sizeof(cpi_entry) / sizeof(void *))
+# define __CPI_INLINE __attribute__((always_inline)) __attribute__((weak)) __attribute__ ((visibility ("hidden")))
 
 typedef struct {
   void* data;
@@ -21,10 +23,11 @@ typedef struct {
 } cpi_entry;
 
 
-void __cpi_init();
-void __cpi_fini();
+__CPI_INLINE void __cpi_init();
+__CPI_INLINE void __cpi_fini();
 
-void __cpi_set(void **ptr, void *val);
+__CPI_INLINE void __cpi_set(void **ptr, void *val);
+__CPI_INLINE void* __cpi_get(void **ptr);
 
 // assembly
 
